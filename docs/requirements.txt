@@ -1,0 +1,4 @@
+- simulator
+    - connected to waveform viewer
+- waveform viewer
+- logic synthesizer

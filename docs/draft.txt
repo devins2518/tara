@@ -1,0 +1,89 @@
+const full_adder = module {
+    in a: sig;
+    in b: sig;
+    in cin: sig;
+
+    out s = a ^ b ^ cin; // or ^.{a, b, cin};
+    out cout = a & b | cin & a ^ b;
+};
+
+const sequential_logic = module {
+    // val for internal signals? maybe var?
+    // const could be for constexprs
+    const state: [3]sig = @reg(clk, rst, 1b, next_state);
+    val next_state = switch (state) {
+        0b000 => 0b001,
+        0b001 => 0b010,
+        0b010 => 0b000,
+        else => 0b000,
+    };
+};
+
+// Show off `onehot`, `active_low`, `active_high`
+const val_qualifiers = module {
+    val oh: [3]onehot sig = undefined;
+    const al: [3]active_low sig = 0b1;
+    const ah: [3]active_high sig = 0b1;
+
+    // active low will consider 0 to be truthy, this fails the first if
+    oh = if (al)
+        0b101 // compile error, assigning non-onehot signal to onehot signal
+    else if (ah)
+        0b001
+    else
+        0b100;
+};
+
+const comb_mod = module {
+    in a: sig;
+    in b: sig;
+    const reg = @reg(clk, rst, next_reg);
+    val next_reg;
+
+    const update_next_reg = comb {
+        next_reg = ~a;
+    };
+
+    comb {
+        if (b) update_next_reg();
+    }
+};
+
+const output = struct {
+    a: sig,
+    b: [3]sig,
+};
+
+const pipeline = fn(width: comptime_int) interface {
+    return interface {
+        a: [width]sig,
+        b: [width]sig,
+        start: [width]sig,
+        halt: sig,
+
+    };
+}
+
+// NEW IDEA: everything is a "struct"
+const adder = interface {
+    a: [3]sig,
+    b: [3]sig,
+    pub s: [3]sig,
+    pub c: sig,
+
+    pub const always = comb {
+        s = @foreach(a ^ b ^ cin);
+        c = @foreach(a & b | cin & a ^ b);
+    };
+};
+
+// or maybe everything is a function that returns a struct
+const adder = fn (a: [3]sig, b: [3]sig) struct {
+    pub s: [3]sig,
+    pub c: [3]sig,
+
+    comb {
+        s = @foreach(a ^ b ^ cin);
+        c = @foreach(a & b | cin & a ^ b);
+    }
+}

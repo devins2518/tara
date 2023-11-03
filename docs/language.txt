@@ -1,0 +1,62 @@
+- language goals
+    - consistant, "one way to do things"
+    - boring to write, simple to read
+    - clear distinction between ff backing and combinational backing
+    - comptime blocks
+    - nonsynthesizable blocks
+    - generic modules
+    - autoformatter
+    - no warnings
+    - all signals must be read and written to
+    - transpilable to verilog
+    - race condition detection
+    - high z reading detection (undefined behavior)
+    - no shadowing
+- block types
+    - sequential
+    - combinational
+    - nonsynthesizable
+        - note: can produce constant value
+- language ideas
+    - nonsynthesizable blocks
+        - `nonsys {}` ?
+    - const <var> = <nonsys> | <const-expr>
+    - module
+        - `module name(N: const num, M: const module, x: input [16]sig, y: output [16]sig)`
+    - types
+        - module <module-name>
+        - primitives
+            - i<n>, u<n>
+            - and, nand, or, nor, xor, xnor, not
+            - `sig` logic equivalent
+            - `reg` register equivalent
+                - MUST be backed by storage in netlist
+                - Compile error if it is possible to optimize out register
+        - array
+            - [len]T
+            - ex array of array: [len2][len1]T
+                - T[len1_idx][len2_idx]
+    - contracts: todo
+    - onehot
+        - guarantees that only one bit of bus will be hot at any time
+        - Can be checked in simulation
+    - general systems programming ability
+        - TODO: elaborate lol
+        - Would be insane to self host
+    - top must be called top
+    - interfaces are the way to abstract away module instantiation
+        - just instantiate interface
+        - benefits?
+            - TODO
+
+- module
+    - what is its purpose vs
+        - fn?
+        - block?
+        - interface?
+
+- fn
+    - what is its purpose vs
+        - module?
+        - block?
+        - interface?
