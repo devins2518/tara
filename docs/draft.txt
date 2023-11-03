@@ -86,4 +86,4 @@ const adder = fn (a: [3]sig, b: [3]sig) struct {
         s = @foreach(a ^ b ^ cin);
         c = @foreach(a & b | cin & a ^ b);
     }
-}
+};
