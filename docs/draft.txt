@@ -87,3 +87,22 @@ const adder = fn (a: [3]sig, b: [3]sig) struct {
         c = @foreach(a & b | cin & a ^ b);
     }
 };
+
+// everything is a reference
+const In = struct {
+    a: [3]sig,
+    b: [3]sig,
+    cin: sig,
+};
+const Out = struct {
+    s: [3]sig,
+    c: sig,
+}
+// What would returning from a function mean
+// should `mut` be `var`
+const addr = fn (in: &In, out: &mut Out) void {
+    out.s = @foreach(a ^ b ^ cin);
+    out.c = @foreach (a & b | cin & a ^ b);
+}
+// Maybe "module" would be defined as being able to cast to
+// `fn (comptime In: type, comptime Out: type, in: &In, out: &mut Out) void`

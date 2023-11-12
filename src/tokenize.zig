@@ -12,11 +12,13 @@ pub const Token = struct {
         .{ "enum", .keyword_enum },
         .{ "fn", .keyword_fn },
         .{ "module", .keyword_module },
+        .{ "mut", .keyword_mut },
         .{ "pub", .keyword_pub },
         .{ "sig", .keyword_sig },
         .{ "struct", .keyword_struct },
         .{ "union", .keyword_union },
         .{ "var", .keyword_var },
+        .{ "void", .keyword_void },
     });
 
     pub fn tryKeyword(ident: []const u8) ?Tag {
@@ -48,11 +50,13 @@ pub const Token = struct {
         keyword_enum,
         keyword_fn,
         keyword_module,
+        keyword_mut,
         keyword_pub,
         keyword_sig,
         keyword_struct,
         keyword_union,
         keyword_var,
+        keyword_void,
 
         invalid,
         eof,
@@ -129,6 +133,11 @@ pub const Tokenizer = struct {
                     },
                     '@' => {
                         result.tag = .at;
+                        t.index += 1;
+                        break;
+                    },
+                    '.' => {
+                        result.tag = .period;
                         t.index += 1;
                         break;
                     },
@@ -216,6 +225,7 @@ test Tokenizer {
                 try std.testing.expectEqual(token, t.next().tag);
             }
         }
+
         pub fn test0() !void {
             const src =
                 \\const Alu = module {
@@ -329,8 +339,74 @@ test Tokenizer {
             };
             try doTheTest(src, &expected);
         }
+
+        pub fn test2() !void {
+            const src =
+                \\const addr = fn (in: &In, out: &mut Out) void {
+                \\    out.s = @foreach(a ^ b ^ cin);
+                \\    out.c = @foreach (a & b | cin & a ^ b);
+                \\};
+            ;
+            const expected = [_]Token.Tag{
+                .keyword_const, // const
+                .identifier, // adder
+                .equal, // =
+                .keyword_fn, // fn
+                .lparen, // (
+                .identifier, // in
+                .colon, // :
+                .op_and, // &
+                .identifier, // In
+                .comma, // ,
+                .identifier, // out
+                .colon, // :
+                .op_and, // &
+                .keyword_mut, // mut
+                .identifier, // Out
+                .rparen, // )
+                .keyword_void, // void
+                .lbrace, // {
+                .identifier, // out
+                .period, // .
+                .identifier, // s
+                .equal, // =
+                .at, // @
+                .identifier, // foreach
+                .lparen, // (
+                .identifier, // a
+                .op_xor, // ^
+                .identifier, // b
+                .op_xor, // ^
+                .identifier, // cin
+                .rparen, // )
+                .semicolon, // ;
+                .identifier, // out
+                .period, // .
+                .identifier, // c
+                .equal, // =
+                .at, // @
+                .identifier, // foreach
+                .lparen, // (
+                .identifier, // a
+                .op_and, // &
+                .identifier, // b
+                .op_pipe, // |
+                .identifier, // cin
+                .op_and, // &
+                .identifier, // a
+                .op_xor, // ^
+                .identifier, // b
+                .rparen, // )
+                .semicolon, // ;
+                .rbrace, // }
+                .semicolon, // ;
+                .eof,
+            };
+            try doTheTest(src, &expected);
+        }
     };
 
     try tests.test0();
     try tests.test1();
+    try tests.test2();
 }
