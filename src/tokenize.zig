@@ -7,11 +7,13 @@ pub const Token = struct {
     loc: Location,
 
     pub const keywords = std.ComptimeStringMap(Tag, .{
+        .{ "and", .keyword_and },
         .{ "comb", .keyword_comb },
         .{ "const", .keyword_const },
         .{ "enum", .keyword_enum },
         .{ "fn", .keyword_fn },
         .{ "module", .keyword_module },
+        .{ "or", .keyword_or },
         .{ "pub", .keyword_pub },
         .{ "sig", .keyword_sig },
         .{ "struct", .keyword_struct },
@@ -44,11 +46,13 @@ pub const Token = struct {
         // String based tokens
         identifier,
         number,
+        keyword_and,
         keyword_comb,
         keyword_const,
         keyword_enum,
         keyword_fn,
         keyword_module,
+        keyword_or,
         keyword_pub,
         keyword_sig,
         keyword_struct,
@@ -78,6 +82,8 @@ pub const Tokenizer = struct {
         identifier,
         number,
         saw_equal,
+        saw_slash,
+        line_comment,
     };
 
     pub fn init(buf: [:0]const u8) Tokenizer {
@@ -184,6 +190,9 @@ pub const Tokenizer = struct {
                         t.index += 1;
                         break;
                     },
+                    '/' => {
+                        state = .saw_slash;
+                    },
                     else => {
                         result.tag = .invalid;
                         break;
@@ -207,6 +216,23 @@ pub const Tokenizer = struct {
                         result.tag = .equal;
                         break;
                     },
+                },
+                .saw_slash => switch (c) {
+                    '/' => {
+                        state = .line_comment;
+                    },
+                    else => {
+                        result.tag = .invalid;
+                        break;
+                    },
+                },
+                .line_comment => switch (c) {
+                    '\n' => {
+                        state = .start;
+                        t.index += 1;
+                        result.loc.start = t.index;
+                    },
+                    else => {},
                 },
             }
         }
@@ -402,9 +428,132 @@ test Tokenizer {
             };
             try doTheTest(src, &expected);
         }
+
+        pub fn test3() !void {
+            const src =
+                \\const In = struct {
+                \\    a: sig,
+                \\    b: sig,
+                \\    cin: sig,
+                \\};
+                \\const Out = struct {
+                \\    s: sig,
+                \\    c: sig,
+                \\};
+                \\const adder = module(in: &In, out: &var Out) {
+                \\    // ^ defined for buses
+                \\    out.s = in.a ^ in.b ^ in.cin;
+                \\    out.c = (in.a and in.b) or (in.cin and (in.a ^ in.b));
+                \\};
+            ;
+            const expected = [_]Token.Tag{
+                .keyword_const, // const
+                .identifier, // In
+                .equal, // =
+                .keyword_struct, // struct
+                .lbrace, // {
+                .identifier, // a
+                .colon, // :
+                .keyword_sig, // sig
+                .comma, // ,
+                .identifier, // b
+                .colon, // :
+                .keyword_sig, // sig
+                .comma, // ,
+                .identifier, // cin
+                .colon, // :
+                .keyword_sig, // sig
+                .comma, // ,
+                .rbrace, // }
+                .semicolon, // ;
+                .keyword_const, // const
+                .identifier, // Out
+                .equal, // =
+                .keyword_struct, // struct
+                .lbrace, // {
+                .identifier, // s
+                .colon, // :
+                .keyword_sig, // sig
+                .comma, // ,
+                .identifier, // c
+                .colon, // :
+                .keyword_sig, // sig
+                .comma, // ,
+                .rbrace, // }
+                .semicolon, // ;
+                .keyword_const, // const
+                .identifier, // adder
+                .equal, // =
+                .keyword_module, // module
+                .lparen, // (
+                .identifier, // in
+                .colon, // :
+                .op_and, // &
+                .identifier, // In
+                .comma, // ,
+                .identifier, // out
+                .colon, // :
+                .op_and, // &
+                .keyword_var, // var
+                .identifier, // Out
+                .rparen, // )
+                .lbrace, // {
+                .identifier, // out
+                .period, // .
+                .identifier, // s
+                .equal, // =
+                .identifier, // in
+                .period, // .
+                .identifier, // a
+                .op_xor, // ^
+                .identifier, // in
+                .period, // .
+                .identifier, // b
+                .op_xor, // ^
+                .identifier, // in
+                .period, // .
+                .identifier, // cin
+                .semicolon, // ;
+                .identifier, // out
+                .period, // .
+                .identifier, // c
+                .equal, // =
+                .lparen, // (
+                .identifier, // in
+                .period, // .
+                .identifier, // a
+                .keyword_and, // and
+                .identifier, // in
+                .period, // .
+                .identifier, // b
+                .rparen, // )
+                .keyword_or, // or
+                .lparen, // (
+                .identifier, // in
+                .period, // .
+                .identifier, // cin
+                .keyword_and, // and
+                .lparen, // (
+                .identifier, // in
+                .period, // .
+                .identifier, // a
+                .op_xor, // ^
+                .identifier, // in
+                .period, // .
+                .identifier, // b
+                .rparen, // )
+                .rparen, // )
+                .semicolon, // ;
+                .rbrace, // }
+                .semicolon, // ;
+                .eof,
+            };
+            try doTheTest(src, &expected);
+        }
     };
 
     try tests.test0();
     try tests.test1();
     try tests.test2();
+    try tests.test3();
 }

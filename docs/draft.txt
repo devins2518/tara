@@ -106,3 +106,18 @@ const adder = fn (in: &In, out: &var Out) void {
 }
 // Maybe "module" would be defined as being able to cast to
 // `fn (comptime In: type, comptime Out: type, in: &In, out: &var Out) void`
+
+const In = struct {
+    a: sig,
+    b: sig,
+    cin: sig,
+};
+const Out = struct {
+    s: sig,
+    c: sig,
+};
+const adder = module(in: &In, out: &var Out) {
+    // ^ defined for busses
+    out.s = in.a ^ in.b ^ in.cin;
+    out.c = (in.a and in.b) or (in.cin and (in.a ^ in.b))
+};
