@@ -100,9 +100,9 @@ const Out = struct {
 }
 // What would returning from a function mean
 // should `mut` be `var`
-const addr = fn (in: &In, out: &mut Out) void {
+const adder = fn (in: &In, out: &var Out) void {
     out.s = @foreach(a ^ b ^ cin);
     out.c = @foreach (a & b | cin & a ^ b);
 }
 // Maybe "module" would be defined as being able to cast to
-// `fn (comptime In: type, comptime Out: type, in: &In, out: &mut Out) void`
+// `fn (comptime In: type, comptime Out: type, in: &In, out: &var Out) void`

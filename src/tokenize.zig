@@ -12,7 +12,6 @@ pub const Token = struct {
         .{ "enum", .keyword_enum },
         .{ "fn", .keyword_fn },
         .{ "module", .keyword_module },
-        .{ "mut", .keyword_mut },
         .{ "pub", .keyword_pub },
         .{ "sig", .keyword_sig },
         .{ "struct", .keyword_struct },
@@ -50,7 +49,6 @@ pub const Token = struct {
         keyword_enum,
         keyword_fn,
         keyword_module,
-        keyword_mut,
         keyword_pub,
         keyword_sig,
         keyword_struct,
@@ -342,7 +340,7 @@ test Tokenizer {
 
         pub fn test2() !void {
             const src =
-                \\const addr = fn (in: &In, out: &mut Out) void {
+                \\const addr = fn (in: &In, out: &var Out) void {
                 \\    out.s = @foreach(a ^ b ^ cin);
                 \\    out.c = @foreach (a & b | cin & a ^ b);
                 \\};
@@ -361,7 +359,7 @@ test Tokenizer {
                 .identifier, // out
                 .colon, // :
                 .op_and, // &
-                .keyword_mut, // mut
+                .keyword_var, // var
                 .identifier, // Out
                 .rparen, // )
                 .keyword_void, // void
