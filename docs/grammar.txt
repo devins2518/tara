@@ -30,3 +30,16 @@ container_body = IDENT: type COMMA
 
 enum = "enum" L_BRACE enum_body R_BRACE SEMICOLON
 enum_body = IDENT COMMA skip
+
+// Top level stuff
+root = container_members*
+
+container_members = var_decl / field
+
+var_decl = pub? ("const" / "var") IDENT (COLON type_expr)? EQUAL expr SEMICOLON
+
+field = IDENT COLON type_expr (EQUAL expr) COMMA
+
+type_expr = TODO
+
+expr = TODO
