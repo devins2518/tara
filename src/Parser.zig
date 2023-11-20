@@ -98,8 +98,8 @@ fn scratchToSubList(self: *Parser, top: usize) !Node.SubList {
     const list = self.scratchpad.items[top..];
     try self.extra_data.appendSlice(self.allocator, list);
     return Node.SubList{
-        .start = @intCast(top),
-        .end = @as(Node.Idx, @intCast(self.extra_data.items.len)),
+        .start = @intCast(self.extra_data.items.len - list.len),
+        .end = @intCast(self.extra_data.items.len),
     };
 }
 
