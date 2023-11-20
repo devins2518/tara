@@ -7,6 +7,8 @@ const Token = tokenize.Token;
 const Parser = @This();
 const assert = std.debug.assert;
 
+const Error = error{} || Allocator.Error;
+
 // Allocator used for general memory purposes
 allocator: Allocator,
 // Source of tokens used for error messaging
@@ -40,7 +42,7 @@ pub fn parseRoot(self: *Parser) !void {
     };
 }
 
-fn parseContainerMembers(self: *Parser) !Node.SubList {
+fn parseContainerMembers(self: *Parser) Error!Node.SubList {
     const scratch_top = self.scratchpad.items.len;
     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
 
