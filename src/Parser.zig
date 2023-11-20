@@ -53,7 +53,7 @@ fn parseContainerMembers(self: *Parser) !Node.SubList {
             .keyword_const,
             .keyword_var,
             => try self.scratchpad.append(self.allocator, try self.parseVarDecl()),
-            .eof => break,
+            .eof, .rbrace => break,
             else => {
                 std.debug.print("[ERROR]: unhandled container member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
                 break;
