@@ -218,6 +218,11 @@ fn parsePrefixExpr(self: *Parser) !Node.Idx {
 
 fn parsePrimaryExpr(self: *Parser) !Node.Idx {
     switch (self.tokens[self.tok_idx].tag) {
+        .identifier => return self.addNode(.{
+            .tag = .identifier,
+            .main_idx = self.nextToken(),
+            .data = .{ .lhs = Node.null_node, .rhs = Node.null_node },
+        }),
         else => return self.parseTypeExpr(),
     }
 }
@@ -339,8 +344,31 @@ test Parser {
             const expected_extra_data = [_]Node.Idx{ 1, 2, 3, 5 };
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
+
+        pub fn test2() !void {
+            // should be parsed as ((a + (b * c)) - (d / e))
+            const src =
+                \\const A = a + b * c - d / e;
+            ;
+            const expected_nodes = [_]Node{
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = 0, .rhs = 1 } }, // root
+                .{ .tag = .identifier, .main_idx = 3, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a
+                .{ .tag = .identifier, .main_idx = 5, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+                .{ .tag = .identifier, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+                .{ .tag = .mul, .main_idx = 6, .data = .{ .lhs = 2, .rhs = 3 } }, // b * c
+                .{ .tag = .add, .main_idx = 4, .data = .{ .lhs = 1, .rhs = 4 } }, // a + (b * c)
+                .{ .tag = .identifier, .main_idx = 9, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // d
+                .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // e
+                .{ .tag = .div, .main_idx = 10, .data = .{ .lhs = 6, .rhs = 7 } }, // d / e
+                .{ .tag = .sub, .main_idx = 8, .data = .{ .lhs = 5, .rhs = 8 } }, // (a + (b * c)) - (d / e)
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = 9 } },
+            };
+            const expected_extra_data = [_]Node.Idx{10};
+            try doTheTest(src, &expected_nodes, &expected_extra_data);
+        }
     };
 
     try tests.test0();
     try tests.test1();
+    try tests.test2();
 }
