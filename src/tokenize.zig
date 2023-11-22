@@ -145,6 +145,21 @@ pub const Tokenizer = struct {
                         t.index += 1;
                         break;
                     },
+                    '+' => {
+                        result.tag = .op_plus;
+                        t.index += 1;
+                        break;
+                    },
+                    '-' => {
+                        result.tag = .op_minus;
+                        t.index += 1;
+                        break;
+                    },
+                    '*' => {
+                        result.tag = .op_star;
+                        t.index += 1;
+                        break;
+                    },
                     '@' => {
                         result.tag = .at;
                         t.index += 1;
@@ -232,7 +247,7 @@ pub const Tokenizer = struct {
                         state = .line_comment;
                     },
                     else => {
-                        result.tag = .invalid;
+                        result.tag = .op_slash;
                         break;
                     },
                 },
