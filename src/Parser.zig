@@ -9,6 +9,8 @@ const assert = std.debug.assert;
 
 const Error = error{} || Allocator.Error;
 
+const log = std.log.scoped(.Parser);
+
 // Allocator used for general memory purposes
 allocator: Allocator,
 // Source of tokens used for error messaging
@@ -27,6 +29,7 @@ extra_data: std.ArrayListUnmanaged(Node.Idx) = .{},
 // Parse the file as a root Tara file
 // `self.nodes` must have a non-zero capacity
 pub fn parseRoot(self: *Parser) !void {
+    log.debug("parseRoot\n", .{});
     self.nodes.appendAssumeCapacity(.{
         .tag = .root,
         .main_idx = 0,
@@ -43,6 +46,7 @@ pub fn parseRoot(self: *Parser) !void {
 }
 
 fn parseContainerMembers(self: *Parser) Error!Node.SubList {
+    log.debug("parseContainerMembers\n", .{});
     const scratch_top = self.scratchpad.items.len;
     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
 
@@ -76,6 +80,7 @@ fn parseContainerMembers(self: *Parser) Error!Node.SubList {
 }
 
 fn parseVarDecl(self: *Parser) !Node.Idx {
+    log.debug("parseVarDecl\n", .{});
     const mutability = self.eat(.keyword_var) orelse
         self.eat(.keyword_const) orelse
         Node.null_node;
@@ -104,6 +109,7 @@ fn parseVarDecl(self: *Parser) !Node.Idx {
 }
 
 fn parseContainerField(self: *Parser) !Node.Idx {
+    log.debug("parseContainerField\n", .{});
     const main_idx = self.eat(.identifier) orelse return Node.null_node;
     _ = self.eat(.colon);
     const type_expr = try self.parseTypeExpr();
@@ -174,6 +180,7 @@ const precedence_table = std.enums.directEnumArrayDefault(
 );
 
 fn parseExprWithPrecedence(self: *Parser, min_precedence: i8) !Node.Idx {
+    log.debug("parseExprWithPrecedence\n", .{});
     assert(min_precedence >= 0);
     var node = try self.parsePrefixExpr();
     if (node == Node.null_node) return node;
@@ -203,6 +210,7 @@ fn parseExprWithPrecedence(self: *Parser, min_precedence: i8) !Node.Idx {
 }
 
 fn parsePrefixExpr(self: *Parser) !Node.Idx {
+    log.debug("parsePrefixExpr\n", .{});
     const tag: Node.Tag = switch (self.tokens[self.tok_idx].tag) {
         else => return self.parsePrimaryExpr(),
     };
@@ -217,6 +225,7 @@ fn parsePrefixExpr(self: *Parser) !Node.Idx {
 }
 
 fn parsePrimaryExpr(self: *Parser) !Node.Idx {
+    log.debug("parsePrimaryExpr\n", .{});
     switch (self.tokens[self.tok_idx].tag) {
         .identifier => return self.addNode(.{
             .tag = .identifier,
@@ -228,10 +237,12 @@ fn parsePrimaryExpr(self: *Parser) !Node.Idx {
 }
 
 fn parseTypeExpr(self: *Parser) !Node.Idx {
+    log.debug("parseTypeExpr\n", .{});
     return self.parseContainerDecl();
 }
 
 fn parseContainerDecl(self: *Parser) !Node.Idx {
+    log.debug("parseContainerDecl\n", .{});
     const main_idx = self.nextToken();
     const container_decl: Node.Tag = switch (self.tokens[main_idx].tag) {
         .keyword_struct => .struct_decl,
@@ -301,11 +312,9 @@ test Parser {
             try p.parseRoot();
 
             for (expected_nodes, 0..) |e, i| {
-                std.debug.print("\n{}\n", .{p.nodes.get(i)});
                 try std.testing.expectEqual(e, p.nodes.get(i));
             }
             for (expected_extra_data, p.extra_data.items) |e, a| {
-                std.debug.print("\n{}\n", .{a});
                 try std.testing.expectEqual(e, a);
             }
         }
