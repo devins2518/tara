@@ -139,7 +139,7 @@ fn scratchToSubList(self: *Parser, top: usize) !Node.SubList {
     };
 }
 
-fn parseExpr(self: *Parser) !Node.Idx {
+fn parseExpr(self: *Parser) Error!Node.Idx {
     return try self.parseExprWithPrecedence(0);
 }
 
@@ -213,6 +213,12 @@ fn parseExprWithPrecedence(self: *Parser, min_precedence: i8) !Node.Idx {
 fn parsePrefixExpr(self: *Parser) !Node.Idx {
     log.debug("parsePrefixExpr\n", .{});
     const tag: Node.Tag = switch (self.tokens[self.tok_idx].tag) {
+        .lparen => {
+            _ = self.nextToken();
+            const expr = self.parseExpr();
+            _ = self.eat(.rparen);
+            return expr;
+        },
         else => return self.parsePrimaryExpr(),
     };
     return self.addNode(.{
@@ -376,9 +382,32 @@ test Parser {
             const expected_extra_data = [_]Node.Idx{10};
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
+
+        pub fn test3() !void {
+            // should be parsed as (((a + b) * c) - (d / e))
+            const src =
+                \\const A = (a + b) * c - d / e;
+            ;
+            const expected_nodes = [_]Node{
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = 0, .rhs = 1 } }, // root
+                .{ .tag = .identifier, .main_idx = 4, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a
+                .{ .tag = .identifier, .main_idx = 6, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+                .{ .tag = .add, .main_idx = 5, .data = .{ .lhs = 1, .rhs = 2 } }, // a + b
+                .{ .tag = .identifier, .main_idx = 9, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+                .{ .tag = .mul, .main_idx = 8, .data = .{ .lhs = 3, .rhs = 4 } }, // (a + b) * c
+                .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // d
+                .{ .tag = .identifier, .main_idx = 13, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // e
+                .{ .tag = .div, .main_idx = 12, .data = .{ .lhs = 6, .rhs = 7 } }, // d / e
+                .{ .tag = .sub, .main_idx = 10, .data = .{ .lhs = 5, .rhs = 8 } }, // ((a + b) * c) - (d / e)
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = 9 } },
+            };
+            const expected_extra_data = [_]Node.Idx{10};
+            try doTheTest(src, &expected_nodes, &expected_extra_data);
+        }
     };
 
     try tests.test0();
     try tests.test1();
     try tests.test2();
+    try tests.test3();
 }
