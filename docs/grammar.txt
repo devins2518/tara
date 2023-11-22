@@ -9,6 +9,10 @@ EQUAL = "="
 
 keywords = "module" | "struct" | "enum" | "union" | "fn" | "var" | "const" | "sig"
 
+COMPARISON_OPERATOR = "==" | "!=" | "<" | ">" | "<=" | ">=
+
+CONTAINER_DECL_TYPE = STRUCT / ENUM / UNION
+
 IDENT = [a-zA-z_][a-zA-z0-9_]*
 
 skip = (LWSP / comment)*
@@ -34,12 +38,33 @@ enum_body = IDENT COMMA skip
 // Top level stuff
 root = container_members*
 
-container_members = var_decl / field
+container_members = var_decl | container_field
 
 var_decl = pub? ("const" / "var") IDENT (COLON type_expr)? EQUAL expr SEMICOLON
 
-field = IDENT COLON type_expr (EQUAL expr) COMMA
+container_field = IDENT COLON type_expr (EQUAL expr) COMMA
 
-type_expr = TODO
+// TODO: operator precendences
+expr = bool_or_expr
 
-expr = TODO
+bool_or_expr = bool_and_expr (KEYWORD_OR bool_and_expr)*
+
+bool_and_expr = comparison_expr (KEYWORD_AND comparison_expr)*
+
+comparison_expr = bitwise_expr (COMPARISON_OPERATOR bitwise_expr)*
+
+bitwise_expr = sum_expr (BITWISE_OPERATOR sum_expr)*
+
+sum_expr = product_expr (SUM_OPERATOR product_expr)*
+
+product_expr = prefix_expr (SUM_OPERATOR prefix_operator)*
+
+prefix_expr = PREFIX_OPERATOR* primary_expr
+
+// TODO
+primary_expr = type_expr
+
+// TODO
+type_expr = container_decl
+
+container_decl = CONTAINER_DECL_TYPE LBRACE container_members RBRACE

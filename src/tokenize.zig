@@ -43,6 +43,16 @@ pub const Token = struct {
         op_xor, // ^
         op_and, // &
         op_pipe, // |
+        op_plus, // +
+        op_minus, // -
+        op_star, // *
+        op_slash, // /
+        op_lt, // <
+        op_gt, // >
+        op_lte, // <=
+        op_gte, // >=
+        op_eq, // ==
+        op_neq, // !=
         // String based tokens
         identifier,
         number,

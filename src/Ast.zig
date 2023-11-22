@@ -24,7 +24,7 @@ pub const Node = struct {
 
     pub const Tag = enum {
         // `main_idx` is always 0
-        // data is list of decls as nodes[lhs..rhs]
+        // data is list of decls as extra_data[lhs..rhs]
         root,
         // `pub? (const|var) ident(: type_expr) = expr;`
         // `main_idx` is (const|var)
@@ -33,15 +33,65 @@ pub const Node = struct {
         var_decl,
         // `struct { fields* }`
         // `main_idx` is {
+        // TODO: This needs to be revisted wrt root
         // If there are no fields or decls, then data is 0
-        // If there is a single field or decl, then lhs is 0 and data.rhs is a single field or decl
+        // If there is a single field or decl, then lhs is 0 and data.rhs is a single field or decl indexing nodes
         // If there are 2 or more fields or decls, then data.lhs is extra_index index of a `StructBody` and data.rhs is 0
         struct_decl,
         // `ident: type_expr( = expr)?`
         // `main_idx` is ident
         // lhs is `type_expr`, indexes extra_data
         // rhs is optional `expr`, indexes extra_data
-        struct_field,
+        container_field,
+        // `lhs or rhs`
+        // `main_idx` is `or`
+        @"or",
+        // `lhs and rhs`
+        // `main_idx` is `and`
+        @"and",
+        // `lhs < rhs`
+        // `main_idx` is <
+        lt,
+        // `lhs > rhs`
+        // `main_idx` is >
+        gt,
+        // `lhs <= rhs`
+        // `main_idx` is <=
+        lte,
+        // `lhs >= rhs`
+        // `main_idx` is >=
+        gte,
+        // `lhs == rhs`
+        // `main_idx` is ==
+        eq,
+        // `lhs != rhs`
+        // `main_idx` is !=
+        neq,
+        // `lhs & rhs`
+        // `main_idx` is &
+        bit_and,
+        // `lhs | rhs`
+        // `main_idx` is |
+        bit_or,
+        // `lhs ^ rhs`
+        // `main_idx` is ^
+        bit_xor,
+        // `lhs + rhs`
+        // `main_idx` is `+`
+        add,
+        // `lhs - rhs`
+        // `main_idx` is `-`
+        sub,
+        // `lhs * rhs`
+        // `main_idx` is `*`
+        mul,
+        // `lhs / rhs`
+        // `main_idx` is `/`
+        div,
+        // `ident`
+        // `main_idx` is `ident`
+        // `lhs` and `rhs` unused
+        identifier,
     };
 
     pub const Data = struct {

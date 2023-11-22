@@ -4,7 +4,6 @@ const c = @import("c.zig");
 pub fn main() !void {}
 
 test "simple test" {
-    _ = @import("c.zig");
     _ = @import("tokenize.zig");
     _ = @import("Parser.zig");
     _ = @import("Ast.zig");
