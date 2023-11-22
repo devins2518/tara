@@ -115,13 +115,14 @@ pub const Node = struct {
 };
 
 pub fn parse(allocator: Allocator, source: [:0]const u8) !Ast {
-    const tokens = try std.ArrayList(Token).initCapacity(allocator, source.len);
+    var tokens = try std.ArrayList(Token).initCapacity(allocator, source.len);
     var t = Tokenizer.init(source);
 
     while (true) {
         const token = t.next();
-        tokens.appendAssumeCapacity(token);
-        if (token == .eof) break;
+        try tokens.append(token);
+        if (token.tag == .invalid) @panic("Uh oh invalid tag");
+        if (token.tag == .eof) break;
     }
 
     var parser = Parser{
@@ -130,11 +131,12 @@ pub fn parse(allocator: Allocator, source: [:0]const u8) !Ast {
         .tokens = try tokens.toOwnedSlice(),
     };
     defer parser.deinit();
+    try parser.nodes.setCapacity(allocator, parser.tokens.len);
     try parser.parseRoot();
 
     return Ast{
         .source = source,
         .nodes = parser.nodes,
-        .extra_data = try parser.extra_data.toOwnedSlice(),
+        .extra_data = try parser.extra_data.toOwnedSlice(allocator),
     };
 }
