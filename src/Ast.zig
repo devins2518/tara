@@ -140,3 +140,8 @@ pub fn parse(allocator: Allocator, source: [:0]const u8) !Ast {
         .extra_data = try parser.extra_data.toOwnedSlice(allocator),
     };
 }
+
+pub fn deinit(self: *Ast, allocator: Allocator) void {
+    self.nodes.deinit(allocator);
+    allocator.free(self.extra_data);
+}

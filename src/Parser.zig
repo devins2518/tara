@@ -19,7 +19,8 @@ source: []const u8,
 tokens: []const Token,
 // Current index into `tokens`
 tok_idx: Ast.TokenIdx = 0,
-// In-progress list of nodes being created
+// In-progress list of nodes being created. Expected to be taken and owned by
+// caller. Not freed in `deinit`
 nodes: Node.List = .{},
 // Scratchpad for tracking nodes being built
 scratchpad: std.ArrayListUnmanaged(Node.Idx) = .{},
@@ -281,7 +282,6 @@ fn addNode(self: *Parser, node: Ast.Node) !Node.Idx {
 
 // Deinit `self` and free all related resources
 pub fn deinit(self: *Parser) void {
-    self.nodes.deinit(self.allocator);
     self.extra_data.deinit(self.allocator);
     self.scratchpad.deinit(self.allocator);
     self.allocator.free(self.tokens);
@@ -307,6 +307,7 @@ test Parser {
                 .tokens = try tokens.toOwnedSlice(),
             };
             defer p.deinit();
+            defer p.nodes.deinit(allocator);
             try p.nodes.setCapacity(allocator, p.tokens.len);
 
             try p.parseRoot();

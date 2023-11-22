@@ -20,8 +20,8 @@ pub fn main() !void {
     const contents = try file.readToEndAllocOptions(allocator, std.math.maxInt(usize), null, @alignOf(u8), 0);
     defer allocator.free(contents);
 
-    const ast = try Ast.parse(allocator, contents);
-    _ = ast;
+    var ast = try Ast.parse(allocator, contents);
+    defer ast.deinit(allocator);
 }
 
 test "simple test" {
