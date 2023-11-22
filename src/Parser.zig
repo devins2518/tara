@@ -82,9 +82,10 @@ fn parseContainerMembers(self: *Parser) Error!Node.SubList {
 
 fn parseVarDecl(self: *Parser) !Node.Idx {
     log.debug("parseVarDecl\n", .{});
+    // TODO: error on no mutability token
     const mutability = self.eat(.keyword_var) orelse
         self.eat(.keyword_const) orelse
-        Node.null_node;
+        0;
 
     _ = self.eat(.identifier);
 
@@ -134,8 +135,8 @@ fn scratchToSubList(self: *Parser, top: usize) !Node.SubList {
     const list = self.scratchpad.items[top..];
     try self.extra_data.appendSlice(self.allocator, list);
     return Node.SubList{
-        .start = @intCast(self.extra_data.items.len - list.len),
-        .end = @intCast(self.extra_data.items.len),
+        .start = @enumFromInt(self.extra_data.items.len - list.len),
+        .end = @enumFromInt(self.extra_data.items.len),
     };
 }
 
@@ -281,7 +282,7 @@ fn nextToken(self: *Parser) Ast.TokenIdx {
 }
 
 fn addNode(self: *Parser, node: Ast.Node) !Node.Idx {
-    const result: Node.Idx = @intCast(self.nodes.len);
+    const result: Node.Idx = @enumFromInt(self.nodes.len);
     try self.nodes.append(self.allocator, node);
     return result;
 }
@@ -332,11 +333,11 @@ test Parser {
                 \\};
             ;
             const expected_nodes = [_]Node{
-                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = 0, .rhs = 1 } }, // root
-                .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = 0, .rhs = 0 } }, // struct { ... }
-                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = 0, .rhs = 1 } }, // const In = struct { ... };
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(1) } }, // root
+                .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(0) } }, // struct { ... }
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(1) } }, // const In = struct { ... };
             };
-            const expected_extra_data = [_]Node.Idx{2};
+            const expected_extra_data = [_]Node.Idx{@enumFromInt(2)};
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
 
@@ -350,14 +351,17 @@ test Parser {
             ;
             // TODO: main_token points to token idx
             const expected_nodes = [_]Node{
-                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = 3, .rhs = 4 } }, // root
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(3), .rhs = @enumFromInt(4) } }, // root
                 .{ .tag = .container_field, .main_idx = 5, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a: sig
                 .{ .tag = .container_field, .main_idx = 9, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b: sig
                 .{ .tag = .container_field, .main_idx = 13, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // cin: sig
-                .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = 0, .rhs = 3 } }, // struct { ... }
-                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = 0, .rhs = 4 } }, // const In = struct { ... };
+                .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(3) } }, // struct { ... }
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(4) } }, // const In = struct { ... };
             };
-            const expected_extra_data = [_]Node.Idx{ 1, 2, 3, 5 };
+            const expected_extra_data = [_]Node.Idx{
+                @enumFromInt(1), @enumFromInt(2),
+                @enumFromInt(3), @enumFromInt(5),
+            };
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
 
@@ -367,19 +371,19 @@ test Parser {
                 \\const A = a + b * c - d / e;
             ;
             const expected_nodes = [_]Node{
-                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = 0, .rhs = 1 } }, // root
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(1) } }, // root
                 .{ .tag = .identifier, .main_idx = 3, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a
                 .{ .tag = .identifier, .main_idx = 5, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
                 .{ .tag = .identifier, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
-                .{ .tag = .mul, .main_idx = 6, .data = .{ .lhs = 2, .rhs = 3 } }, // b * c
-                .{ .tag = .add, .main_idx = 4, .data = .{ .lhs = 1, .rhs = 4 } }, // a + (b * c)
+                .{ .tag = .mul, .main_idx = 6, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(3) } }, // b * c
+                .{ .tag = .add, .main_idx = 4, .data = .{ .lhs = @enumFromInt(1), .rhs = @enumFromInt(4) } }, // a + (b * c)
                 .{ .tag = .identifier, .main_idx = 9, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // d
                 .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // e
-                .{ .tag = .div, .main_idx = 10, .data = .{ .lhs = 6, .rhs = 7 } }, // d / e
-                .{ .tag = .sub, .main_idx = 8, .data = .{ .lhs = 5, .rhs = 8 } }, // (a + (b * c)) - (d / e)
-                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = 9 } },
+                .{ .tag = .div, .main_idx = 10, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // d / e
+                .{ .tag = .sub, .main_idx = 8, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(8) } }, // (a + (b * c)) - (d / e)
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(9) } },
             };
-            const expected_extra_data = [_]Node.Idx{10};
+            const expected_extra_data = [_]Node.Idx{@enumFromInt(10)};
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
 
@@ -389,19 +393,19 @@ test Parser {
                 \\const A = (a + b) * c - d / e;
             ;
             const expected_nodes = [_]Node{
-                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = 0, .rhs = 1 } }, // root
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(1) } }, // root
                 .{ .tag = .identifier, .main_idx = 4, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a
                 .{ .tag = .identifier, .main_idx = 6, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
-                .{ .tag = .add, .main_idx = 5, .data = .{ .lhs = 1, .rhs = 2 } }, // a + b
+                .{ .tag = .add, .main_idx = 5, .data = .{ .lhs = @enumFromInt(1), .rhs = @enumFromInt(2) } }, // a + b
                 .{ .tag = .identifier, .main_idx = 9, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
-                .{ .tag = .mul, .main_idx = 8, .data = .{ .lhs = 3, .rhs = 4 } }, // (a + b) * c
+                .{ .tag = .mul, .main_idx = 8, .data = .{ .lhs = @enumFromInt(3), .rhs = @enumFromInt(4) } }, // (a + b) * c
                 .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // d
                 .{ .tag = .identifier, .main_idx = 13, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // e
-                .{ .tag = .div, .main_idx = 12, .data = .{ .lhs = 6, .rhs = 7 } }, // d / e
-                .{ .tag = .sub, .main_idx = 10, .data = .{ .lhs = 5, .rhs = 8 } }, // ((a + b) * c) - (d / e)
-                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = 9 } },
+                .{ .tag = .div, .main_idx = 12, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // d / e
+                .{ .tag = .sub, .main_idx = 10, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(8) } }, // ((a + b) * c) - (d / e)
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(9) } },
             };
-            const expected_extra_data = [_]Node.Idx{10};
+            const expected_extra_data = [_]Node.Idx{@enumFromInt(10)};
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
     };

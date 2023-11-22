@@ -18,9 +18,9 @@ pub const Node = struct {
     main_idx: TokenIdx,
     data: Data,
 
-    pub const Idx = u32;
+    pub const Idx = enum(u32) { _ };
     // 0 is reserved to refer to the root node, so 0 may be used as `null` index;
-    pub const null_node = 0;
+    pub const null_node: Idx = @enumFromInt(0);
 
     pub const Tag = enum {
         // `main_idx` is always 0
