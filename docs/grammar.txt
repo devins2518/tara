@@ -62,7 +62,7 @@ product_expr = prefix_expr (SUM_OPERATOR prefix_operator)*
 prefix_expr = PREFIX_OPERATOR* primary_expr
 
 // TODO
-primary_expr = type_expr
+primary_expr = type_expr | identifier
 
 // TODO
 type_expr = container_decl
