@@ -244,9 +244,17 @@ fn parsePrimaryExpr(self: *Parser) !Node.Idx {
     }
 }
 
-fn parseTypeExpr(self: *Parser) !Node.Idx {
+fn parseTypeExpr(self: *Parser) Error!Node.Idx {
     log.debug("parseTypeExpr\n", .{});
-    return self.parseContainerDecl();
+    return switch (self.tokens[self.tok_idx].tag) {
+        .keyword_struct, .keyword_union => try self.parseContainerDecl(),
+        .identifier => return self.addNode(.{
+            .tag = .identifier,
+            .main_idx = self.nextToken(),
+            .data = .{ .lhs = Node.null_node, .rhs = Node.null_node },
+        }),
+        else => Node.null_node,
+    };
 }
 
 fn parseContainerDecl(self: *Parser) !Node.Idx {
@@ -352,15 +360,20 @@ test Parser {
             // TODO: main_token points to token idx
             const expected_nodes = [_]Node{
                 .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(3), .rhs = @enumFromInt(4) } }, // root
-                .{ .tag = .container_field, .main_idx = 5, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a: sig
-                .{ .tag = .container_field, .main_idx = 9, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b: sig
-                .{ .tag = .container_field, .main_idx = 13, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // cin: sig
+                .{ .tag = .identifier, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // sig
+                .{ .tag = .container_field, .main_idx = 5, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // a: sig
+                .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // sig
+                .{ .tag = .container_field, .main_idx = 9, .data = .{ .lhs = @enumFromInt(3), .rhs = Node.null_node } }, // b: sig
+                .{ .tag = .identifier, .main_idx = 15, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // sig
+                .{ .tag = .container_field, .main_idx = 13, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // cin: sig
                 .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(3) } }, // struct { ... }
-                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(4) } }, // const In = struct { ... };
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(7) } }, // const In = struct { ... };
             };
             const expected_extra_data = [_]Node.Idx{
-                @enumFromInt(1), @enumFromInt(2),
-                @enumFromInt(3), @enumFromInt(5),
+                @enumFromInt(2), // struct field 0
+                @enumFromInt(4), // struct field 1
+                @enumFromInt(6), // struct field 2
+                @enumFromInt(8), // root
             };
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }

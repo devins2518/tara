@@ -18,6 +18,8 @@ IDENT = [a-zA-z_][a-zA-z0-9_]*
 skip = (LWSP / comment)*
 comment = "//".*\n$
 
+// This stuff is outdated
+/*
 module = "module" L_BRACE module_body R_BRACE
 module_body = TODO
 nonsys_block = "nonsys" L_BRACE nonsys_body R_BRACE
@@ -34,6 +36,7 @@ container_body = IDENT: type COMMA
 
 enum = "enum" L_BRACE enum_body R_BRACE SEMICOLON
 enum_body = IDENT COMMA skip
+*/
 
 // Top level stuff
 root = container_members*
@@ -65,6 +68,12 @@ prefix_expr = PREFIX_OPERATOR* primary_expr
 primary_expr = type_expr | identifier
 
 // TODO
-type_expr = container_decl
+type_expr = container_decl | process_decl | identifier
 
 container_decl = CONTAINER_DECL_TYPE LBRACE container_members RBRACE
+
+process_decl = fn_decl | module_decl
+
+fn_decl = TODO
+
+module_decl = keyword_module LPAREN module_args RPAREN LBRACE module_statements RBRACE

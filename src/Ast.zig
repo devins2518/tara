@@ -40,8 +40,8 @@ pub const Node = struct {
         struct_decl,
         // `ident: type_expr( = expr)?`
         // `main_idx` is ident
-        // lhs is `type_expr`, indexes extra_data
-        // rhs is optional `expr`, indexes extra_data
+        // lhs is `type_expr`, indexes `nodes`
+        // rhs is optional `expr`, indexes `nodes`
         container_field,
         // `lhs or rhs`
         // `main_idx` is `or`

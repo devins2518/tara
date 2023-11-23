@@ -15,7 +15,6 @@ pub const Token = struct {
         .{ "module", .keyword_module },
         .{ "or", .keyword_or },
         .{ "pub", .keyword_pub },
-        .{ "sig", .keyword_sig },
         .{ "struct", .keyword_struct },
         .{ "union", .keyword_union },
         .{ "var", .keyword_var },
@@ -64,7 +63,6 @@ pub const Token = struct {
         keyword_module,
         keyword_or,
         keyword_pub,
-        keyword_sig,
         keyword_struct,
         keyword_union,
         keyword_var,
@@ -288,10 +286,10 @@ test Tokenizer {
                 .equal, // =
                 .keyword_module, // module
                 .lbrace, // {
-                .keyword_sig, // sig
+                .identifier, // sig
                 .identifier, // a
                 .semicolon, // ;
-                .keyword_sig, // sig
+                .identifier, // sig
                 .identifier, // b
                 .semicolon, // ;
                 .rbrace, // }
@@ -324,14 +322,14 @@ test Tokenizer {
                 .lbracket, // [
                 .number, // 3
                 .rbracket, // ]
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .identifier, // b
                 .colon, // :
                 .lbracket, // [
                 .number, // 3
                 .rbracket, // ]
-                .keyword_sig, // sig
+                .identifier, // sig
                 .rparen, // )
                 .keyword_struct, // struct
                 .lbrace, // {
@@ -341,7 +339,7 @@ test Tokenizer {
                 .lbracket, // [
                 .number, // 3
                 .rbracket, // ]
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .keyword_pub, // pub
                 .identifier, // c
@@ -349,7 +347,7 @@ test Tokenizer {
                 .lbracket, // [
                 .number, // 3
                 .rbracket, // ]
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .keyword_comb, // comb
                 .lbrace, // {
@@ -479,15 +477,15 @@ test Tokenizer {
                 .lbrace, // {
                 .identifier, // a
                 .colon, // :
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .identifier, // b
                 .colon, // :
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .identifier, // cin
                 .colon, // :
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .rbrace, // }
                 .semicolon, // ;
@@ -498,11 +496,11 @@ test Tokenizer {
                 .lbrace, // {
                 .identifier, // s
                 .colon, // :
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .identifier, // c
                 .colon, // :
-                .keyword_sig, // sig
+                .identifier, // sig
                 .comma, // ,
                 .rbrace, // }
                 .semicolon, // ;
