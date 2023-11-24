@@ -56,11 +56,11 @@ fn parseContainerMembers(self: *Parser) Error!Node.SubList {
         switch (self.tokens[self.tok_idx].tag) {
             .keyword_pub => {
                 self.tok_idx += 1;
-                try self.scratchpad.append(self.allocator, try self.parseVarDecl());
+                try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement());
             },
             .keyword_const,
             .keyword_var,
-            => try self.scratchpad.append(self.allocator, try self.parseVarDecl()),
+            => try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement()),
             .identifier => try self.scratchpad.append(self.allocator, try self.parseContainerField()),
             .eof, .rbrace => break,
             else => {
@@ -80,7 +80,7 @@ fn parseContainerMembers(self: *Parser) Error!Node.SubList {
     return try self.scratchToSubList(scratch_top);
 }
 
-fn parseVarDecl(self: *Parser) !Node.Idx {
+fn parseVarDeclExpr(self: *Parser) !Node.Idx {
     log.debug("parseVarDecl\n", .{});
     // TODO: error on no mutability token
     const mutability = self.eat(.keyword_var) orelse
@@ -98,8 +98,6 @@ fn parseVarDecl(self: *Parser) !Node.Idx {
 
     const init_expr = try self.parseExpr();
 
-    _ = self.eat(.semicolon);
-
     return self.addNode(.{
         .tag = .var_decl,
         .main_idx = mutability,
@@ -108,6 +106,16 @@ fn parseVarDecl(self: *Parser) !Node.Idx {
             .rhs = init_expr,
         },
     });
+}
+
+fn parseVarDeclStatement(self: *Parser) !Node.Idx {
+    log.debug("parseVarDeclStatement\n", .{});
+
+    const var_decl = try self.parseVarDeclExpr();
+
+    _ = self.eat(.semicolon);
+
+    return var_decl;
 }
 
 fn parseContainerField(self: *Parser) !Node.Idx {

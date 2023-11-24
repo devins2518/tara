@@ -41,9 +41,9 @@ enum_body = IDENT COMMA skip
 // Top level stuff
 root = container_members*
 
-container_members = var_decl | container_field
+container_members = var_decl_statement | container_field
 
-var_decl = pub? ("const" / "var") IDENT (COLON type_expr)? EQUAL expr SEMICOLON
+var_decl_expr = pub? ("const" / "var") IDENT (COLON type_expr)? EQUAL expr
 
 container_field = IDENT COLON type_expr (EQUAL expr) COMMA
 
@@ -77,3 +77,5 @@ process_decl = fn_decl | module_decl
 fn_decl = TODO
 
 module_decl = keyword_module LPAREN module_args RPAREN LBRACE module_statements RBRACE
+
+var_decl_statement = var_decl SEMICOLON
