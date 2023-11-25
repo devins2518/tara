@@ -38,6 +38,16 @@ pub const Node = struct {
         // If there is a single field or decl, then lhs is 0 and data.rhs is a single field or decl indexing nodes
         // If there are 2 or more fields or decls, then data.lhs is extra_index index of a `StructBody` and data.rhs is 0
         struct_decl,
+        // `module (args) { statements* }`
+        // `main_idx` is module
+        // lhs is extra_index index of `ModuleArgs` which indexes into `extra_data`
+        // rhs is extra_index index of `ModuleStatements` which indexes into `extra_data`
+        module_decl,
+        // `ident: type_expr`
+        // `main_idx` is ident
+        // lhs is `nodes` index of `type_expr`
+        // rhs is unused
+        module_arg,
         // `ident: type_expr( = expr)?`
         // `main_idx` is ident
         // lhs is `type_expr`, indexes `nodes`
@@ -93,6 +103,11 @@ pub const Node = struct {
         // `lhs` is an expression
         // `rhs` is unused
         reference,
+        // `lhs assignment_op rhs`
+        // `main_idx` is assignment_op
+        // `lhs` is an lvalue expression
+        // `rhs` is an expression
+        assignment,
         // `lhs.rhs`
         // `main_idx` is `.`
         // `lhs` is an identifier
@@ -104,6 +119,7 @@ pub const Node = struct {
         identifier,
     };
 
+    // TODO change this to be bare union between Idx and ExtraIdx for debug type safety
     pub const Data = struct {
         lhs: Idx,
         rhs: Idx,
@@ -119,6 +135,18 @@ pub const Node = struct {
         fields_end: Idx,
         decls_start: Idx,
         decls_end: Idx,
+    };
+
+    // Indexes into extra data
+    pub const ModuleArgs = struct {
+        args_start: Idx,
+        args_end: Idx,
+    };
+
+    // Indexes into extra data
+    pub const ModuleStatements = struct {
+        statements_start: Idx,
+        statements_end: Idx,
     };
 
     pub const List = MultiArrayList(Node);

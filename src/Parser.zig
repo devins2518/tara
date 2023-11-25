@@ -118,6 +118,38 @@ fn parseVarDeclStatement(self: *Parser) !Node.Idx {
     return var_decl;
 }
 
+fn parseAssignmentExpr(self: *Parser) !Node.Idx {
+    log.debug("parseAssignmentExpr\n", .{});
+
+    const lhs = try self.parseExpr();
+
+    const main_idx = self.eat(.equal) orelse {
+        log.debug("found {}", .{self.tokens[self.tok_idx].tag});
+        @panic("TODO: support more assignment_ops!");
+    };
+
+    const rhs = try self.parseExpr();
+
+    return self.addNode(.{
+        .tag = .assignment,
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = lhs,
+            .rhs = rhs,
+        },
+    });
+}
+
+fn parseAssignmentStatement(self: *Parser) !Node.Idx {
+    log.debug("parseAssignmentStatement\n", .{});
+
+    const assignment_expr = try self.parseAssignmentExpr();
+
+    _ = self.eat(.semicolon);
+
+    return assignment_expr;
+}
+
 fn parseContainerField(self: *Parser) !Node.Idx {
     log.debug("parseContainerField\n", .{});
     const main_idx = self.eat(.identifier) orelse return Node.null_node;
@@ -257,6 +289,7 @@ fn parsePrimaryExpr(self: *Parser) !Node.Idx {
 fn parseTypeExpr(self: *Parser) Error!Node.Idx {
     log.debug("parseTypeExpr\n", .{});
     return switch (self.tokens[self.tok_idx].tag) {
+        .keyword_module => try self.parseModuleDecl(),
         .keyword_struct, .keyword_union => try self.parseContainerDecl(),
         .identifier => return self.addNode(.{
             .tag = .identifier,
@@ -301,6 +334,86 @@ fn parseReference(self: *Parser) !Node.Idx {
     });
 }
 
+fn parseModuleDecl(self: *Parser) !Node.Idx {
+    log.debug("parseModuleDecl\n", .{});
+    const main_idx = self.eat(.keyword_module) orelse return Node.null_node;
+    _ = self.eat(.lparen);
+    const module_args = try self.parseModuleArgs();
+    _ = self.eat(.rparen);
+    _ = self.eat(.lbrace);
+    const module_statements = try self.parseModuleStatements();
+    _ = self.eat(.rbrace);
+    return self.addNode(.{
+        .tag = .module_decl,
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = module_args,
+            .rhs = module_statements,
+        },
+    });
+}
+
+fn parseModuleArgs(self: *Parser) !Node.Idx {
+    log.debug("parseModuleArgs\n", .{});
+    const scratch_top = self.scratchpad.items.len;
+    defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
+
+    while (true) {
+        switch (self.tokens[self.tok_idx].tag) {
+            .rparen => break,
+            .identifier => {
+                const main_idx = self.eat(.identifier).?;
+                _ = self.eat(.colon);
+                const type_expr = try self.parseTypeExpr();
+                try self.scratchpad.append(self.allocator, try self.addNode(.{
+                    .tag = .module_arg,
+                    .main_idx = main_idx,
+                    .data = .{ .lhs = type_expr, .rhs = Node.null_node },
+                }));
+                _ = self.eat(.comma);
+            },
+            // TODO: error handling
+            else => @panic("Unexpected token when parsing module_args"),
+        }
+    }
+
+    const sublist = try self.scratchToSubList(scratch_top);
+    return try self.addExtra(Node.ModuleArgs{
+        .args_start = sublist.start,
+        .args_end = sublist.end,
+    });
+}
+
+fn parseModuleStatements(self: *Parser) !Node.Idx {
+    log.debug("parseModuleStatements\n", .{});
+    const scratch_top = self.scratchpad.items.len;
+    defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
+
+    while (true) {
+        switch (self.tokens[self.tok_idx].tag) {
+            .keyword_pub => {
+                self.tok_idx += 1;
+                try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement());
+            },
+            .keyword_const,
+            .keyword_var,
+            => try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement()),
+            .identifier => try self.scratchpad.append(self.allocator, try self.parseAssignmentStatement()),
+            .rbrace => break,
+            else => {
+                std.debug.print("[ERROR]: unhandled module statement: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
+                break;
+            },
+        }
+    }
+
+    const sublist = try self.scratchToSubList(scratch_top);
+    return try self.addExtra(Node.ModuleArgs{
+        .args_start = sublist.start,
+        .args_end = sublist.end,
+    });
+}
+
 fn eat(self: *Parser, tag: Token.Tag) ?Ast.TokenIdx {
     return if (self.tokens[self.tok_idx].tag == tag) self.nextToken() else null;
 }
@@ -314,6 +427,17 @@ fn nextToken(self: *Parser) Ast.TokenIdx {
 fn addNode(self: *Parser, node: Ast.Node) !Node.Idx {
     const result: Node.Idx = @enumFromInt(self.nodes.len);
     try self.nodes.append(self.allocator, node);
+    return result;
+}
+
+fn addExtra(self: *Parser, extra: anytype) !Node.Idx {
+    const fields = std.meta.fields(@TypeOf(extra));
+    try self.extra_data.ensureUnusedCapacity(self.allocator, fields.len);
+    const result: Node.Idx = @enumFromInt(self.extra_data.items.len);
+    inline for (fields) |field| {
+        comptime assert(field.type == Node.Idx);
+        self.extra_data.appendAssumeCapacity(@field(extra, field.name));
+    }
     return result;
 }
 
@@ -471,6 +595,69 @@ test Parser {
             const expected_extra_data = [_]Node.Idx{ @enumFromInt(4), @enumFromInt(16) };
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
+
+        pub fn test5() !void {
+            const src =
+                \\const In = struct {
+                \\    a: bool,
+                \\    b: bool,
+                \\};
+                \\const Out = struct {
+                \\    c: bool,
+                \\};
+                \\const Mod = module(in: &In, out: &var Out) {
+                \\    out.c = in.a & in.b;
+                \\};
+            ;
+            const expected_nodes = [_]Node{
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(10), .rhs = @enumFromInt(13) } }, // root
+                .{ .tag = .identifier, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+                .{ .tag = .container_field, .main_idx = 5, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // a: bool
+                .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+                .{ .tag = .container_field, .main_idx = 9, .data = .{ .lhs = @enumFromInt(3), .rhs = Node.null_node } }, // b: bool
+                .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(2) } }, // struct { ... }
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(5) } }, // const In = struct { ... };
+                .{ .tag = .identifier, .main_idx = 22, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+                .{ .tag = .container_field, .main_idx = 20, .data = .{ .lhs = @enumFromInt(7), .rhs = Node.null_node } }, // c: bool
+                .{ .tag = .struct_decl, .main_idx = 18, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(3) } }, // struct { ... }
+                .{ .tag = .var_decl, .main_idx = 15, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(9) } }, // const Out = struct { ... };
+                .{ .tag = .identifier, .main_idx = 34, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // In
+                .{ .tag = .reference, .main_idx = 33, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // &In
+                .{ .tag = .module_arg, .main_idx = 31, .data = .{ .lhs = @enumFromInt(12), .rhs = Node.null_node } }, // in: &In
+                .{ .tag = .identifier, .main_idx = 40, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // Out
+                .{ .tag = .reference, .main_idx = 38, .data = .{ .lhs = @enumFromInt(14), .rhs = Node.null_node } }, // &var Out
+                .{ .tag = .module_arg, .main_idx = 36, .data = .{ .lhs = @enumFromInt(15), .rhs = Node.null_node } }, // out: &var Out
+                .{ .tag = .identifier, .main_idx = 43, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // out
+                .{ .tag = .identifier, .main_idx = 45, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+                .{ .tag = .member, .main_idx = 44, .data = .{ .lhs = @enumFromInt(17), .rhs = @enumFromInt(18) } }, // out.c
+                .{ .tag = .identifier, .main_idx = 47, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // in
+                .{ .tag = .identifier, .main_idx = 49, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a
+                .{ .tag = .member, .main_idx = 48, .data = .{ .lhs = @enumFromInt(20), .rhs = @enumFromInt(21) } }, // in.a
+                .{ .tag = .identifier, .main_idx = 51, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // in
+                .{ .tag = .identifier, .main_idx = 53, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+                .{ .tag = .member, .main_idx = 52, .data = .{ .lhs = @enumFromInt(23), .rhs = @enumFromInt(24) } }, // in.b
+                .{ .tag = .bit_and, .main_idx = 50, .data = .{ .lhs = @enumFromInt(22), .rhs = @enumFromInt(25) } }, // in.a & in.b
+                .{ .tag = .assignment, .main_idx = 46, .data = .{ .lhs = @enumFromInt(19), .rhs = @enumFromInt(26) } }, // out.c = in.a & in.b;
+                .{ .tag = .module_decl, .main_idx = 29, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(8) } }, // module(...){ ... };
+                .{ .tag = .var_decl, .main_idx = 26, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(28) } }, // const Mod = module(...){ ... };
+            };
+            const expected_extra_data = [_]Node.Idx{
+                @enumFromInt(2), // In.a
+                @enumFromInt(4), // In.b
+                @enumFromInt(8), // Out.c
+                @enumFromInt(13), // in: &In
+                @enumFromInt(16), // out: &Out
+                @enumFromInt(3), // ModuleArgs.args_start
+                @enumFromInt(5), // ModuleArgs.args_end
+                @enumFromInt(27), // out.c = in.a & in.b
+                @enumFromInt(7), // ModuleStatements.statements_start
+                @enumFromInt(8), // ModuleStatements.statements_end
+                @enumFromInt(6), // In
+                @enumFromInt(10), // Out
+                @enumFromInt(29), // Mod
+            };
+            try doTheTest(src, &expected_nodes, &expected_extra_data);
+        }
     };
 
     try tests.test0();
@@ -478,4 +665,5 @@ test Parser {
     try tests.test2();
     try tests.test3();
     try tests.test4();
+    try tests.test5();
 }

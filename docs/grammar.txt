@@ -80,4 +80,12 @@ fn_decl = TODO
 
 module_decl = keyword_module LPAREN module_args RPAREN LBRACE module_statements RBRACE
 
+module_args = (ident COLON type_expr COMMA?)*
+
+module_statements = (var_decl_statement | assignment_statement)*
+
 var_decl_statement = var_decl SEMICOLON
+
+assignment_statement = assignment_expr SEMICOLON
+
+assignment_expr = expr ASSIGNMENT_OP expr
