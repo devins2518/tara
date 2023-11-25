@@ -22,9 +22,13 @@ tok_idx: Ast.TokenIdx = 0,
 // In-progress list of nodes being created. Expected to be taken and owned by
 // caller. Not freed in `deinit`
 nodes: Node.List = .{},
-// Scratchpad for tracking nodes being built
+// Scratchpad for tracking nodes being built. This is often used to temporarily
+// store nodes indices which will be pushed into `extra_data`.
+// See `parseContainerMembers` for an example.
 scratchpad: std.ArrayListUnmanaged(Node.Idx) = .{},
-// Extra data if necessary for `nodes`
+// Extra data if necessary for `nodes`. This is often used to store
+// non-contiguous node indices during parsing.
+// See `parseContainerMembers` for an example.
 extra_data: std.ArrayListUnmanaged(Node.Idx) = .{},
 
 // Parse the file as a root Taaraa file
