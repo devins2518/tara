@@ -65,10 +65,12 @@ product_expr = prefix_expr (SUM_OPERATOR prefix_operator)*
 prefix_expr = PREFIX_OPERATOR* primary_expr
 
 // TODO
-primary_expr = type_expr | identifier
+primary_expr = type_expr (PERIOD identifier)?
 
 // TODO
-type_expr = container_decl | process_decl | identifier
+type_expr = container_decl | process_decl | identifier | reference_expr
+
+reference_expr = op_and keyword_var? type_expr
 
 container_decl = CONTAINER_DECL_TYPE LBRACE container_members RBRACE
 

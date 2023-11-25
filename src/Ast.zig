@@ -88,6 +88,16 @@ pub const Node = struct {
         // `lhs / rhs`
         // `main_idx` is `/`
         div,
+        // `&var? lhs`
+        // `main_idx` is &
+        // `lhs` is an expression
+        // `rhs` is unused
+        reference,
+        // `lhs.rhs`
+        // `main_idx` is `.`
+        // `lhs` is an identifier
+        // `rhs` is unused
+        member,
         // `ident`
         // `main_idx` is `ident`
         // `lhs` and `rhs` unused

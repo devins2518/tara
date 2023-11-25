@@ -186,6 +186,8 @@ const precedence_table = std.enums.directEnumArrayDefault(
 
         .op_star = .{ .precedence = 60, .tag = .mul, .associativity = .left },
         .op_slash = .{ .precedence = 60, .tag = .div, .associativity = .left },
+
+        .period = .{ .precedence = 100, .tag = .member, .associativity = .none },
     },
 );
 
@@ -242,14 +244,14 @@ fn parsePrefixExpr(self: *Parser) !Node.Idx {
 
 fn parsePrimaryExpr(self: *Parser) !Node.Idx {
     log.debug("parsePrimaryExpr\n", .{});
-    switch (self.tokens[self.tok_idx].tag) {
-        .identifier => return self.addNode(.{
+    return switch (self.tokens[self.tok_idx].tag) {
+        .identifier => self.addNode(.{
             .tag = .identifier,
             .main_idx = self.nextToken(),
             .data = .{ .lhs = Node.null_node, .rhs = Node.null_node },
         }),
         else => return self.parseTypeExpr(),
-    }
+    };
 }
 
 fn parseTypeExpr(self: *Parser) Error!Node.Idx {
@@ -261,6 +263,7 @@ fn parseTypeExpr(self: *Parser) Error!Node.Idx {
             .main_idx = self.nextToken(),
             .data = .{ .lhs = Node.null_node, .rhs = Node.null_node },
         }),
+        .op_and => self.parseReference(),
         else => Node.null_node,
     };
 }
@@ -284,6 +287,17 @@ fn parseContainerDecl(self: *Parser) !Node.Idx {
             .lhs = members.start,
             .rhs = members.end,
         },
+    });
+}
+
+fn parseReference(self: *Parser) !Node.Idx {
+    const main_idx = self.eat(.op_and) orelse return Node.null_node;
+    _ = self.eat(.keyword_var);
+    const expr = try self.parseExpr();
+    return self.addNode(.{
+        .tag = .reference,
+        .main_idx = main_idx,
+        .data = .{ .lhs = expr, .rhs = Node.null_node },
     });
 }
 
@@ -429,10 +443,39 @@ test Parser {
             const expected_extra_data = [_]Node.Idx{@enumFromInt(10)};
             try doTheTest(src, &expected_nodes, &expected_extra_data);
         }
+
+        pub fn test4() !void {
+            const src =
+                \\const A = a.b;
+                \\const B = c.d + (e.f - g.h);
+            ;
+            const expected_nodes = [_]Node{
+                .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(2) } }, // root
+                .{ .tag = .identifier, .main_idx = 3, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a
+                .{ .tag = .identifier, .main_idx = 5, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+                .{ .tag = .member, .main_idx = 4, .data = .{ .lhs = @enumFromInt(1), .rhs = @enumFromInt(2) } }, // a.b
+                .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(3) } }, // const A = a.b
+                .{ .tag = .identifier, .main_idx = 10, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+                .{ .tag = .identifier, .main_idx = 12, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // d
+                .{ .tag = .member, .main_idx = 11, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // c.d
+                .{ .tag = .identifier, .main_idx = 15, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // e
+                .{ .tag = .identifier, .main_idx = 17, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // f
+                .{ .tag = .member, .main_idx = 16, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(9) } }, // e.f
+                .{ .tag = .identifier, .main_idx = 19, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // g
+                .{ .tag = .identifier, .main_idx = 21, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // h
+                .{ .tag = .member, .main_idx = 20, .data = .{ .lhs = @enumFromInt(11), .rhs = @enumFromInt(12) } }, // g.h
+                .{ .tag = .sub, .main_idx = 18, .data = .{ .lhs = @enumFromInt(10), .rhs = @enumFromInt(13) } }, // e.f - g.h
+                .{ .tag = .add, .main_idx = 13, .data = .{ .lhs = @enumFromInt(7), .rhs = @enumFromInt(14) } }, // c.d + (e.f - g.h)
+                .{ .tag = .var_decl, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const B = c.d + (e.f - g.h);
+            };
+            const expected_extra_data = [_]Node.Idx{ @enumFromInt(4), @enumFromInt(16) };
+            try doTheTest(src, &expected_nodes, &expected_extra_data);
+        }
     };
 
     try tests.test0();
     try tests.test1();
     try tests.test2();
     try tests.test3();
+    try tests.test4();
 }
