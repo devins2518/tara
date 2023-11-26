@@ -121,3 +121,60 @@ const adder = module(in: &In, out: &var Out) {
     out.s = in.a ^ in.b ^ in.cin;
     out.c = (in.a and in.b) or (in.cin and (in.a ^ in.b))
 };
+
+// Example of interface translation
+const GenericBusIf = struct {
+    addr: u32,
+    wdata: u32,
+    rdata: u32,
+    ren: bool,
+    wen: bool,
+    busy: bool,
+    byte_en: [4]u1,
+
+    pub const GenericBus = struct {
+        addr: &u32,
+        wdata: &u32,
+        ren: &bool,
+        wen: &bool,
+        byte_en: &[4]u1,
+
+        rdata: &var u32,
+        busy: &var bool,
+    };
+
+    pub const Cpu = struct {
+        rdata: &u32,
+        busy: &bool,
+
+        addr: &var u32,
+        wdata: &var u32,
+        ren: &var bool,
+        wen: &var bool,
+        byte_en: &var [4]u1,
+    };
+
+    pub const toGenericBus = fn (self: &var GenericBusIf) GenericBus {
+        return .{
+            .addr = &self.addr,
+            .wdata = &self.wdata,
+            .rdata = &self.rdata,
+            .ren = &self.ren,
+            .wen = &self.wen,
+            .busy = &self.busy,
+            .byte_en = &self.byte_en,
+        };
+    }
+
+    pub const toCpu = fn (self: &var GenericBusIf) Cpu {
+        return .{
+            .addr = &self.addr,
+            .wdata = &self.wdata,
+            .rdata = &self.rdata,
+            .ren = &self.ren,
+            .wen = &self.wen,
+            .busy = &self.busy,
+            .byte_en = &self.byte_en,
+        };
+    }
+};
