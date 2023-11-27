@@ -8,7 +8,7 @@ const Tokenizer = tokenizer.Tokenizer;
 const Ast = @This();
 
 source: [:0]const u8,
-nodes: Node.List,
+nodes: Node.List.Slice,
 extra_data: []Node.Idx,
 
 pub const TokenIdx = u32;
@@ -174,7 +174,7 @@ pub fn parse(allocator: Allocator, source: [:0]const u8) !Ast {
 
     return Ast{
         .source = source,
-        .nodes = parser.nodes,
+        .nodes = parser.nodes.toOwnedSlice(),
         .extra_data = try parser.extra_data.toOwnedSlice(allocator),
     };
 }
