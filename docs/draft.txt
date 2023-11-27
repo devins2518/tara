@@ -178,3 +178,36 @@ const GenericBusIf = struct {
         };
     }
 };
+
+// Drafts for UTir
+// src
+const In = struct {
+    a: bool,
+    b: bool,
+};
+const Out = struct {
+    c: bool,
+};
+const Mod = module(in: &In, out: &var Out) {
+    out.c = in.a & in.b;
+};
+// corresponding utir
+%0 = struct({
+    %1 = struct({
+        a: Ref.bool_type
+        b: Ref.bool_type
+    })
+    %2 = struct({
+        c: Ref.bool_type
+    })
+    %3 = module({
+        %4 = param(ref, %1)
+        %5 = param(var_ref, %2)
+    }, {
+        %6 = field_read(%4, "a")
+        %7 = field_read(%4, "b")
+        %8 = bit_and(%6, %7)
+        %9 = field_ptr(%5, "c")
+        %10 = field_write(%10, %8)
+    })
+})
