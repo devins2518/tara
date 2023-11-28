@@ -211,3 +211,63 @@ const Mod = module(in: &In, out: &var Out) {
         %10 = field_write(%10, %8)
     })
 })
+
+// Possible interface type
+// Fields are just types that are expected to exist when trying to monomorphise the type
+const If = interface {
+    a: u1,
+    b: u1,
+
+    // or something
+    update: fn (&var If) void,
+};
+// TODO: how does this connect to modules?
+const Impl = struct {
+    a: u1,
+    b: u1,
+    const update = fn (self: &var Impl) void {
+        self.b = self.a;
+    }
+};
+const Sys = struct {
+    clk: sig(.posedge),
+    rst: sig(.negedge),
+};
+const Mod = module(sys: &Sys, in: &var If) {
+    const reg: u1 = @reg(.{.clk = sys.clk, .rst = sys.rst, .rst_val = 0});
+
+    in.a = reg;
+    reg.next = in.b;
+}
+const Top = module(clk: &sig, rst: &sig) {
+    const sys = Sys{ .clk = clk, .rst = rst };
+    const impl = Impl{};
+    const mod = Mod(sys, impl);
+}
+
+// Should sig be a builtin function?
+const DetectionType = enum(comptime_int) {
+    high,    // level triggered latch
+    low,     // level triggered latch
+    posedge, // posedge triggered dff
+    negedge, // negedge triggered dff
+    edge,    // both edge triggered dff
+};
+@sig(DetectionType)
+
+// What does a pass by value mean? Monomorphization?
+// Could work out well, no need for comptime parameters, just pass by value
+
+// Type checking
+// Linear types would be cool, operators would work by reference by default, all things must be consumed
+// Allows the following to fail
+const Mod = module(sys: &Sys, in: &bool, out: &var bool) {
+    const reg: bool = @reg(.{ .clk = sys.clk, .rst = sys.rst });
+
+    if (in) {
+        reg.next = ~in;
+    } // forgotten assignment to reg.next
+
+    out = reg;
+}
+// actually where is reg.next consumed
