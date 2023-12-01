@@ -265,9 +265,28 @@ const Mod = module(sys: &Sys, in: &bool, out: &var bool) {
     const reg: bool = @reg(.{ .clk = sys.clk, .rst = sys.rst });
 
     if (in) {
-        reg.next = ~in;
+        reg.next = ~reg;
     } // forgotten assignment to reg.next
 
     out = reg;
 }
 // actually where is reg.next consumed
+
+// types
+// concrete and abstract types
+// concrete are instantiable, abstract are subtypable
+// examples of abstract: interface
+// examples of concrete: struct, union, module
+// @interface(T, blk) -> type
+const If = @interface(T: type, {
+    const Self: @This();
+
+    a: bool,
+    b: bool,
+
+    const negate_b = fn(self: &var Self) void {
+        self.b = ~self.b;
+    }
+})
+
+// should inputs be forced to be linear types? prevents port reuse
