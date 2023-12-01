@@ -290,3 +290,10 @@ const If = @interface(T: type, {
 })
 
 // should inputs be forced to be linear types? prevents port reuse
+
+// Nonsynthesizable code and synthesizable code should be plug and play for simulation
+// Would be useful for computer architecture where doing rtl is usually too difficult and bug prone
+// Need to see how this interface would work
+
+// Simulator optimization:
+// Avoid monomorphizing every module, instantiate one and mux in arguments depending on what is being simulated
