@@ -10,6 +10,7 @@ const Ast = @This();
 source: [:0]const u8,
 nodes: Node.List.Slice,
 extra_data: []Node.Idx,
+tokens: []const Token,
 
 pub const TokenIdx = u32;
 
@@ -176,12 +177,14 @@ pub fn parse(allocator: Allocator, source: [:0]const u8) !Ast {
         .source = source,
         .nodes = parser.nodes.toOwnedSlice(),
         .extra_data = try parser.extra_data.toOwnedSlice(allocator),
+        .tokens = parser.tokens,
     };
 }
 
 pub fn deinit(self: *Ast, allocator: Allocator) void {
     self.nodes.deinit(allocator);
     allocator.free(self.extra_data);
+    allocator.free(self.tokens);
 }
 
 // Useful types for constructing assembled information about a Node

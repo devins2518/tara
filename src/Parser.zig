@@ -449,7 +449,6 @@ fn addExtra(self: *Parser, extra: anytype) !Node.Idx {
 pub fn deinit(self: *Parser) void {
     self.extra_data.deinit(self.allocator);
     self.scratchpad.deinit(self.allocator);
-    self.allocator.free(self.tokens);
     self.* = undefined;
 }
 
@@ -473,6 +472,7 @@ test Parser {
             };
             defer p.deinit();
             defer p.nodes.deinit(allocator);
+            defer allocator.free(p.tokens);
             try p.nodes.setCapacity(allocator, p.tokens.len);
 
             try p.parseRoot();
