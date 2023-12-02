@@ -183,3 +183,49 @@ pub fn deinit(self: *Ast, allocator: Allocator) void {
     self.nodes.deinit(allocator);
     allocator.free(self.extra_data);
 }
+
+// Useful types for constructing assembled information about a Node
+pub const Assembled = struct {
+    pub const Struct = struct {
+        token: TokenIdx,
+        fields: []const Node.Idx,
+    };
+
+    pub const VarDecl = struct {
+        token: TokenIdx,
+        type_expr: Node.Idx,
+        expr: Node.Idx,
+    };
+};
+
+pub fn assembledStruct(self: *const Ast, node_idx: Node.Idx) ?Assembled.Struct {
+    const idx = @intFromEnum(node_idx);
+    const lhs = @intFromEnum(self.nodes.items(.data)[idx].lhs);
+    const rhs = @intFromEnum(self.nodes.items(.data)[idx].rhs);
+    return switch (self.nodes.items(.tag)[idx]) {
+        .root, .struct_decl => .{
+            .token = self.nodes.items(.main_idx)[idx],
+            .fields = self.extra_data[lhs..rhs],
+        },
+        else => null,
+    };
+}
+
+pub fn assembledVarDecl(self: *const Ast, node_idx: Node.Idx) ?Assembled.VarDecl {
+    const idx = @intFromEnum(node_idx);
+    const token = self.nodes.items(.main_idx)[idx];
+    const type_expr_idx = self.nodes.items(.data)[idx].lhs;
+    const type_expr = if (type_expr_idx != Node.null_node)
+        self.extra_data[@intFromEnum(type_expr_idx)]
+    else
+        Node.null_node;
+    const expr = self.nodes.items(.data)[idx].rhs;
+    return switch (self.nodes.items(.tag)[idx]) {
+        .var_decl => .{
+            .token = token,
+            .type_expr = type_expr,
+            .expr = expr,
+        },
+        else => null,
+    };
+}

@@ -28,5 +28,7 @@ test "simple test" {
     _ = @import("tokenize.zig");
     _ = @import("Parser.zig");
     _ = @import("Ast.zig");
+    _ = @import("UTirGen.zig");
+    _ = @import("UTir.zig");
     std.testing.refAllDeclsRecursive(@This());
 }
