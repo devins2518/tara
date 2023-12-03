@@ -80,3 +80,49 @@ pub fn deinit(self: *UTir, allocator: Allocator) void {
     self.instructions.deinit(allocator);
     allocator.free(self.extra_data);
 }
+
+pub fn format(utir: UTir, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    var write = Writer{ .utir = utir };
+    try write.writeRoot(writer);
+}
+
+const Writer = struct {
+    utir: UTir,
+    indent: usize = 0,
+    pending_indent: bool = false,
+
+    fn incIndent(self: *Writer) void {
+        self.indent += 4;
+    }
+
+    fn decIndent(self: *Writer) void {
+        self.indent -= 4;
+    }
+
+    fn writeAll(self: *Writer, stream: anytype, comptime fmt: []const u8, args: anytype) !void {
+        if (self.pending_indent) try stream.writeByteNTimes(' ', self.indent);
+        try std.fmt.format(stream, fmt, args);
+        self.pending_indent = fmt[fmt.len - 1] == '\n';
+    }
+
+    pub fn writeRoot(self: *Writer, stream: anytype) !void {
+        try self.writeAll(stream, "%0 = ", .{});
+        const ed_idx = @intFromEnum(self.utir.instructions.get(0).struct_decl.ed_idx);
+        const root_len = self.utir.extra_data[ed_idx];
+        self.incIndent();
+        defer self.decIndent();
+        if (root_len > 0) {
+            const root_decls = self.utir.extra_data[ed_idx + 1 .. ed_idx + root_len + 1];
+            for (root_decls) |root_decl| {
+                try self.writeStructDecl(stream, @enumFromInt(root_decl));
+            }
+        } else {
+            try self.writeAll(stream, "{{}}", .{});
+        }
+    }
+
+    fn writeStructDecl(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+        _ = inst_idx;
+        try self.writeAll(stream, "hi\n", .{});
+    }
+};
