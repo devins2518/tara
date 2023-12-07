@@ -205,13 +205,6 @@ test UTirGen {
             var utir = try genUTir(allocator, &ast);
             defer utir.deinit(allocator);
 
-            for (0..utir.instructions.len) |i| {
-                std.debug.print("{}\n", .{utir.instructions.get(i)});
-            }
-            for (utir.extra_data) |d| {
-                std.debug.print("{}\n", .{d});
-            }
-
             for (expected_utir, 0..) |e, i| {
                 try std.testing.expectEqual(e, utir.instructions.get(i));
             }
