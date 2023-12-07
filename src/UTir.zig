@@ -81,48 +81,89 @@ pub fn deinit(self: *UTir, allocator: Allocator) void {
     allocator.free(self.extra_data);
 }
 
-pub fn format(utir: UTir, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+pub fn format(utir: *const UTir, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    var stream = Stream(@TypeOf(writer)).init(writer);
     var write = Writer{ .utir = utir };
-    try write.writeRoot(writer);
+    try write.writeRoot(stream.writer());
+}
+
+inline fn tagFromRef(utir: *const UTir, ref: Inst.Ref) @typeInfo(Inst).Union.tag_type.? {
+    return utir.instructions.items(.tags)[@intFromEnum(ref)];
+}
+
+pub fn Stream(comptime UnderlyingStreamType: type) type {
+    return struct {
+        const AutoIndentingStream = @This();
+        const AutoIndentingWriter = std.io.Writer(*AutoIndentingStream, WriteError, writeFn);
+        const WriteError = UnderlyingStreamType.Error;
+
+        stream: UnderlyingStreamType,
+        indent: usize = 0,
+        pending_indent: bool = false,
+
+        pub fn init(stream: UnderlyingStreamType) AutoIndentingStream {
+            return .{ .stream = stream };
+        }
+
+        pub fn writer(self: *AutoIndentingStream) AutoIndentingWriter {
+            return AutoIndentingWriter{ .context = self };
+        }
+
+        pub fn writeFn(self: *AutoIndentingStream, bytes: []const u8) WriteError!usize {
+            var count: usize = 0;
+            if (std.mem.eql(u8, bytes, "{indent+}")) {
+                self.indent += 4;
+                count = 9;
+            } else if (std.mem.eql(u8, bytes, "{indent-}")) {
+                self.indent -= 4;
+                count = 9;
+            } else {
+                if (self.pending_indent) {
+                    try self.stream.writeByteNTimes(' ', self.indent);
+                }
+                for (bytes, 0..) |b, i| {
+                    try self.stream.writeByte(b);
+                    if (b == '\n' and i != bytes.len - 1) {
+                        try self.stream.writeByteNTimes(' ', self.indent);
+                    }
+                    count += 1;
+                }
+                self.pending_indent = bytes[bytes.len - 1] == '\n';
+            }
+            return count;
+        }
+    };
 }
 
 const Writer = struct {
-    utir: UTir,
-    indent: usize = 0,
-    pending_indent: bool = false,
+    utir: *const UTir,
 
-    fn incIndent(self: *Writer) void {
-        self.indent += 4;
+    fn incIndent(_: *Writer, stream: anytype) void {
+        stream.writeAll("{indent+}") catch unreachable;
     }
 
-    fn decIndent(self: *Writer) void {
-        self.indent -= 4;
-    }
-
-    fn writeAll(self: *Writer, stream: anytype, comptime fmt: []const u8, args: anytype) !void {
-        if (self.pending_indent) try stream.writeByteNTimes(' ', self.indent);
-        try std.fmt.format(stream, fmt, args);
-        self.pending_indent = fmt[fmt.len - 1] == '\n';
+    fn decIndent(_: *Writer, stream: anytype) void {
+        stream.writeAll("{indent-}") catch unreachable;
     }
 
     pub fn writeRoot(self: *Writer, stream: anytype) !void {
-        try self.writeAll(stream, "%0 = ", .{});
-        const ed_idx = @intFromEnum(self.utir.instructions.get(0).struct_decl.ed_idx);
+        return self.writeStructDecl(stream, @enumFromInt(0));
+    }
+
+    fn writeStructDecl(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+        assert(self.utir.tagFromRef(inst_idx) == .struct_decl);
+        try stream.print("%{} = struct_decl({{", .{@intFromEnum(inst_idx)});
+        const ed_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].struct_decl.ed_idx);
         const root_len = self.utir.extra_data[ed_idx];
-        self.incIndent();
-        defer self.decIndent();
+        self.incIndent(stream);
         if (root_len > 0) {
+            try stream.print("\n", .{});
             const root_decls = self.utir.extra_data[ed_idx + 1 .. ed_idx + root_len + 1];
             for (root_decls) |root_decl| {
                 try self.writeStructDecl(stream, @enumFromInt(root_decl));
             }
-        } else {
-            try self.writeAll(stream, "{{}}", .{});
         }
-    }
-
-    fn writeStructDecl(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
-        _ = inst_idx;
-        try self.writeAll(stream, "hi\n", .{});
+        self.decIndent(stream);
+        try stream.print("}})\n", .{});
     }
 };
