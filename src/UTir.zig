@@ -147,12 +147,21 @@ const Writer = struct {
     }
 
     pub fn writeRoot(self: *Writer, stream: anytype) !void {
+        try stream.writeAll("%0 = ");
         return self.writeStructDecl(stream, @enumFromInt(0));
     }
 
-    fn writeStructDecl(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+    fn writeContainerMembers(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+        try stream.print("%{} = ", .{@intFromEnum(inst_idx)});
+        try switch (self.utir.tagFromRef(inst_idx)) {
+            .struct_decl => self.writeStructDecl(stream, inst_idx),
+            else => unreachable,
+        };
+    }
+
+    fn writeStructDecl(self: *Writer, stream: anytype, inst_idx: Inst.Ref) @TypeOf(stream).Error!void {
         assert(self.utir.tagFromRef(inst_idx) == .struct_decl);
-        try stream.print("%{} = struct_decl({{", .{@intFromEnum(inst_idx)});
+        try stream.writeAll("struct_decl({");
         const ed_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].struct_decl.ed_idx);
         const root_len = self.utir.extra_data[ed_idx];
         self.incIndent(stream);
@@ -160,10 +169,10 @@ const Writer = struct {
             try stream.print("\n", .{});
             const root_decls = self.utir.extra_data[ed_idx + 1 .. ed_idx + root_len + 1];
             for (root_decls) |root_decl| {
-                try self.writeStructDecl(stream, @enumFromInt(root_decl));
+                try self.writeContainerMembers(stream, @enumFromInt(root_decl));
             }
         }
         self.decIndent(stream);
-        try stream.print("}})\n", .{});
+        try stream.writeAll("})\n");
     }
 };
