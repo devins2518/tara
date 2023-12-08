@@ -191,7 +191,7 @@ pub fn deinit(self: *Ast, allocator: Allocator) void {
 pub const Assembled = struct {
     pub const Struct = struct {
         token: TokenIdx,
-        fields: []const Node.Idx,
+        members: []const Node.Idx,
     };
 
     pub const VarDecl = struct {
@@ -208,7 +208,7 @@ pub fn assembledStruct(self: *const Ast, node_idx: Node.Idx) ?Assembled.Struct {
     return switch (self.nodes.items(.tag)[idx]) {
         .root, .struct_decl => .{
             .token = self.nodes.items(.main_idx)[idx],
-            .fields = self.extra_data[lhs..rhs],
+            .members = self.extra_data[lhs..rhs],
         },
         else => null,
     };

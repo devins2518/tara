@@ -165,16 +165,24 @@ fn genStructInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
     var struct_env = env.derive(&namespace.base);
     defer struct_env.finish();
 
-    for (full_struct.fields) |field| {
+    var fields: u32 = 0;
+    var decls: u32 = 0;
+    for (full_struct.members) |member| {
         // TODO: have this be all fields followed by all decls to have some sense of order
-        switch (self.ast.nodes.items(.tag)[@intFromEnum(field)]) {
-            .var_decl => try env.addRef(try self.genVarDecl(&struct_env, field)),
+        switch (self.ast.nodes.items(.tag)[@intFromEnum(member)]) {
+            .var_decl => {
+                try env.addRef(try self.genVarDecl(&struct_env, member));
+                decls += 1;
+            },
+            .container_field => {
+                try env.addRef(try self.genVarDecl(&struct_env, member));
+                fields += 1;
+            },
             else => unreachable,
         }
     }
 
-    // TODO: This is suspect
-    const ed_idx = try self.addExtra(UTir.Inst.Struct{ .fields = @truncate(full_struct.fields.len) });
+    const ed_idx = try self.addExtra(UTir.Inst.Struct{ .fields = fields, .decls = decls });
     const inst_refs = struct_env.instructions.items[struct_env.bottom..];
     const casted_refs: []UTir.Inst.Struct.Item = @ptrCast(inst_refs);
     _ = try self.addExtraSlice(UTir.Inst.Struct.Item, casted_refs);
@@ -265,7 +273,7 @@ fn addExtra(self: *UTirGen, val: anytype) UTirGenError!UTir.Inst.EdIdx {
 }
 
 fn addExtraSlice(self: *UTirGen, comptime T: type, slice: []const T) UTirGenError!UTir.Inst.EdIdx {
-    var result: UTir.Inst.EdIdx = @enumFromInt(self.extra_data.items.len + slice.len);
+    const result: UTir.Inst.EdIdx = @enumFromInt(self.extra_data.items.len + slice.len);
     for (slice) |val| {
         _ = try self.addExtra(val);
     }
@@ -312,7 +320,7 @@ test UTirGen {
             const expected_utir = [_]UTir.Inst{
                 .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // Root
             };
-            const expected_extra_data = [_]u32{0};
+            const expected_extra_data = [_]u32{ 0, 0 };
             const expected_utir_str =
                 \\%0 = struct_decl({})
                 \\
@@ -326,14 +334,17 @@ test UTirGen {
                 \\const Out = struct {};
             ;
             const expected_utir = [_]UTir.Inst{
-                .{ .struct_decl = .{ .ed_idx = @enumFromInt(2) } }, // Root
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(4) } }, // Root
                 .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // In
-                .{ .struct_decl = .{ .ed_idx = @enumFromInt(1) } }, // Out
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(2) } }, // Out
             };
             const expected_extra_data = [_]u32{
-                0, // In len
-                0, // Out len
-                2, // Root len
+                0, // In.fields
+                0, // In.decls
+                0, // Out.fields
+                0, // Out.decls
+                0, // Root.fields
+                2, // Root.decls
                 1, // Root.In
                 2, // Root.Out
             };
@@ -358,23 +369,29 @@ test UTirGen {
                 \\const Out = struct {};
             ;
             const expected_utir = [_]UTir.Inst{
-                .{ .struct_decl = .{ .ed_idx = @enumFromInt(8) } }, // Root
-                .{ .struct_decl = .{ .ed_idx = @enumFromInt(4) } }, // In
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(13) } }, // Root
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(7) } }, // In
                 .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // In.A
-                .{ .struct_decl = .{ .ed_idx = @enumFromInt(2) } }, // In.B
-                .{ .struct_decl = .{ .ed_idx = @enumFromInt(1) } }, // In.B.C
-                .{ .struct_decl = .{ .ed_idx = @enumFromInt(7) } }, // Out
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(4) } }, // In.B
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(2) } }, // In.B.C
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(11) } }, // Out
             };
             const expected_extra_data = [_]u32{
-                0, // In.A len
-                0, // In.B.C len
-                1, // In.B len
+                0, // In.A.fields
+                0, // In.A.decls
+                0, // In.B.C.fields
+                0, // In.B.C.decls
+                0, // In.B.fields
+                1, // In.B.decls
                 4, // In.B.C
-                2, // In.len
+                0, // In.fields
+                2, // In.decls
                 2, // In.A
                 3, // In.B
-                0, // Out.len
-                2, // Root len
+                0, // Out.fields
+                0, // Out.decls
+                0, // Root.fields
+                2, // Root.decls
                 1, // In
                 5, // Out
             };
@@ -403,7 +420,8 @@ test UTirGen {
                 .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(0) } }, // In
             };
             const expected_extra_data = [_]u32{
-                1, // Root.len
+                0, // Root.fields
+                1, // Root.decls
                 1, // In
             };
             const expected_utir_str =

@@ -57,6 +57,7 @@ pub const Inst = union(enum(u32)) {
     // A `Struct` is followed by `Struct.fields` number of `Struct.Item`
     pub const Struct = struct {
         fields: u32,
+        decls: u32,
 
         pub const Item = struct {
             ref: Ref,
@@ -171,13 +172,15 @@ const Writer = struct {
         assert(self.utir.tagFromRef(inst_idx) == .struct_decl);
         try stream.writeAll("struct_decl({");
         const ed_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].struct_decl.ed_idx);
-        const root_len = self.utir.extra_data[ed_idx];
+        const fields_len = self.utir.extra_data[ed_idx];
+        const decls_len = self.utir.extra_data[ed_idx + 1];
         self.incIndent(stream);
-        if (root_len > 0) {
+        if (fields_len + decls_len > 0) {
             try stream.print("\n", .{});
-            const root_decls = self.utir.extra_data[ed_idx + 1 .. ed_idx + root_len + 1];
-            for (root_decls) |root_decl| {
-                try self.writeContainerMembers(stream, @enumFromInt(root_decl));
+            const decl_idx = ed_idx + 2 + fields_len;
+            const decls = self.utir.extra_data[decl_idx .. decl_idx + decls_len];
+            for (decls) |decl| {
+                try self.writeContainerMembers(stream, @enumFromInt(decl));
             }
         }
         self.decIndent(stream);
