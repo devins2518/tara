@@ -19,7 +19,7 @@ instructions: std.MultiArrayList(UTir.Inst) = .{},
 // Extra data which instructions might need
 extra_data: std.ArrayListUnmanaged(u32) = .{},
 // Used to store strings which are used to refer to declarations
-string_bytes: std.ArrayListUnmanaged(u8) = .{},
+string_bytes: std.StringArrayHashMapUnmanaged(void) = .{},
 // Allocator used for short lived allocations
 arena: std.heap.ArenaAllocator,
 
@@ -150,6 +150,7 @@ pub fn genUTir(allocator: Allocator, ast: *const Ast) UTirGenError!UTir {
     return UTir{
         .instructions = utir_gen.instructions.toOwnedSlice(),
         .extra_data = try utir_gen.extra_data.toOwnedSlice(allocator),
+        .string_bytes = utir_gen.string_bytes.move(),
     };
 }
 
@@ -200,10 +201,18 @@ fn genVarDecl(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGen
     return init_expr;
 }
 
+fn genIdentifier(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!UTir.Inst.Ref {
+    const token_idx = self.ast.nodes.items(.main_idx)[@intFromEnum(node_idx)];
+    const string = self.tokToString(token_idx);
+    const str_idx = try self.addStringBytes(string);
+    return try env.addInst(.{ .decl_val = .{ .string_bytes_idx = str_idx } });
+}
+
 fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!UTir.Inst.Ref {
     const tags = self.ast.nodes.items(.tag);
     switch (tags[@intFromEnum(node_idx)]) {
         .struct_decl => return self.genStructInner(env, node_idx),
+        .identifier => return self.genIdentifier(env, node_idx),
         .root,
         .var_decl,
         .module_decl,
@@ -227,7 +236,6 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .reference,
         .assignment,
         .member,
-        .identifier,
         => unreachable,
     }
 }
@@ -264,6 +272,11 @@ fn addExtraSlice(self: *UTirGen, comptime T: type, slice: []const T) UTirGenErro
     return result;
 }
 
+fn addStringBytes(self: *UTirGen, string: []const u8) UTirGenError!UTir.Inst.StrIdx {
+    const result = try self.string_bytes.getOrPut(self.allocator, string);
+    return @enumFromInt(result.index);
+}
+
 test UTirGen {
     const allocator = std.testing.allocator;
     const tests = struct {
@@ -281,11 +294,15 @@ test UTirGen {
                 try std.testing.expectEqual(e, a);
             }
 
-            var actual_array_list = try std.ArrayList(u8).initCapacity(allocator, expected_utir_str.len);
-            defer actual_array_list.deinit();
-            const actual_writer = actual_array_list.writer();
-            try std.fmt.format(actual_writer, "{}", .{utir});
-            try std.testing.expectEqualStrings(expected_utir_str, actual_array_list.items);
+            if (expected_utir_str.len > 0) {
+                var actual_array_list = try std.ArrayList(u8).initCapacity(allocator, expected_utir_str.len);
+                defer actual_array_list.deinit();
+                const actual_writer = actual_array_list.writer();
+                try std.fmt.format(actual_writer, "{}", .{utir});
+                try std.testing.expectEqualStrings(expected_utir_str, actual_array_list.items);
+            } else {
+                return error.ZigSkipTest;
+            }
         }
 
         pub fn test0() !void {
@@ -376,9 +393,31 @@ test UTirGen {
             ;
             try doTheTest(src, &expected_utir, &expected_extra_data, expected_utir_str);
         }
+
+        pub fn test3() !void {
+            const src =
+                \\const In = bool;
+            ;
+            const expected_utir = [_]UTir.Inst{
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // Root
+                .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(0) } }, // In
+            };
+            const expected_extra_data = [_]u32{
+                1, // Root.len
+                1, // In
+            };
+            const expected_utir_str =
+                \\%0 = struct_decl({
+                \\    %1 = decl_val("bool")
+                \\})
+                \\
+            ;
+            try doTheTest(src, &expected_utir, &expected_extra_data, expected_utir_str);
+        }
     };
 
     try tests.test0();
     try tests.test1();
     try tests.test2();
+    try tests.test3();
 }

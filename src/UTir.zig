@@ -11,6 +11,8 @@ const assert = std.debug.assert;
 instructions: std.MultiArrayList(Inst).Slice,
 // Extra data which might be needed by a UTir instruction
 extra_data: []const u32,
+// Used to intern strings needed to refer to declarations
+string_bytes: std.StringArrayHashMapUnmanaged(void),
 
 pub const Inst = union(enum(u32)) {
     // Declares the type of a struct
@@ -28,6 +30,9 @@ pub const Inst = union(enum(u32)) {
     // An index into `extra_data`
     pub const EdIdx = enum(u32) { _ };
 
+    // An index into `string_bytes`
+    pub const StrIdx = enum(u32) { _ };
+
     // A payload will contain an index into `extra_data` to a certain `T`. The
     // specific `T` is determined by the tag of the instruction.
     pub fn Payload(comptime T: type) type {
@@ -44,8 +49,9 @@ pub const Inst = union(enum(u32)) {
         };
     }
 
+    // A `Str` is an index into `string_bytes`
     pub const Str = struct {
-        string_bytes_idx: u32,
+        string_bytes_idx: StrIdx,
     };
 
     // A `Struct` is followed by `Struct.fields` number of `Struct.Item`
@@ -79,6 +85,7 @@ pub const Inst = union(enum(u32)) {
 pub fn deinit(self: *UTir, allocator: Allocator) void {
     self.instructions.deinit(allocator);
     allocator.free(self.extra_data);
+    self.string_bytes.deinit(allocator);
 }
 
 pub fn format(utir: *const UTir, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
@@ -155,6 +162,7 @@ const Writer = struct {
         try stream.print("%{} = ", .{@intFromEnum(inst_idx)});
         try switch (self.utir.tagFromRef(inst_idx)) {
             .struct_decl => self.writeStructDecl(stream, inst_idx),
+            .decl_val => self.writeDeclVal(stream, inst_idx),
             else => unreachable,
         };
     }
@@ -174,5 +182,11 @@ const Writer = struct {
         }
         self.decIndent(stream);
         try stream.writeAll("})\n");
+    }
+
+    fn writeDeclVal(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+        assert(self.utir.tagFromRef(inst_idx) == .decl_val);
+        const str_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].decl_val.string_bytes_idx);
+        try stream.print("decl_val(\"{s}\")\n", .{self.utir.string_bytes.keys()[str_idx]});
     }
 };
