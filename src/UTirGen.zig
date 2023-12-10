@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
 const UTirGenError = error{
+    ScopeFieldAlreadyExists,
     ScopeDeclAlreadyExists,
 } || Allocator.Error;
 
@@ -37,10 +38,12 @@ const Environment = struct {
         const Namespace = struct {
             base: Scope = .namespace,
             decls: std.StringHashMapUnmanaged(Inst.Ref) = .{},
+            fields: std.StringHashMapUnmanaged(void) = .{},
             parent: *Scope,
 
             pub fn deinit(self: *Namespace, allocator: Allocator) void {
                 self.decls.deinit(allocator);
+                self.fields.deinit(allocator);
             }
         };
 
@@ -73,6 +76,16 @@ const Environment = struct {
             try namespace.decls.putNoClobber(allocator, decl, ref);
         }
 
+        pub fn addField(self: *Scope, allocator: Allocator, field: []const u8) !void {
+            const namespace = self.toNamespace();
+
+            if (namespace.fields.get(field)) |_| {
+                return UTirGenError.ScopeFieldAlreadyExists;
+            }
+
+            try namespace.fields.putNoClobber(allocator, field, {});
+        }
+
         pub fn toNamespace(self: *Scope) *Namespace {
             assert(self.* == .namespace);
             return @fieldParentPtr(Namespace, "base", self);
@@ -87,9 +100,9 @@ const Environment = struct {
     // Used to associate an environment with a scope. This can be useful for
     // things like name resolution.
     scope: *Scope,
-    // All environments share the same list of instruction refs
-    instructions: *std.ArrayListUnmanaged(Inst.Ref),
-    // `bottom` refers to the top of `instructions` at the time the current environment was derived
+    // All environments share the same list of extra data
+    extra: *std.ArrayListUnmanaged(u32),
+    // `bottom` refers to the top of `extra` at the time the current environment was derived
     bottom: usize,
     // All environments share the same `utir_gen`
     utir_gen: *UTirGen,
@@ -98,8 +111,8 @@ const Environment = struct {
     pub fn derive(env: *Environment, scope: *Scope) Environment {
         return .{
             .scope = scope,
-            .instructions = env.instructions,
-            .bottom = env.instructions.items.len,
+            .extra = env.extra,
+            .bottom = env.extra.items.len,
             .utir_gen = env.utir_gen,
         };
     }
@@ -111,21 +124,41 @@ const Environment = struct {
     fn addInst(self: *Environment, inst: Inst) UTirGenError!Inst.Ref {
         const result: Inst.Ref = @enumFromInt(self.utir_gen.instructions.len);
         try self.utir_gen.instructions.append(self.utir_gen.allocator, inst);
-        try self.instructions.append(self.utir_gen.allocator, result);
         return result;
     }
 
     fn addRef(self: *Environment, ref: Inst.Ref) UTirGenError!void {
-        try self.instructions.append(self.utir_gen.allocator, ref);
+        try self.addExtra(ref);
     }
 
     fn setInst(self: *Environment, idx: Inst.Ref, inst: Inst) void {
         self.utir_gen.instructions.set(@intFromEnum(idx), inst);
     }
 
-    // Used to assert that no instruction refs have been leaked by environment
+    fn addExtra(self: *Environment, val: anytype) UTirGenError!void {
+        const V = @TypeOf(val);
+        switch (@typeInfo(V)) {
+            .Struct => {
+                const fields = std.meta.fields(V);
+                try self.extra.ensureUnusedCapacity(self.utir_gen.allocator, fields.len);
+                inline for (fields) |field| {
+                    comptime assert(@sizeOf(field.type) == @sizeOf(u32));
+                    switch (@typeInfo(field.type)) {
+                        .Enum => self.extra.appendAssumeCapacity(@intFromEnum(@field(val, field.name))),
+                        .Int => self.extra.appendAssumeCapacity(@field(val, field.name)),
+                        else => @compileError("Unexpected type found in addExtra: " ++ @typeName(field.type)),
+                    }
+                }
+            },
+            .Enum => try self.extra.append(self.utir_gen.allocator, @intFromEnum(val)),
+            .Int => try self.extra.append(self.utir_gen.allocator, val),
+            else => @compileError("Unexpected type found in addExtra: " ++ @typeName(V)),
+        }
+    }
+
+    // Used to assert that no extras have been leaked by environment
     pub fn finish(self: *const Environment) void {
-        self.instructions.shrinkRetainingCapacity(self.bottom);
+        self.extra.shrinkRetainingCapacity(self.bottom);
     }
 };
 
@@ -137,12 +170,12 @@ pub fn genUTir(allocator: Allocator, ast: *const Ast) UTirGenError!UTir {
     };
     defer utir_gen.deinit();
 
-    var instructions: std.ArrayListUnmanaged(Inst.Ref) = .{};
-    defer instructions.deinit(allocator);
+    var extra: std.ArrayListUnmanaged(u32) = .{};
+    defer extra.deinit(allocator);
     var top_scope = Environment.Scope.Top{};
     var env = Environment{
         .scope = &top_scope.base,
-        .instructions = &instructions,
+        .extra = &extra,
         .bottom = 0,
         .utir_gen = &utir_gen,
     };
@@ -172,21 +205,29 @@ fn genStructInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
         // TODO: have this be all fields followed by all decls to have some sense of order
         switch (self.ast.nodes.items(.tag)[@intFromEnum(member)]) {
             .var_decl => {
-                try env.addRef(try self.genVarDecl(&struct_env, member));
+                try struct_env.addRef(try self.genVarDecl(&struct_env, member));
                 decls += 1;
             },
             .container_field => {
-                try env.addRef(try self.genVarDecl(&struct_env, member));
+                const name_tok = self.ast.nodes.items(.main_idx)[@intFromEnum(member)];
+                const name_str = self.tokToString(name_tok);
+                try struct_env.scope.addField(self.allocator, name_str);
+                const str_idx = try self.addStringBytes(name_str);
+
+                const ty_node = self.ast.nodes.items(.data)[@intFromEnum(member)].lhs;
+                const field_ty = try self.genContainerFieldType(&struct_env, ty_node);
+
+                try env.addExtra(Inst.StructDecl.Field{ .name = str_idx, .type = field_ty });
                 fields += 1;
             },
             else => unreachable,
         }
     }
 
-    const ed_idx = try self.addExtra(Inst.Struct{ .fields = fields, .decls = decls });
-    const inst_refs = struct_env.instructions.items[struct_env.bottom..];
-    const casted_refs: []Inst.Struct.Item = @ptrCast(inst_refs);
-    _ = try self.addExtraSlice(Inst.Struct.Item, casted_refs);
+    const ed_idx = try self.addExtra(Inst.StructDecl{ .fields = fields, .decls = decls });
+    const struct_decl_extras: []const u32 = struct_env.extra.items[struct_env.bottom..];
+    std.debug.print("fields: {} decls: {}, len: {}\n", .{ fields, decls, struct_decl_extras.len });
+    _ = try self.addExtraSlice(u32, struct_decl_extras);
 
     env.setInst(struct_decl, .{ .struct_decl = .{ .ed_idx = ed_idx } });
     return struct_decl;
@@ -208,6 +249,10 @@ fn genVarDecl(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGen
 
     try env.scope.addDecl(self.allocator, ident, init_expr);
     return init_expr;
+}
+
+fn genContainerFieldType(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
+    return try self.genExpr(env, node_idx);
 }
 
 fn genIdentifier(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
@@ -275,8 +320,13 @@ fn addExtra(self: *UTirGen, val: anytype) UTirGenError!Inst.EdIdx {
 
 fn addExtraSlice(self: *UTirGen, comptime T: type, slice: []const T) UTirGenError!Inst.EdIdx {
     const result: Inst.EdIdx = @enumFromInt(self.extra_data.items.len + slice.len);
-    for (slice) |val| {
-        _ = try self.addExtra(val);
+    if (T == u32) {
+        try self.extra_data.ensureUnusedCapacity(self.allocator, slice.len);
+        try self.extra_data.appendSlice(self.allocator, slice);
+    } else {
+        for (slice) |val| {
+            _ = try self.addExtra(val);
+        }
     }
     return result;
 }
@@ -294,6 +344,13 @@ test UTirGen {
             defer ast.deinit(allocator);
             var utir = try genUTir(allocator, &ast);
             defer utir.deinit(allocator);
+
+            for (0..utir.instructions.len) |i| {
+                std.debug.print("{}\n", .{utir.instructions.get(i)});
+            }
+            for (utir.extra_data) |d| {
+                std.debug.print("{}\n", .{d});
+            }
 
             for (expected_utir, 0..) |e, i| {
                 try std.testing.expectEqual(e, utir.instructions.get(i));
@@ -433,10 +490,79 @@ test UTirGen {
             ;
             try doTheTest(src, &expected_utir, &expected_extra_data, expected_utir_str);
         }
+
+        pub fn test4() !void {
+            const src =
+                \\a: bool,
+                \\b: bool,
+                \\c: u8,
+            ;
+            const expected_utir = [_]Inst{
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // Root
+                .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(1) } }, // a: bool
+                .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(1) } }, // b: bool
+                .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(4) } }, // c: u8
+            };
+            const expected_extra_data = [_]u32{
+                3, // Root.fields
+                0, // Root.decls
+                0, // a.name
+                1, // a.type
+                2, // b.name
+                2, // b.type
+                3, // c.name
+                3, // c.type
+            };
+            const expected_utir_str =
+                \\%0 = struct_decl({
+                \\    a (%1): decl_val("bool")
+                \\    b (%2): decl_val("bool")
+                \\    c (%3): decl_val("u8")
+                \\})
+                \\
+            ;
+            try doTheTest(src, &expected_utir, &expected_extra_data, expected_utir_str);
+        }
+
+        pub fn test5() !void {
+            const src =
+                \\a: bool,
+                \\b: bool,
+                \\const In = struct {};
+            ;
+            const expected_utir = [_]Inst{
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(2) } }, // Root
+                .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(1) } }, // a: bool
+                .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(1) } }, // b: bool
+                .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // In
+            };
+            const expected_extra_data = [_]u32{
+                0, // Root.In.fields
+                0, // Root.In.decls
+                2, // Root.fields
+                1, // Root.decls
+                0, // a.name
+                1, // a.type
+                2, // b.name
+                2, // b.type
+                3, // In
+            };
+            const expected_utir_str =
+                \\%0 = struct_decl({
+                \\    a (%1): decl_val("bool")
+                \\    b (%2): decl_val("bool")
+                \\    %3 = struct_decl({})
+                \\})
+                \\
+            ;
+            try doTheTest(src, &expected_utir, &expected_extra_data, expected_utir_str);
+        }
     };
 
     try tests.test0();
     try tests.test1();
     try tests.test2();
     try tests.test3();
+    try tests.test4();
+    try tests.test5();
 }
