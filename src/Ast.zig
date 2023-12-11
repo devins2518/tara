@@ -118,6 +118,10 @@ pub const Node = struct {
         // `main_idx` is `ident`
         // `lhs` and `rhs` unused
         identifier,
+        // `int`
+        // `main_idx` is `int`
+        // `lhs` and `rhs` unused
+        int,
     };
 
     // TODO change this to be bare union between Idx and ExtraIdx for debug type safety

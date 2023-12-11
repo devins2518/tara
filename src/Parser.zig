@@ -286,6 +286,11 @@ fn parsePrimaryExpr(self: *Parser) !Node.Idx {
             .main_idx = self.nextToken(),
             .data = .{ .lhs = Node.null_node, .rhs = Node.null_node },
         }),
+        .number => self.addNode(.{
+            .tag = .int,
+            .main_idx = self.nextToken(),
+            .data = .{ .lhs = Node.null_node, .rhs = Node.null_node },
+        }),
         else => return self.parseTypeExpr(),
     };
 }

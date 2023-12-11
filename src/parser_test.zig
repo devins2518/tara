@@ -237,3 +237,24 @@ fn parseMultipleStructsAndModule() !void {
 test parseMultipleStructsAndModule {
     try parseMultipleStructsAndModule();
 }
+
+fn parseNumbers() !void {
+    const src =
+        \\const A = 3 + 4;
+    ;
+    const expected_nodes = [_]Node{
+        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(1) } }, // root
+        .{ .tag = .int, .main_idx = 3, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // 3
+        .{ .tag = .int, .main_idx = 5, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // 4
+        .{ .tag = .add, .main_idx = 4, .data = .{ .lhs = @enumFromInt(1), .rhs = @enumFromInt(2) } }, // 3 + 4
+        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(3) } }, // const A = 3 + 4
+    };
+    const expected_extra_data = [_]Node.Idx{
+        @enumFromInt(4),
+    };
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+}
+
+test parseNumbers {
+    try parseNumbers();
+}
