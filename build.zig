@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) !void {
 
 fn getLLVMConfig(b: *std.Build, arg: []const u8) ![]const u8 {
     const llvm_config = try b.findProgram(&.{"llvm-config"}, &.{});
-    return std.mem.trim(u8, b.exec(&.{ llvm_config, arg }), " \n");
+    return std.mem.trim(u8, b.run(&.{ llvm_config, arg }), " \n");
 }
 
 fn getLibName(lib: []const u8) []const u8 {
@@ -87,7 +87,7 @@ fn addCIRCTLibs(b: *std.Build, step: *std.Build.Step.Compile) !void {
 
     const libdir_path = try getLLVMConfig(b, "--libdir");
     step.addLibraryPath(.{ .cwd_relative = libdir_path });
-    var libdir = try std.fs.openIterableDirAbsolute(libdir_path, .{});
+    var libdir = try std.fs.openDirAbsolute(libdir_path, .{ .iterate = true });
     defer libdir.close();
     var iterator = libdir.iterate();
     while (try iterator.next()) |file| {
