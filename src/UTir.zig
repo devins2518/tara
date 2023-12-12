@@ -6,6 +6,8 @@ const UTir = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
+const utils = @import("utils.zig");
+const unionPayloadPtr = utils.unionPayloadPtr;
 
 // A list of UTir instructions being built
 instructions: std.MultiArrayList(Inst).Slice,
@@ -23,6 +25,13 @@ pub const Inst = union(enum(u32)) {
     block: Payload(Block),
     // Used to perform type coercion
     as: Ref,
+    // TODO: use payload to support integers > max(u32)
+    // Used to refer to small integers
+    int_small: Int.Small,
+    // Performs `add` operation on the two instructions
+    add: BinOp,
+
+    pub const Tag = std.meta.Tag(Inst);
 
     // Index into instructions list
     pub const Ref = enum(u32) { _ };
@@ -79,11 +88,35 @@ pub const Inst = union(enum(u32)) {
         };
     };
 
+    pub const Int = struct {
+        pub const Small = struct {
+            int: u32,
+        };
+    };
+
+    pub const BinOp = struct {
+        lhs: Inst.Ref,
+        rhs: Inst.Ref,
+
+        pub fn tagIsBinOp(tag: Tag) bool {
+            return switch (tag) {
+                .add => true,
+                else => false,
+            };
+        }
+
+        pub fn fromUtir(utir: *const UTir, inst_idx: Inst.Ref) BinOp {
+            assert(tagIsBinOp(utir.tagFromRef(inst_idx)));
+            return unionPayloadPtr(BinOp, utir.instructions.get(@intFromEnum(inst_idx))).?;
+        }
+    };
+
     comptime {
         const InstInfo = @typeInfo(Inst).Union;
         if (!std.debug.runtime_safety) {
             for (InstInfo.fields) |field| {
-                assert(@sizeOf(field.type) <= 8);
+                // TODO: change to 8 when source tracking is added
+                assert(@sizeOf(field.type) <= 4);
             }
         }
     }
@@ -119,7 +152,7 @@ fn u32s(comptime T: type) comptime_int {
     return @sizeOf(T) / @sizeOf(u32);
 }
 
-inline fn tagFromRef(utir: *const UTir, ref: Inst.Ref) @typeInfo(Inst).Union.tag_type.? {
+inline fn tagFromRef(utir: *const UTir, ref: Inst.Ref) Inst.Tag {
     return utir.instructions.items(.tags)[@intFromEnum(ref)];
 }
 
@@ -179,32 +212,34 @@ const Writer = struct {
     }
 
     pub fn writeRoot(self: *Writer, stream: anytype) !void {
-        try stream.writeAll("%0 = ");
         return self.writeStructDecl(stream, @enumFromInt(0));
     }
 
-    fn writeExpr(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+    fn writeExpr(self: *Writer, stream: anytype, inst_idx: Inst.Ref) @TypeOf(stream).Error!void {
         try switch (self.utir.tagFromRef(inst_idx)) {
             .struct_decl => self.writeStructDecl(stream, inst_idx),
             .decl_val => self.writeDeclVal(stream, inst_idx),
-            else => unreachable,
+            .int_small => self.writeIntSmall(stream, inst_idx),
+            .add => self.writeBinOp(stream, inst_idx, .add),
+            .block,
+            .as,
+            => unreachable,
         };
     }
 
     fn writeContainerMember(self: *Writer, stream: anytype, decl: Inst.StructDecl.Decl) !void {
-        try stream.print("%{} = ", .{@intFromEnum(decl.ref)});
         try self.writeExpr(stream, decl.ref);
     }
 
     fn writeContainerField(self: *Writer, stream: anytype, field: Inst.StructDecl.Field) !void {
-        const name = self.utir.string_bytes.keys()[@intFromEnum(field.name)];
-        try stream.print("{s} (%{}): ", .{ name, @intFromEnum(field.type) });
         try self.writeExpr(stream, field.type);
+        const name = self.utir.string_bytes.keys()[@intFromEnum(field.name)];
+        try stream.print("{s} : %{}\n", .{ name, @intFromEnum(field.type) });
     }
 
     fn writeStructDecl(self: *Writer, stream: anytype, inst_idx: Inst.Ref) @TypeOf(stream).Error!void {
         assert(self.utir.tagFromRef(inst_idx) == .struct_decl);
-        try stream.writeAll("struct_decl({");
+        try stream.print("%{} = struct_decl({{", .{@intFromEnum(inst_idx)});
         const ed_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].struct_decl.ed_idx);
         const fields_len = self.utir.extra_data[ed_idx];
         const decls_len = self.utir.extra_data[ed_idx + 1];
@@ -235,6 +270,27 @@ const Writer = struct {
     fn writeDeclVal(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
         assert(self.utir.tagFromRef(inst_idx) == .decl_val);
         const str_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].decl_val.string_bytes_idx);
-        try stream.print("decl_val(\"{s}\")\n", .{self.utir.string_bytes.keys()[str_idx]});
+        try stream.print("%{} = decl_val(\"{s}\")\n", .{
+            @intFromEnum(inst_idx),
+            self.utir.string_bytes.keys()[str_idx],
+        });
+    }
+
+    fn writeIntSmall(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+        assert(self.utir.tagFromRef(inst_idx) == .int_small);
+        const int = self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].int_small.int;
+        try stream.print("%{} = int({})\n", .{ @intFromEnum(inst_idx), int });
+    }
+
+    fn writeBinOp(self: *Writer, stream: anytype, inst_idx: Inst.Ref, op: Inst.Tag) !void {
+        const bin_op = Inst.BinOp.fromUtir(self.utir, inst_idx);
+        try self.writeExpr(stream, bin_op.lhs);
+        try self.writeExpr(stream, bin_op.rhs);
+        try stream.print("%{} = {s}(%{}, %{})\n", .{
+            @intFromEnum(inst_idx),
+            @tagName(op),
+            @intFromEnum(bin_op.lhs),
+            @intFromEnum(bin_op.rhs),
+        });
     }
 };

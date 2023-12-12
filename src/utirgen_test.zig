@@ -192,9 +192,12 @@ fn testManyFieldGen() !void {
     };
     const expected_utir_str =
         \\%0 = struct_decl({
-        \\    a (%1): decl_val("bool")
-        \\    b (%2): decl_val("bool")
-        \\    c (%3): decl_val("u8")
+        \\    %1 = decl_val("bool")
+        \\    a : %1
+        \\    %2 = decl_val("bool")
+        \\    b : %2
+        \\    %3 = decl_val("u8")
+        \\    c : %3
         \\})
         \\
     ;
@@ -230,8 +233,10 @@ fn testMixedFieldDeclGen() !void {
     };
     const expected_utir_str =
         \\%0 = struct_decl({
-        \\    a (%1): decl_val("bool")
-        \\    b (%2): decl_val("bool")
+        \\    %1 = decl_val("bool")
+        \\    a : %1
+        \\    %2 = decl_val("bool")
+        \\    b : %2
         \\    %3 = struct_decl({})
         \\})
         \\
@@ -241,4 +246,34 @@ fn testMixedFieldDeclGen() !void {
 
 test testMixedFieldDeclGen {
     try testMixedFieldDeclGen();
+}
+
+fn testNumberGen() !void {
+    const src =
+        \\const A = 3 + 4;
+    ;
+    const expected_utir = [_]Inst{
+        .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // Root
+        .{ .int_small = .{ .int = 3 } }, // 3
+        .{ .int_small = .{ .int = 4 } }, // 4
+        .{ .add = .{ .lhs = @enumFromInt(1), .rhs = @enumFromInt(2) } }, // 4
+    };
+    const expected_extra_data = [_]u32{
+        0, // Root.fields
+        1, // Root.decls
+        3, // A
+    };
+    const expected_utir_str =
+        \\%0 = struct_decl({
+        \\    %1 = int(3)
+        \\    %2 = int(4)
+        \\    %3 = add(%1, %2)
+        \\})
+        \\
+    ;
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+}
+
+test testNumberGen {
+    try testNumberGen();
 }

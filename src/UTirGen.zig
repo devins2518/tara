@@ -261,11 +261,30 @@ fn genIdentifier(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTir
     return try env.addInst(.{ .decl_val = .{ .string_bytes_idx = str_idx } });
 }
 
+fn genInteger(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
+    const token_idx = self.ast.nodes.items(.main_idx)[@intFromEnum(node_idx)];
+    const string = self.tokToString(token_idx);
+    // TODO: recover from parser errorsh
+    const number = std.fmt.parseUnsigned(u32, string, 0) catch |e| switch (e) {
+        else => unreachable,
+    };
+    return try env.addInst(.{ .int_small = .{ .int = number } });
+}
+
+fn genBinOp(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx, comptime op: Inst.Tag) UTirGenError!Inst.Ref {
+    const data = self.ast.nodes.items(.data)[@intFromEnum(node_idx)];
+    const lhs = try self.genExpr(env, data.lhs);
+    const rhs = try self.genExpr(env, data.rhs);
+    return try env.addInst(@unionInit(Inst, @tagName(op), .{ .lhs = lhs, .rhs = rhs }));
+}
+
 fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
     const tags = self.ast.nodes.items(.tag);
     switch (tags[@intFromEnum(node_idx)]) {
         .struct_decl => return self.genStructInner(env, node_idx),
         .identifier => return self.genIdentifier(env, node_idx),
+        .int => return self.genInteger(env, node_idx),
+        .add => return self.genBinOp(env, node_idx, .add),
         .root,
         .var_decl,
         .module_decl,
@@ -282,14 +301,12 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .bit_and,
         .bit_or,
         .bit_xor,
-        .add,
         .sub,
         .mul,
         .div,
         .reference,
         .assignment,
         .member,
-        .int,
         => unreachable,
     }
 }
