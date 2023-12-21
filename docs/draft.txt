@@ -297,3 +297,46 @@ const If = @interface(T: type, {
 
 // Simulator optimization:
 // Avoid monomorphizing every module, instantiate one and mux in arguments depending on what is being simulated
+
+// IR example
+const Mod = module(in: u1) void {
+    const reg: u2 = @reg(.{ .clk = @clk(), .rst = 0 });
+    reg.next = &.{in, reg[0]};
+};
+
+// UTIR
+%0 = {
+    %1 = module_decl(
+        ret_ty=%11 = decl_val("void"),
+        {
+            %2: var_decl("u1")
+        }, {
+            %3 = clk()
+            %4 = int(0)
+            %5 = reg(2, %3, %4)
+            %6 = int(0)
+            %7 = idx(%5, %6)
+            %8 = struct_init(%2, %7)
+            %9 = field_ptr(%4, "next")
+            %10 = store(%9, %8)
+        }
+    )
+}
+// TIR
+%0 = {
+    %1 = module_decl(
+        ret_ty=%11 = decl_val("void"),
+        {
+            %2: var_decl("u1")
+        }, {
+            %3: sig = clk()
+            %4: int = int(0)
+            %5: u2 = reg(2, %3, %4)
+            %6: int = int(0)
+            %7: u1 = idx(%5, %6)
+            %8: struct = struct_init(%2, %7)
+            %9: u2 = field_ptr(%4, "next")
+            %10: void = store(%9, %8)
+        }
+    )
+}
