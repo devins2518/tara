@@ -156,7 +156,7 @@ fn tokenizeComplexFnOldGrammar() !void {
         .keyword_var, // var
         .identifier, // Out
         .rparen, // )
-        .keyword_void, // void
+        .identifier, // void
         .lbrace, // {
         .identifier, // out
         .period, // .

@@ -18,7 +18,6 @@ pub const Token = struct {
         .{ "struct", .keyword_struct },
         .{ "union", .keyword_union },
         .{ "var", .keyword_var },
-        .{ "void", .keyword_void },
     });
 
     pub fn tryKeyword(ident: []const u8) ?Tag {
@@ -66,7 +65,6 @@ pub const Token = struct {
         keyword_struct,
         keyword_union,
         keyword_var,
-        keyword_void,
 
         invalid,
         eof,
