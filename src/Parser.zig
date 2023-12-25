@@ -346,18 +346,31 @@ fn parseReference(self: *Parser) !Node.Idx {
 fn parseModuleDecl(self: *Parser) !Node.Idx {
     log.debug("parseModuleDecl\n", .{});
     const main_idx = self.eat(.keyword_module) orelse return Node.null_node;
-    _ = self.eat(.lparen);
-    const module_args = try self.parseModuleArgs();
-    _ = self.eat(.rparen);
-    _ = self.eat(.lbrace);
-    const module_statements = try self.parseModuleStatements();
+    const module_sig = try self.parseModuleSig();
+    const module_body = try self.parseModuleBody();
     _ = self.eat(.rbrace);
     return self.addNode(.{
         .tag = .module_decl,
         .main_idx = main_idx,
         .data = .{
+            .lhs = module_sig,
+            .rhs = module_body,
+        },
+    });
+}
+
+fn parseModuleSig(self: *Parser) !Node.Idx {
+    log.debug("parseModuleSig\n", .{});
+    const main_idx = self.eat(.lparen) orelse return Node.null_node;
+    const module_args = try self.parseModuleArgs();
+    _ = self.eat(.rparen);
+    const ret_ty = try self.parseTypeExpr();
+    return self.addNode(.{
+        .tag = .module_sig,
+        .main_idx = main_idx,
+        .data = .{
             .lhs = module_args,
-            .rhs = module_statements,
+            .rhs = ret_ty,
         },
     });
 }
@@ -393,8 +406,10 @@ fn parseModuleArgs(self: *Parser) !Node.Idx {
     });
 }
 
-fn parseModuleStatements(self: *Parser) !Node.Idx {
+fn parseModuleBody(self: *Parser) !Node.Idx {
     log.debug("parseModuleStatements\n", .{});
+
+    const main_idx = self.eat(.lbrace) orelse return Node.null_node;
     const scratch_top = self.scratchpad.items.len;
     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
 
@@ -417,9 +432,13 @@ fn parseModuleStatements(self: *Parser) !Node.Idx {
     }
 
     const sublist = try self.scratchToSubList(scratch_top);
-    return try self.addExtra(Node.ModuleArgs{
-        .args_start = sublist.start,
-        .args_end = sublist.end,
+    return try self.addNode(.{
+        .tag = .module_body,
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = sublist.start,
+            .rhs = sublist.end,
+        },
     });
 }
 

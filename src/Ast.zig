@@ -39,11 +39,21 @@ pub const Node = struct {
         // If there is a single field or decl, then lhs is 0 and data.rhs is a single field or decl indexing nodes
         // If there are 2 or more fields or decls, then data.lhs is extra_index index of a `StructBody` and data.rhs is 0
         struct_decl,
-        // `module (args) { statements* }`
+        // `module (args) ret_ty { statements* }`
         // `main_idx` is module
-        // lhs is extra_index index of `ModuleArgs` which indexes into `extra_data`
-        // rhs is extra_index index of `ModuleStatements` which indexes into `extra_data`
+        // `lhs` is extra_index index of a `module_sig`
+        // `rhs` is extra_index index of a `module_body`
         module_decl,
+        // `module (args) ret_ty`
+        // `main_idx` is `(`
+        // `lhs` is extra_index index of `ModuleArgs` which indexes into `extra_data`
+        // `rhs` is index of ret_ty
+        module_sig,
+        // `{ statements* }`
+        // `main_idx` is `{`
+        // `lhs` is the start of extra_index index of module statements
+        // `rhs` is the end of extra_index indexes of module statmenets
+        module_body,
         // `ident: type_expr`
         // `main_idx` is ident
         // lhs is `nodes` index of `type_expr`
@@ -146,12 +156,6 @@ pub const Node = struct {
     pub const ModuleArgs = struct {
         args_start: Idx,
         args_end: Idx,
-    };
-
-    // Indexes into extra data
-    pub const ModuleStatements = struct {
-        statements_start: Idx,
-        statements_end: Idx,
     };
 
     pub const List = MultiArrayList(Node);

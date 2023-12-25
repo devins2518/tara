@@ -307,6 +307,8 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .reference,
         .assignment,
         .member,
+        .module_sig,
+        .module_body,
         => unreachable,
     }
 }
