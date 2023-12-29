@@ -84,6 +84,8 @@ fn getLibName(lib: []const u8) []const u8 {
 
 fn addCIRCTLibs(b: *std.Build, step: *std.Build.Step.Compile) !void {
     step.addIncludePath(.{ .cwd_relative = try getLLVMConfig(b, "--includedir") });
+    step.linkLibC();
+    step.linkLibCpp();
 
     const libdir_path = try getLLVMConfig(b, "--libdir");
     step.addLibraryPath(.{ .cwd_relative = libdir_path });
@@ -91,16 +93,15 @@ fn addCIRCTLibs(b: *std.Build, step: *std.Build.Step.Compile) !void {
     defer libdir.close();
     var iterator = libdir.iterate();
     while (try iterator.next()) |file| {
-        if (std.mem.startsWith(u8, file.name, "libCIRCT") and
-            std.mem.endsWith(u8, file.name, ".a"))
-        {
-            step.linkSystemLibraryName(getLibName(file.name));
-        } else if (std.mem.startsWith(u8, file.name, "libMLIR") and
-            std.mem.endsWith(u8, file.name, ".a") and
-            std.mem.indexOf(u8, file.name, "Main") == null and
-            !std.mem.eql(u8, file.name, "libMLIRSupportIndentedOstream.a"))
-        {
-            step.linkSystemLibraryName(getLibName(file.name));
+        if (std.mem.endsWith(u8, file.name, ".a")) {
+            if (std.mem.startsWith(u8, file.name, "libCIRCT") or
+                std.mem.startsWith(u8, file.name, "libLLVM") or
+                (std.mem.startsWith(u8, file.name, "libMLIR") and
+                std.mem.indexOf(u8, file.name, "Main") == null and
+                !std.mem.eql(u8, file.name, "libMLIRSupportIndentedOstream.a")))
+            {
+                step.linkSystemLibraryName(getLibName(file.name));
+            }
         }
     }
 }

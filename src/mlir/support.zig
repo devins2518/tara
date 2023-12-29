@@ -1,33 +1,40 @@
-pub fn DefineZigStruct(storage: type) type {
-    return extern struct { ptr: ?*storage };
-}
-
-pub const MlirLlvmThreadPool = DefineZigStruct(anyopaque);
-pub const MlirTypeID = DefineZigStruct(anyopaque);
-pub const MlirTypeIDAllocator = DefineZigStruct(anyopaque);
+const std = @import("std");
+const assert = std.debug.assert;
+const c = @import("c.zig");
 
 //===----------------------------------------------------------------------===//
 // MlirStringRef.
 //===----------------------------------------------------------------------===//
-
 /// A pointer to a sized fragment of a string, not necessarily null-terminated.
 /// Does not own the underlying string. This is equivalent to llvm::StringRef.
-pub const MlirStringRef = extern struct {
-    data: [*c]u8,
-    length: usize,
+pub const StringRef = struct {
+    _: c.MlirStringRef,
+
+    pub fn fromRaw(raw: c.MlirStringRef) StringRef {
+        assert(raw.data != null);
+        return .{ ._ = raw };
+    }
+
+    pub fn getRaw(str: StringRef) c.MlirStringRef {
+        return str._;
+    }
 
     /// Constructs a string reference from the pointer and length. The pointer need
     /// not reference to a null-terminated string.
-    pub inline fn mlirStringRefCreate(str: [*]u8, length: usize) MlirStringRef {
-        return .{ .data = str, .length = length };
+    pub fn init(str: []const u8) StringRef {
+        return StringRef.fromRaw(c.mlirStringRefCreate(str.ptr, str.len));
     }
 
     /// Constructs a string reference from a null-terminated C string. Prefer
     /// mlirStringRefCreate if the length of the string is known.
-    pub extern fn mlirStringRefCreateFromCString(str: [*c]u8) MlirStringRef;
+    pub fn initRaw(str: [*:0]const u8, len: usize) StringRef {
+        return StringRef.fromRaw(c.mlirStringRefCreate(str, len));
+    }
 
     /// Returns true if two string references are equal, false otherwise.
-    pub extern fn mlirStringRefEqual(string: MlirStringRef, other: MlirStringRef) bool;
+    pub fn eql(string: StringRef, other: StringRef) bool {
+        return c.mlirStringRefEqual(string.getRaw(), other.getRaw());
+    }
 
     /// A callback for returning string references.
     ///
@@ -35,81 +42,136 @@ pub const MlirStringRef = extern struct {
     /// reference to the portion of the string with the following arguments:
     ///  - an MlirStringRef representing the current portion of the string
     ///  - a pointer to user data forwarded from the printing call.
-    pub const MlirStringCallback = *const fn (*anyopaque) void;
+    pub const StringCallback = c.MlirStringCallback;
 };
 
 //===----------------------------------------------------------------------===//
 // MlirLogicalResult.
 //===----------------------------------------------------------------------===//
-
 /// A logical result value, essentially a boolean with named states. LLVM
 /// convention for using boolean values to designate success or failure of an
 /// operation is a moving target, so MLIR opted for an explicit class.
 /// Instances of MlirLogicalResult must only be inspected using the associated
 /// functions.
-pub const MlirLogicalResult = extern struct {
-    value: i8,
+pub const LogicalResult = struct {
+    _: c.MlirLogicalResult,
+
+    pub fn fromRaw(raw: c.MlirLogicalResult) LogicalResult {
+        return .{ ._ = raw };
+    }
+
+    pub fn getRaw(res: LogicalResult) c.MlirLogicalResult {
+        return res._;
+    }
 
     /// Checks if the given logical result represents a success.
-    pub inline fn mlirLogicalResultIsSuccess(res: MlirLogicalResult) bool {
-        return res.value != 0;
+    pub fn isSuccess(res: LogicalResult) bool {
+        return c.mlirLogicalResultIsSuccess(res.getRaw());
     }
 
     /// Checks if the given logical result represents a failure.
-    pub inline fn mlirLogicalResultIsFailure(res: MlirLogicalResult) bool {
-        return res.value == 0;
+    pub fn isFailure(res: LogicalResult) bool {
+        return c.mlirLogicalResultIsFailure(res.getRaw());
     }
-
     /// Creates a logical result representing a success.
-    pub inline fn mlirLogicalResultSuccess() MlirLogicalResult {
-        return .{ .value = 1 };
+    pub fn initSuccess() LogicalResult {
+        return LogicalResult.fromRaw(c.mlirLogicalResultSuccess());
     }
 
     /// Creates a logical result representing a failure.
-    pub inline fn mlirLogicalResultFailure() MlirLogicalResult {
-        return .{ .value = 0 };
+    pub fn initFailure() LogicalResult {
+        return LogicalResult.fromRaw(c.mlirLogicalResultFailure());
     }
 };
 
 //===----------------------------------------------------------------------===//
 // MlirLlvmThreadPool.
 //===----------------------------------------------------------------------===//
+pub const LlvmThreadPool = struct {
+    _: c.MlirLlvmThreadPool,
 
-/// Create an LLVM thread pool. This is reexported here to avoid directly
-/// pulling in the LLVM headers directly.
-pub extern fn mlirLlvmThreadPoolCreate(void) MlirLlvmThreadPool;
+    pub fn fromRaw(raw: c.MlirLlvmThreadPool) LlvmThreadPool {
+        return .{ ._ = raw };
+    }
 
-/// Destroy an LLVM thread pool.
-pub extern fn mlirLlvmThreadPoolDestroy(pool: MlirLlvmThreadPool) void;
+    pub fn getRaw(pool: LlvmThreadPool) c.MlirLlvmThreadPool {
+        return pool._;
+    }
+
+    /// Create an LLVM thread pool. This is reexported here to avoid directly
+    /// pulling in the LLVM headers directly.
+    pub fn init() LlvmThreadPool {
+        return LlvmThreadPool.fromRaw(c.mlirLlvmThreadPoolCreate());
+    }
+
+    /// Destroy an LLVM thread pool.
+    pub fn deinit(pool: LlvmThreadPool) void {
+        c.mlirLlvmThreadPoolDestroy(pool.getRaw());
+    }
+};
 
 //===----------------------------------------------------------------------===//
 // TypeID API.
 //===----------------------------------------------------------------------===//
+pub const TypeID = struct {
+    _: c.MlirTypeID,
 
-/// `ptr` must be 8 byte aligned and unique to a type valid for the duration of
-/// the returned type id's usage
-pub extern fn mlirTypeIDCreate(ptr: *const anyopaque) MlirTypeID;
+    pub fn fromRaw(raw: c.MlirTypeID) TypeID {
+        return .{ ._ = raw };
+    }
 
-/// Checks whether a type id is null.
-pub inline fn mlirTypeIDIsNull(typeID: MlirTypeID) bool {
-    return !typeID.ptr;
-}
+    pub fn getRaw(type_id: TypeID) c.MlirTypeID {
+        return type_id._;
+    }
 
-/// Checks if two type ids are equal.
-pub extern fn mlirTypeIDEqual(typeID1: MlirTypeID, typeID2: MlirTypeID) bool;
+    /// `ptr` must be 8 byte aligned and unique to a type valid for the duration of
+    /// the returned type id's usage
+    pub fn init(ptr: *align(8) anyopaque) TypeID {
+        return TypeID.fromRaw(c.mlirTypeIDCreate(ptr));
+    }
 
-/// Returns the hash value of the type id.
-pub extern fn mlirTypeIDHashValue(typeID: MlirTypeID) usize;
+    /// Checks whether a type id is null.
+    pub fn isNull(type_id: TypeID) bool {
+        return c.mlirTypeIDIsNull(type_id.getRaw());
+    }
+
+    /// Checks if two type ids are equal.
+    pub fn eql(type_id: TypeID, other: TypeID) bool {
+        return c.mlirTypeIDEqual(type_id.getRaw(), other.getRaw());
+    }
+
+    /// Returns the hash value of the type id.
+    pub fn hash(type_id: TypeID) usize {
+        return c.mlirTypeIDHashValue(type_id.getRaw());
+    }
+};
 
 //===----------------------------------------------------------------------===//
 // TypeIDAllocator API.
 //===----------------------------------------------------------------------===//
+pub const TypeIDAllocator = struct {
+    _: c.MlirTypeIDAllocator,
 
-/// Creates a type id allocator for dynamic type id creation
-pub extern fn mlirTypeIDAllocatorCreate(void) MlirTypeIDAllocator;
+    pub fn fromRaw(raw: c.MlirTypeIDAllocator) TypeIDAllocator {
+        return .{ ._ = raw };
+    }
 
-/// Deallocates the allocator and all allocated type ids
-pub extern fn mlirTypeIDAllocatorDestroy(allocator: MlirTypeIDAllocator) void;
+    pub fn getRaw(allocator: TypeIDAllocator) c.MlirTypeIDAllocator {
+        return allocator._;
+    }
 
-/// Allocates a type id that is valid for the lifetime of the allocator
-pub extern fn mlirTypeIDAllocatorAllocateTypeID(allocator: MlirTypeIDAllocator) MlirTypeID;
+    /// Creates a type id allocator for dynamic type id creation
+    pub fn init() TypeIDAllocator {
+        return TypeIDAllocator.fromRaw(c.mlirTypeIDAllocatorCreate());
+    }
+
+    /// Deallocates the allocator and all allocated type ids
+    pub fn deinit(allocator: TypeIDAllocator) void {
+        c.mlirTypeIDAllocatorDestroy(allocator.getRaw());
+    }
+
+    /// Allocates a type id that is valid for the lifetime of the allocator
+    pub fn allocateTypeId(allocator: TypeIDAllocator) TypeID {
+        return TypeID.fromRaw(c.mlirTypeIDAllocatorAllocateTypeID(allocator.getRaw()));
+    }
+};

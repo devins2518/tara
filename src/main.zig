@@ -1,6 +1,5 @@
 const std = @import("std");
 const Ast = @import("Ast.zig");
-const c = @import("c.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -30,5 +29,6 @@ test "simple test" {
     _ = @import("Ast.zig");
     _ = @import("UTirGen.zig");
     _ = @import("UTir.zig");
+    _ = @import("mlir/ir.zig");
     std.testing.refAllDeclsRecursive(@This());
 }
