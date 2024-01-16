@@ -1,0 +1,369 @@
+\documentclass[10pt]{article}
+
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{amsthm}
+\usepackage{amssymb}
+
+\newcommand{\alt}{~~|~~}
+\newcommand{\comp}[1]{\llbracket #1 \rrbracket}
+
+\newcommand{\inlinexp}[1]{
+	{\footnotesize
+			\[\begin{array}{l}
+					#1
+				\end{array}\]}}
+
+\newcommand{\inlinexpa}[2]{
+	{\footnotesize
+			\[\begin{array}{#1}
+					#2
+				\end{array}\]}}
+
+\newcommand{\infr} [3] [] {\infer[\textsc{#1}]{#3}{#2}}
+\newcommand{\iand}        {\qquad}
+
+\newcommand{\funct} [2] {#1\nobreak\rightarrow\nobreak#2}
+\newcommand{\boolt}     {\mathtt{bool}}
+
+\newcommand{\typeEnv}         {\Gamma}
+\newcommand{\entails}         {\vdash}
+\newcommand{\judgment}    [3] {#1 \entails #2 : #3}
+\newcommand{\envent}      [2] {\judgment{\typeEnv}{#1}{#2}}
+\newcommand{\extenvent}   [4] {\judgment{\typeEnv, #1 : #2}{#3}{#4}}
+\newcommand{\envlookup}   [3] {\infr{#1(#2) = #3}{\judgment{#1}{#2}{#3}}}
+\newcommand{\hyphen}          {\mbox{-}}
+
+\newcommand{\letbind}  [2] {\mathsf{let}~\lbind{#1}{#2}}
+\newcommand{\letbindp} [2] {\mathsf{let}~(\lbind{#1}{#2})}
+\newcommand{\lbind}    [2] {#1=#2}
+\newcommand{\letin}    [1] {\mathsf{in}~#1}
+
+%% if
+\newcommand{\ife}      [3] {\ifline{#1}~\thenline{#2}~\elseline{#3}}
+\newcommand{\ifea}     [3] {\begin{array}{l}\ifline{#1}\\\thenline{#2}\\\elseline{#3}\end{array}}
+
+\newcommand{\ifop}         {\mathsf{if}}
+\newcommand{\ifline}   [1] {\ifop~ \mathsf{(}#1\mathsf{)}}
+\newcommand{\thenline} [1] {\mathsf{then}~#1}
+\newcommand{\elseline} [1] {\mathsf{else}~#1}
+
+%% opers
+\newcommand{\binopdef}     {\mathit{binop}}
+\newcommand{\unopdef}      {\mathit{unop}}
+\newcommand{\binope}   [2] {\binopdef~#1~#2}
+\newcommand{\unope}    [1] {\unopdef~#1}
+
+\newcommand{\andop}        {\mathsf{and}}
+\newcommand{\orop}         {\mathsf{or}}
+\newcommand{\notop}        {\mathsf{not}}
+\newcommand{\ande}     [2] {\mathsf{and}~#1~#2}
+\newcommand{\ore}      [2] {\mathsf{or}~#1~#2}
+\newcommand{\note}     [1] {\mathsf{not}~#1}
+
+\newcommand{\falsev}     {\mathsf{false}}
+\newcommand{\truev}      {\mathsf{true}}
+
+\setlength{\abovedisplayskip}{2pt}
+\setlength{\belowdisplayskip}{2pt}
+
+\begin{document}
+
+\section{Language Definition}
+
+Notes: \\
+- How to separate dataflow and control flow in a simple manner?
+
+\[
+	\begin{array}{rclrclrcl}
+		p  & \in  & \verb|PORTS|              & m & \in & \verb|MODULES| & x & \in & \verb|VARIABLES|      \\
+		t  & \in  & \verb|TYPES|              & e & \in & \verb|EXPRS|   & s & \in & \verb|STATEMENTS|     \\
+		op & \in  & \andop \alt \orop \alt \& & v & \in & \verb|VALUES|  & P & \in & \verb|DESIRED PROOFS| \\
+		   & \alt & | \alt \hat{} \alt <      &   &     &                &   &                             \\
+		   & \alt & > \alt <= \alt >=         &   &     &                &   &                             \\
+		   & \alt & == \alt !=                &   &     &                &   &                             \\
+	\end{array}
+\]
+\[
+	\begin{array}{rcl}
+		P      & :=   & (\verb|requires | e^+)^? (\verb|ensures | e^+)^? (\verb|tries | e^+)^?                               \\
+		t      & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig|                           \\
+		       & \alt & m \alt \verb|[|e\verb|]var|^?\ t                                                                     \\
+		e      & :=   & v \alt t \alt {e}\:\mathit{op}\:{e}  \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}() \alt (e)          \\
+		       & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?                      \\
+		       & \alt & \&\verb|var|^? e                                                                                     \\
+		p_f    & :=   & id \verb|: | \& var^? t                                                                              \\
+		p      & :=   & \verb|port {| \overline{p_f} \verb|}|                                                                \\
+		m      & :=   & \verb|module(| \overline{id: t} \verb|) {| \overline{c}\ \overline{p} \verb|}|                       \\
+		v      & :=   & true \alt false \alt x                                                                               \\
+		x      & :=   & id                                                                                                   \\
+		s      & :=   & \alpha\ x \verb| = | e \verb|;|                                                                      \\
+		       & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?                      \\
+		c      & :=   & \verb|comb | id \verb|(| id \verb|: &| t \verb|, | \overline{id: p} \verb|) {| \overline{s} \verb|}| \\
+		\alpha & :=   & \verb|var| \alt \verb|const|                                                                         \\
+	\end{array}
+\]
+
+\section{Drafting}
+
+\begin{verbatim}
+const Adder = module() {
+    const P = port {
+        a: &u1,
+        b: &u1,
+        out: &var u1,
+        carry: &var u1,
+    };
+
+    comb add(p: P) 
+        ensures p.out = p.a +% p.b;
+    {
+        p.out = p.a ^ p.b; 
+        p.carry = p.a & p.b;
+    }
+};
+comb adder(a: &u1, b: &u1, out: &var u1, carry: &var u1)
+    ensures carry = a +% b;
+{
+    out = a ^ b;
+    carry = a & b;
+}
+comb main() {
+    const mod = CoolMod();
+    const a = 1;
+    const b = 1;
+    var out = undefined;
+    var carry = undefined;
+    mod.add(.{ .a = a, .b = b, .out = out, .carry = carry });
+}
+\end{verbatim}
+
+Version with ports at module level: \\
+- Need to resolve multidriven ports across combs
+\begin{verbatim}
+const CoolMod = module(p: CoolMod.P) {
+    const P = port {
+        a: &u1,
+        b: &u1,
+        out: &var u1,
+        carry: &var u1,
+    };
+
+    comb add() {
+        p.out = p.a ^ p.b; 
+        p.carry = p.a & p.b;
+    }
+};
+\end{verbatim}
+
+- It came to me in a dream
+
+\begin{verbatim}
+const Sync0 = module(clk: clock, nrst: reset) {
+    prev: [2]u1 = @reg(.{ clk, nrst }),
+
+    comb sync(sync: Sync, async_in: &u1) u1 {
+        sync.prev.next = &.{sync.prev[0], async_in.*};
+
+        return sync.prev[1];
+    }
+};
+comb top(clk: clock, nrst: reset) {
+    const sync = Sync(clk, nrst);
+    const async_in = ...;
+    const sync_out = sync.sync(&async_in);
+    ...
+}
+\end{verbatim}
+
+- Registers must live at module level to allow for any comb to access them, however, only one comb
+can drive each register (should this be done at comb call level?) \\
+- Language "constructs" can create implicitly registers/memories, expressions should not be able to
+implicitly.
+
+\section{CPU Example (Taken from Spade)}
+
+\begin{verbatim}
+// Mandatory `delay(N)` attribute, used for API purposes,
+// must match number of stages
+// No order to stages, possibly allows more layout freedom?
+// (how does this work in dependent stages?)
+pipe Cpu3Stage(clk: clock, nrst: reset, halt: &bool) delay(3) {
+    const fetch = @stage({
+        const stall = execute.exec_stall | halt;
+        pub const pc = Pc(clk, nrst, stall, decode.maybe_target);
+    });
+    const decode = @stage({
+        const insn = Insn.from(readMem(pc));
+        const is_jump = insn.isJump();
+        pub const decode_stall = is_jump;
+    });
+    const execute = @stage({
+        const regs = Regfile(clk, nrst, memory.result);
+        // Linear combs limit number of read ports for regfile.
+        const op_a = regs.read0(&decode.insn.op_a);
+        const op_b = regs.read1(&decode.insn.op_b);
+        // How are combs tracked across stages?
+        const maybe_target: ?u32 = if (insn.isJump())
+            insn.jumpTarget()
+        else
+            null;
+        const alu = Alu();
+        pub const result = alu.result(op_a, op_b);
+    });
+    const writeback = @stage({
+        pub const result = switch (decode.insn.ty) {
+            .add, .sub, .set => execute.alu_result,
+            .jump => null,
+        }
+    });
+};
+
+const Insn = struct {
+    ...,
+
+    comb isJump(insn: &Insn) sig {
+        ...
+    }
+    comb from(raw: &u32) Insn {
+        const insn = ...decoding...;
+        if (insn.isJump()) {
+            return Noop;
+        } else {
+            return insn;
+        }
+    }
+};
+
+const Regfile = struct {
+    ...,
+
+    pub linear comb read0(regfile: Regfile, idx: u5) u32 {
+        ...
+    }
+    pub linear comb read1(regfile: Regfile, idx: u5) u32 {
+        ...
+    }
+}
+\end{verbatim}
+
+- Modules have shared resources as fields created lazily as used by called combs, empty box if created and no combs called \\
+- Comb invocation provides dataflow to signals within module
+
+\begin{verbatim}
+const Sync2FF = module {
+    clk: clock,
+    nrst: reset,
+
+    pub comb sync(self: &Sync2FF, async_in: &sig) u1 {
+        const prev: u2 = @reg(self.clk, self.nrst);
+
+        prev.next = &.{prev[0], async_in};
+        return prev[1];
+    }
+};
+// Alternatively
+comb sync(clk: &clock, nrst: &reset, async_in: &sig) u1 {
+    const prev: u2 = @reg(clk, nrst);
+
+    prev.next = &.{prev[0], async_in};
+    return prev[1];
+}
+comb top(async_in: &sig) void {
+    const clk = @clockInit();
+    const nrst = @resetInit(.negedge);
+    const sync = Sync2FF{ .clk = clk, .nrst = nrst };
+    const sync_out = sync.sync(&async_in);
+}
+\end{verbatim}
+
+- Use of structs as pseudo-modules: \\
+- Function calls instantaneous and non-synthesizable but simulatable
+
+\begin{verbatim}
+const Sync2FF = struct {
+    prev: u2,
+
+    pub fn init(clk: clock, nrst: reset) Sync2FF {
+        return .{ .prev = std.Reg.init(clk, nrst, 0b00) };
+    }
+
+    pub fn sync(self: Sync2FF, async_in: *sig) u1 {
+        const ret = self.prev[1];
+        self.prev.nextVal(&.{self.prev[0], async_in.*});
+        return ret;
+    }
+};
+comb top(asyn_in: &sig) void {
+    const clk = @clockInit();
+    const nrst = @resetInit(.negedge);
+    const sync = Sync2FF.init(clk, nrst);
+    const sync_out = sync.sync(&async_in);
+}
+\end{verbatim}
+
+- Testing
+
+\begin{verbatim}
+fn Unsigned(comptime len: u16) type {
+    return @Int(.unsigned, len)
+}
+comb adder(
+    comptime len: u16,
+    a: Unsigned(len),
+    b: Unsigned(len),
+    carry_in: u1
+) struct {
+    sum: Unsigned(len),
+    overflow u1,
+} {
+    ...
+}
+
+// Exhaustive dynamic testing
+test adder {
+    inline for (1..4) |adder_size| {
+        // pseudo loop
+        for (0..2^adder_size) |a| {
+            for (0..2^adder_size) |b| {
+                for (0..1) |carry| {
+                    const out = adder(adder_size, a, b, carry);
+                    const expected = @addWithOverflow(
+                        a,
+                        b + carry
+                    );
+                    try std.testing.expect(
+                        out.sum,
+                        expected.sum
+                    );
+                    try std.testing.expect(
+                        out.overflow,
+                        expected.overflow
+                    );
+                }
+            }
+        }
+    }
+}
+
+// Static module level verification, done at compile time
+// through Z3, symbolic execution, or such
+comb adder(...) struct { ... } requires ... ensures 
+    // Figures out some way to prove this
+    ret.sum = a + b + carry_in and
+    ret.overflow = (@as(Unsigned(len+1), a) + b + carry_in)>>len 
+{
+    ...
+}
+
+// Dynamic module level verification, done during simulation
+comb adder(...) struct { ... } requires ... tries 
+    // This is checked after every invocation
+    ret.sum = a + b + carry_in and
+    ret.overflow = (@as(Unsigned(len+1), a) + b + carry_in)>>len 
+{
+    ...
+}
+\end{verbatim}
+
+\end{document}
