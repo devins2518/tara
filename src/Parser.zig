@@ -31,7 +31,7 @@ scratchpad: std.ArrayListUnmanaged(Node.Idx) = .{},
 // See `parseContainerMembers` for an example.
 extra_data: std.ArrayListUnmanaged(Node.Idx) = .{},
 
-// Parse the file as a root Taaraa file
+// Parse the file as a root Tara file
 // `self.nodes` must have a non-zero capacity
 pub fn parseRoot(self: *Parser) !void {
     log.debug("parseRoot\n", .{});

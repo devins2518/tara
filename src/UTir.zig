@@ -1,4 +1,4 @@
-// Untyped Taaraa IR
+// Untyped Tara IR
 // This is generated from the AST before any types has been assigned as
 // a step towards full semantic analysis.
 const UTir = @This();
