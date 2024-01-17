@@ -71,36 +71,40 @@
 
 \section{Language Definition}
 
-Notes: \\
-- How to separate dataflow and control flow in a simple manner?
+Notes:
+\begin{itemize}
+	\item How to separate dataflow and control flow in a simple manner?
+\end{itemize}
 
 \[
 	\begin{array}{rclrclrcl}
-		p  & \in  & \verb|PORTS|              & m & \in & \verb|MODULES| & x & \in & \verb|VARIABLES|      \\
-		t  & \in  & \verb|TYPES|              & e & \in & \verb|EXPRS|   & s & \in & \verb|STATEMENTS|     \\
-		op & \in  & \andop \alt \orop \alt \& & v & \in & \verb|VALUES|  & P & \in & \verb|DESIRED PROOFS| \\
-		   & \alt & | \alt \hat{} \alt <      &   &     &                &   &                             \\
-		   & \alt & > \alt <= \alt >=         &   &     &                &   &                             \\
-		   & \alt & == \alt !=                &   &     &                &   &                             \\
+		p  & \in  & \verb|PORTS|                           & m & \in & \verb|MODULES| & x & \in & \verb|VARIABLES|      \\
+		t  & \in  & \verb|TYPES|                           & e & \in & \verb|EXPRS|   & s & \in & \verb|STATEMENTS|     \\
+		op & \in  & \andop \alt \orop \alt \verb|&|        & b & \in & \verb|BLOCKS|  & P & \in & \verb|DESIRED PROOFS| \\
+		   & \alt & \verb|\|| \alt \verb|^| \alt \verb|<|  &   &     &                &   &                             \\
+		   & \alt & \verb|>| \alt \verb|<=| \alt \verb|>=| &   &     &                &   &                             \\
+		   & \alt & \verb|==| \alt \verb|!=| \alt \verb|+| &   &     &                &   &                             \\
+		   & \alt & \verb|-| \alt \verb|*|  \alt \verb|\|  &   &     &                &   &                             \\
 	\end{array}
 \]
 \[
 	\begin{array}{rcl}
-		P      & :=   & (\verb|requires | e^+)^? (\verb|ensures | e^+)^? (\verb|tries | e^+)^?                               \\
-		t      & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig|                           \\
-		       & \alt & m \alt \verb|[|e\verb|]var|^?\ t                                                                     \\
-		e      & :=   & v \alt t \alt {e}\:\mathit{op}\:{e}  \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}() \alt (e)          \\
-		       & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?                      \\
-		       & \alt & \&\verb|var|^? e                                                                                     \\
-		p_f    & :=   & id \verb|: | \& var^? t                                                                              \\
-		p      & :=   & \verb|port {| \overline{p_f} \verb|}|                                                                \\
-		m      & :=   & \verb|module(| \overline{id: t} \verb|) {| \overline{c}\ \overline{p} \verb|}|                       \\
-		v      & :=   & true \alt false \alt x                                                                               \\
-		x      & :=   & id                                                                                                   \\
-		s      & :=   & \alpha\ x \verb| = | e \verb|;|                                                                      \\
-		       & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?                      \\
-		c      & :=   & \verb|comb | id \verb|(| id \verb|: &| t \verb|, | \overline{id: p} \verb|) {| \overline{s} \verb|}| \\
-		\alpha & :=   & \verb|var| \alt \verb|const|                                                                         \\
+		P   & :=   & (\verb|requires | e)^?\ (\verb|wants | e)^?\ (\verb|ensures | e)^?\ (\verb|tries | e)^?  \\
+		t   & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig|               \\
+		    & \alt & m \alt \verb|[|e\verb|]var|^?\ t \alt p                                                  \\
+		e   & :=   & t \alt {e}\:\mathit{op}\:{e} \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}() \alt (e)      \\
+		    & \alt & \&\verb|var|^? e \alt b \alt \verb|undefined| \alt \verb|true| \alt \verb|false| \alt x  \\
+		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?                                                        \\
+		p_f & :=   & id \verb|: &var|^? t                                                                     \\
+		p   & :=   & \verb|port {| \overline{p_f} \verb|}|                                                    \\
+		m   & :=   & \verb|module | P \verb| {| \overline{c}\ \overline{s}\ \overline{p_f} \verb|}|           \\
+		x   & :=   & id                                                                                       \\
+		s   & :=   & s_q\ x \verb| = | e \verb|;|                                                             \\
+		    & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?          \\
+		c   & :=   & \verb|comb | id \verb|(|\overline{id:\ p} \verb|) | t\ P \verb| {| \overline{s} \verb|}| \\
+		s_q & :=   & \verb|var| \alt \verb|const|                                                             \\
+		b   & :=   & (id\verb|:|)^? \verb|{ | \overline{s} \verb| }|
+		%% TODO: for loops with unrolling
 	\end{array}
 \]
 
@@ -138,8 +142,11 @@ comb main() {
 }
 \end{verbatim}
 
-Version with ports at module level: \\
-- Need to resolve multidriven ports across combs
+Version with ports at module level:
+\begin{itemize}
+	\item Need to resolve multidriven ports across combs
+\end{itemize}
+
 \begin{verbatim}
 const CoolMod = module(p: CoolMod.P) {
     const P = port {
@@ -156,7 +163,9 @@ const CoolMod = module(p: CoolMod.P) {
 };
 \end{verbatim}
 
-- It came to me in a dream
+\begin{itemize}
+	\item It came to me in a dream
+\end{itemize}
 
 \begin{verbatim}
 const Sync0 = module(clk: clock, nrst: reset) {
@@ -176,79 +185,17 @@ comb top(clk: clock, nrst: reset) {
 }
 \end{verbatim}
 
-- Registers must live at module level to allow for any comb to access them, however, only one comb
-can drive each register (should this be done at comb call level?) \\
-- Language "constructs" can create implicitly registers/memories, expressions should not be able to
-implicitly.
+\begin{itemize}
+	\item Registers and other signals can live at module level to allow for any comb to access them,
+	      however, only one comb can drive each register (should this be done at comb call level?)
+	\item Language "constructs" (i.e. stage blocks) can create implicitly registers/memories,
+	      however expressions should not be able to implicitly.
+\end{itemize}
 
-\section{CPU Example (Taken from Spade)}
-
-\begin{verbatim}
-// Mandatory `delay(N)` attribute, used for API purposes,
-// must match number of stages
-// No order to stages, possibly allows more layout freedom?
-// (how does this work in dependent stages?)
-pipe Cpu3Stage(clk: clock, nrst: reset, halt: &bool) delay(3) {
-    const fetch = @stage({
-        const stall = execute.exec_stall | halt;
-        pub const pc = Pc(clk, nrst, stall, decode.maybe_target);
-    });
-    const decode = @stage({
-        const insn = Insn.from(readMem(pc));
-        const is_jump = insn.isJump();
-        pub const decode_stall = is_jump;
-    });
-    const execute = @stage({
-        const regs = Regfile(clk, nrst, memory.result);
-        // Linear combs limit number of read ports for regfile.
-        const op_a = regs.read0(&decode.insn.op_a);
-        const op_b = regs.read1(&decode.insn.op_b);
-        // How are combs tracked across stages?
-        const maybe_target: ?u32 = if (insn.isJump())
-            insn.jumpTarget()
-        else
-            null;
-        const alu = Alu();
-        pub const result = alu.result(op_a, op_b);
-    });
-    const writeback = @stage({
-        pub const result = switch (decode.insn.ty) {
-            .add, .sub, .set => execute.alu_result,
-            .jump => null,
-        }
-    });
-};
-
-const Insn = struct {
-    ...,
-
-    comb isJump(insn: &Insn) sig {
-        ...
-    }
-    comb from(raw: &u32) Insn {
-        const insn = ...decoding...;
-        if (insn.isJump()) {
-            return Noop;
-        } else {
-            return insn;
-        }
-    }
-};
-
-const Regfile = struct {
-    ...,
-
-    pub linear comb read0(regfile: Regfile, idx: u5) u32 {
-        ...
-    }
-    pub linear comb read1(regfile: Regfile, idx: u5) u32 {
-        ...
-    }
-}
-\end{verbatim}
-
-- Modules have shared resources as fields created lazily as used by called combs, empty box if created and no combs called \\
-- Comb invocation provides dataflow to signals within module
+\begin{itemize}
+	\item Modules have shared resources as fields created lazily as used by called combs, empty box if created and no combs called
+	\item Comb invocation provides dataflow to signals within module
+\end{itemize}
 
 \begin{verbatim}
 const Sync2FF = module {
@@ -262,7 +209,8 @@ const Sync2FF = module {
         return prev[1];
     }
 };
-// Alternatively
+// Alternatively, the module can be collapsed into a single comb
+// which stores the previous state
 comb sync(clk: &clock, nrst: &reset, async_in: &sig) u1 {
     const prev: u2 = @reg(clk, nrst);
 
@@ -277,8 +225,10 @@ comb top(async_in: &sig) void {
 }
 \end{verbatim}
 
-- Use of structs as pseudo-modules: \\
-- Function calls instantaneous and non-synthesizable but simulatable
+\begin{itemize}
+	\item Structs can be used as pseudo-modules
+	\item Function calls instantaneous and non-synthesizable but simulatable
+\end{itemize}
 
 \begin{verbatim}
 const Sync2FF = struct {
@@ -364,6 +314,119 @@ comb adder(...) struct { ... } requires ... tries
 {
     ...
 }
+
+// `requires` and `wants` similarly used for static and dynamic
+// predicate verification
 \end{verbatim}
+
+
+\section{CPU Example (Taken from Spade)}
+
+\begin{verbatim}
+// Mandatory `delay(N)` attribute, used for API purposes,
+// must match number of stages
+// Stages ordered by declaration order
+// How to ensure future stage reg uses are semantically valid?
+pipe Cpu3Stage(clk: clock, nrst: reset, halt: &bool) delay(4) {
+    const fetch = stage {
+        const stall = decode.stall | halt;
+        const pc_mod = Pc{ .clk = &clk, .nrst = &nrst };
+        pub const pc = pc_mod.next(
+            stall,
+            execute.jump_target orelse pc_mod.now + 4
+        );
+    };
+    const decode = stage {
+        pub const insn = Insn.from(readMem(pc));
+        pub const is_jump = insn.isJump();
+        pub const stall = is_jump;
+    };
+    const execute = stage {
+        const regs = Regfile(clk, nrst, memory.result);
+        // Linear combs limit number of read ports for regfile.
+        const op_a = regs.read0(&decode.insn.op_a);
+        const op_b = regs.read1(&decode.insn.op_b);
+        // How are combs tracked across stages?
+        const jump_target ?u32 = if (decode.is_jump)
+            decode.insn.jumpTarget()
+        else
+            null;
+        const alu = Alu();
+        pub const result = alu.result(op_a, op_b);
+    };
+    const writeback = stage {
+        pub const result = switch (decode.insn.ty) {
+            .add, .sub, .set => execute.alu_result,
+            .jump => null,
+        };
+    };
+};
+
+const Insn = struct {
+    ...,
+
+    comb isJump(insn: &Insn) sig {
+        ...
+    }
+    comb from(raw: &u32) Insn {
+        const insn = ...decoding...;
+        if (insn.isJump()) {
+            return Noop;
+        } else {
+            return insn;
+        }
+    }
+};
+
+const Regfile = struct {
+    ...,
+
+    pub linear comb read0(regfile: Regfile, idx: u5) u32 {
+        ...
+    }
+    pub linear comb read1(regfile: Regfile, idx: u5) u32 {
+        ...
+    }
+}
+\end{verbatim}
+
+\section{Types}
+
+\subsection{General}
+Types will be first class values, allowing for simple polymorphism through function calls at compile
+time. Synthesizable references use the \verb|&| syntax as an invalid reference to a net is not possible.
+Nonsynthesizable references should use the \verb|*| syntax as invalid references to variables is possible
+(i.e. pointer casts). Verilog conversion will attempt to track use of \verb|z| and \verb|x| (i.e.
+net not always driven) for conversion into \verb|uN|. Use of these will probably be valid compile
+error.
+
+\subsection{Ports}
+Ports are guaranteed-synthesizable constructs which map to wires. The only valid fields are net
+references (\verb|&T|).
+
+\subsection{References and Pointers}
+References to nets use the \verb|&| syntax (\verb|&T|) as opposed to pointers to variables which use
+the \verb|*| syntax (\verb|*T|). References are guaranteed to point to semantically valid variables.
+In the case of references to non-synthesizable constructs, they are guaranteed to be semantically
+valid (not assigned to using \verb|undefined|). There are a few rules for coercion and typing when using the
+\verb|&| operator:
+
+\begin{itemize}
+	\item Use of the \verb|&| operator in a synthesizable context (comb, module, etc) creates a \verb|&T|.
+	\item Use of the \verb|&| operator in a non-synthesizable context (fn) creates a \verb|*T|.
+	\item A \verb|&T| can decay into a \verb|*T|.
+	\item A \verb|*T| can be promoted to a \verb|&T| through the \verb|@strongRef()| builtin function.
+	      \begin{enumerate}
+		      \item The pointer will be checked to ensure it is properly aligned, and the use of undefined
+		            will be tracked to ensure that all fields are semantically valid.
+	      \end{enumerate}
+\end{itemize}
+
+Unlike pointers, references are not meant to be used for non-synthesizable use cases. This is
+because \verb|&var T| is a read-illegal, write-once type. It can be thought of as a more restrictive
+linear type in which reads are not legal. This is because \verb|&var T| type represents an output
+port; it may cause combinatorial loops when read, and multiple writes simply cannot be synthesized.
+Unlike pointers, references do not support the dereference (\verb|v.*|) operator and freely decay
+into a \verb|T| when used.
 
 \end{document}
