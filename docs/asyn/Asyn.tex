@@ -89,23 +89,24 @@ Notes:
 \]
 \[
 	\begin{array}{rcl}
-		P   & :=   & (\verb|requires | e)^?\ (\verb|ensures | e)^?\                                           \\
-		t   & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig|               \\
-		    & \alt & m \alt \verb|[|e\verb|]var|^?\ e \alt p \alt \verb|type|                                 \\
-		e   & :=   & t \alt {e}\:\mathit{op}\:{e} \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}() \alt (e)      \\
-		    & \alt & \&\verb|var|^? e \alt b \alt \verb|undefined| \alt \verb|true| \alt \verb|false| \alt x  \\
-		    & \alt & e\verb|.*| \alt \verb|ensure | e                                                         \\
-		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?                                                        \\
-		p_f & :=   & id \verb|: &var|^? t                                                                     \\
-		p   & :=   & \verb|port {| \overline{p_f} \verb|}|                                                    \\
-		m   & :=   & \verb|module | P \verb| { | \overline{p_f}\ \overline{s}\ \overline{c} \verb| }|         \\
-		x   & :=   & id                                                                                       \\
-		s_q & :=   & \verb|var| \alt \verb|const|                                                             \\
-		s   & :=   & s_q\ x (\verb|: | t)^? \verb| = | e \verb|;|                                             \\
-		    & \alt & x = e;                                                                                   \\
-		    & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?          \\
-		c   & :=   & \verb|comb | id \verb|(|\overline{id:\ p} \verb|) | t\ P \verb| {| \overline{s} \verb|}| \\
-		b   & :=   & (id\verb|:|)^? \verb|{ | \overline{s} \verb| }|
+		P   & :=   & (\verb|requires | e)^?\ (\verb|ensures | e)^?\                                                  \\
+		t   & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig|                      \\
+		    & \alt & m \alt \verb|[|e\verb|]var|^?\ e \alt p \alt \verb|type|                                        \\
+		e   & :=   & t \alt {e}\:\mathit{op}\:{e} \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}() \alt (e)             \\
+		    & \alt & \&\verb|var|^? e \alt b \alt \verb|undefined| \alt \verb|true| \alt \verb|false| \alt x         \\
+		    & \alt & e\verb|.*| \alt \verb|expect | e                                                                \\
+		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?                                                               \\
+		p_f & :=   & id \verb|: &var|^? t                                                                            \\
+		p   & :=   & \verb|port {| \overline{p_f} \verb|}|                                                           \\
+		m   & :=   & \verb|module | P \verb| { | \overline{p_f}\ \overline{s}\ \overline{c} \verb| }|                \\
+		x   & :=   & id                                                                                              \\
+		s_p & :=   & pub                                                                                             \\
+		s_q & :=   & \verb|var| \alt \verb|const|                                                                    \\
+		s   & :=   & s_p^?\ s_q\ x (\verb|: | t)^? \verb| = | e \verb|;|                                             \\
+		    & \alt & x = e;                                                                                          \\
+		    & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?                 \\
+		c   & :=   & s_p^?\ \verb|comb | id \verb|(|\overline{id:\ p} \verb|) | t\ P \verb| {| \overline{s} \verb|}| \\
+		b   & :=   & (id\verb|:|)^? \verb|{ | \overline{s} \verb| }|                                                 \\
 		%% TODO: for loops with unrolling
 	\end{array}
 \]
@@ -316,6 +317,14 @@ const Mod = module ensures Mod.a != Mod.b {
     b: u2,
     ...
 };
+
+// `expect` statements can be used to provide run-time checks
+// for predicates
+comb adder(...) u2 requires ... ensures ret == a + b {
+    ...
+    expect ret == a + b;
+    return ret;
+}
 \end{verbatim}
 
 \section{CPU Example (Taken from Spade)}
