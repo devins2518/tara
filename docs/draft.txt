@@ -340,3 +340,17 @@ const Mod = module(in: u1) void {
         }
     )
 }
+
+// Pipeline
+// How to refer to later stages? Namespace scoping?
+const Pipe = pipe(2)() void {
+    const fetch_stage = @stage({
+        const fetch = Fetch{};
+        pub const out = Fetch(...);
+    });
+    const exec_stage = @stage({
+        const exec = Exec{};
+        exec(fetch_stage.out)
+    });
+    ...
+}

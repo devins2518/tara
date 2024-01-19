@@ -78,31 +78,33 @@ Notes:
 
 \[
 	\begin{array}{rclrclrcl}
-		p  & \in  & \verb|PORTS|                           & m & \in & \verb|MODULES| & x & \in & \verb|VARIABLES|      \\
-		t  & \in  & \verb|TYPES|                           & e & \in & \verb|EXPRS|   & s & \in & \verb|STATEMENTS|     \\
-		op & \in  & \andop \alt \orop \alt \verb|&|        & b & \in & \verb|BLOCKS|  & P & \in & \verb|DESIRED PROOFS| \\
-		   & \alt & \verb|\|| \alt \verb|^| \alt \verb|<|  &   &     &                &   &                             \\
-		   & \alt & \verb|>| \alt \verb|<=| \alt \verb|>=| &   &     &                &   &                             \\
-		   & \alt & \verb|==| \alt \verb|!=| \alt \verb|+| &   &     &                &   &                             \\
-		   & \alt & \verb|-| \alt \verb|*|  \alt \verb|\|  &   &     &                &   &                             \\
+		p  & \in  & \verb|PORTS|                           & m & \in & \verb|MODULES| & x & \in & \verb|VARIABLES|  \\
+		t  & \in  & \verb|TYPES|                           & e & \in & \verb|EXPRS|   & s & \in & \verb|STATEMENTS| \\
+		op & \in  & \andop \alt \orop \alt \verb|&|        & b & \in & \verb|BLOCKS|  &   &     &                   \\
+		   & \alt & \verb|\|| \alt \verb|^| \alt \verb|<|  &   &     &                &   &                         \\
+		   & \alt & \verb|>| \alt \verb|<=| \alt \verb|>=| &   &     &                &   &                         \\
+		   & \alt & \verb|==| \alt \verb|!=| \alt \verb|+| &   &     &                &   &                         \\
+		   & \alt & \verb|-| \alt \verb|*|  \alt \verb|\|  &   &     &                &   &                         \\
 	\end{array}
 \]
 \[
 	\begin{array}{rcl}
-		P   & :=   & (\verb|requires | e)^?\ (\verb|wants | e)^?\ (\verb|ensures | e)^?\ (\verb|tries | e)^?  \\
+		P   & :=   & (\verb|requires | e)^?\ (\verb|ensures | e)^?\                                           \\
 		t   & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig|               \\
-		    & \alt & m \alt \verb|[|e\verb|]var|^?\ t \alt p                                                  \\
+		    & \alt & m \alt \verb|[|e\verb|]var|^?\ e \alt p \alt \verb|type|                                 \\
 		e   & :=   & t \alt {e}\:\mathit{op}\:{e} \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}() \alt (e)      \\
 		    & \alt & \&\verb|var|^? e \alt b \alt \verb|undefined| \alt \verb|true| \alt \verb|false| \alt x  \\
+		    & \alt & e\verb|.*| \alt \verb|ensure | e                                                         \\
 		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?                                                        \\
 		p_f & :=   & id \verb|: &var|^? t                                                                     \\
 		p   & :=   & \verb|port {| \overline{p_f} \verb|}|                                                    \\
-		m   & :=   & \verb|module | P \verb| {| \overline{c}\ \overline{s}\ \overline{p_f} \verb|}|           \\
+		m   & :=   & \verb|module | P \verb| { | \overline{p_f}\ \overline{s}\ \overline{c} \verb| }|         \\
 		x   & :=   & id                                                                                       \\
-		s   & :=   & s_q\ x \verb| = | e \verb|;|                                                             \\
+		s_q & :=   & \verb|var| \alt \verb|const|                                                             \\
+		s   & :=   & s_q\ x (\verb|: | t)^? \verb| = | e \verb|;|                                             \\
+		    & \alt & x = e;                                                                                   \\
 		    & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?          \\
 		c   & :=   & \verb|comb | id \verb|(|\overline{id:\ p} \verb|) | t\ P \verb| {| \overline{s} \verb|}| \\
-		s_q & :=   & \verb|var| \alt \verb|const|                                                             \\
 		b   & :=   & (id\verb|:|)^? \verb|{ | \overline{s} \verb| }|
 		%% TODO: for loops with unrolling
 	\end{array}
@@ -252,7 +254,9 @@ comb top(asyn_in: &sig) void {
 }
 \end{verbatim}
 
-- Testing
+\begin{itemize}
+	\item Testing
+\end{itemize}
 
 \begin{verbatim}
 fn Unsigned(comptime len: u16) type {
@@ -306,19 +310,13 @@ comb adder(...) struct { ... } requires ... ensures
     ...
 }
 
-// Dynamic module level verification, done during simulation
-comb adder(...) struct { ... } requires ... tries 
-    // This is checked after every invocation
-    ret.sum = a + b + carry_in and
-    ret.overflow = (@as(Unsigned(len+1), a) + b + carry_in)>>len 
-{
+// Module level predicates can be used to provide invariates
+const Mod = module ensures Mod.a != Mod.b {
+    a: u2,
+    b: u2,
     ...
-}
-
-// `requires` and `wants` similarly used for static and dynamic
-// predicate verification
+};
 \end{verbatim}
-
 
 \section{CPU Example (Taken from Spade)}
 
@@ -388,6 +386,35 @@ const Regfile = struct {
         ...
     }
 }
+\end{verbatim}
+
+\section{Possible Lowering to Calyx}
+
+\begin{verbatim}
+const Adder = module { ... };
+
+// Implements (m0 + m1) + (m2 + m3)
+const Reducer = module {
+    a0: Adder,
+    a1: Adder,
+    a2: Adder,
+
+    pub comb reduce(
+        self: Reducer,
+        m0: u8,
+        m1: u8,
+        m2: u8,
+        m3: u8
+    ) u8 {
+        const a0: u8 = @reg(.{.clk = clk, .rst = nrst});
+        const a1: u8 = @reg(.{.clk = clk, .rst = nrst});
+        const a2: u8 = @reg(.{.clk = clk, .rst = nrst});
+        a0.next = self.a0.add(m0, m1);
+        a1.next = self.a1.add(m2, m3);
+        a2.next = self.a2.add(a0, a1);
+        return a2.curr;
+    }
+};
 \end{verbatim}
 
 \section{Types}
