@@ -37,16 +37,17 @@ pub const NamedAttribute = struct {
         return named_attr._;
     }
 
-    pub fn name(named_attr: NamedAttribute) Identifier {
+    pub fn getName(named_attr: NamedAttribute) Identifier {
         return Identifier.fromRaw(named_attr.getRaw().name);
     }
 
-    pub fn attribute(named_attr: NamedAttribute) Attribute {
+    pub fn getAttribute(named_attr: NamedAttribute) Attribute {
         return Attribute.fromRaw(named_attr.getRaw().attribute);
     }
 
     /// Associates an attribute with the name. Takes ownership of neither.
-    pub fn initFromNameAndAttr(ident: Identifier, attr: Attribute) NamedAttribute {
+    pub fn initFromNameAndAttr(context: Context, name: []const u8, attr: Attribute) NamedAttribute {
+        const ident = Identifier.get(context, StringRef.init(name));
         return NamedAttribute.fromRaw(c.mlirNamedAttributeGet(ident.getRaw(), attr.getRaw()));
     }
 };
@@ -430,8 +431,9 @@ pub const OperationState = struct {
     }
 
     /// Constructs an operation state from a name and a location.
-    pub fn get(name: StringRef, loc: Location) OperationState {
-        return OperationState.fromRaw(c.mlirOperationStateGet(name.getRaw(), loc.getRaw()));
+    pub fn get(name: []const u8, loc: Location) OperationState {
+        const string_ref = StringRef.init(name);
+        return OperationState.fromRaw(c.mlirOperationStateGet(string_ref.getRaw(), loc.getRaw()));
     }
 
     /// Adds a list of components to the operation state.
@@ -1332,6 +1334,126 @@ pub const Type = struct {
     pub fn dump(@"type": Type) void {
         c.mlirTypeDump(@"type".getRaw());
     }
+
+    /// Checks whether the given type is an integer type.
+    pub fn isInteger(@"type": Type) bool {
+        return c.mlirTypeIsAInteger(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an index type.
+    pub fn isIndex(@"type": Type) bool {
+        return c.mlirTypeIsAIndex(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a None type.
+    pub fn isNone(@"type": Type) bool {
+        return c.mlirTypeIsANone(@"type".getRaw());
+    }
+
+    /// Returns the typeID of an Complex type.
+    pub fn isComplex(@"type": Type) bool {
+        return c.mlirTypeIsAComplex(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f8E4M3B11FNUZ type.
+    pub fn isFloat8E4M3B11FNUZ(@"type": Type) bool {
+        return c.mlirTypeIsAFloat8E4M3B11FNUZ(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f8E4M3FN type.
+    pub fn isFloat8E4M3FN(@"type": Type) bool {
+        return c.mlirTypeIsAFloat8E4M3FN(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f8E4M3FNUZ type.
+    pub fn isFloat8E4M3FNUZ(@"type": Type) bool {
+        return c.mlirTypeIsAFloat8E4M3FNUZ(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f8E5M2 type.
+    pub fn isFloat8E5M2(@"type": Type) bool {
+        return c.mlirTypeIsAFloat8E5M2(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f8E5M2FNUZ type.
+    pub fn isAFloat8E5M2FNUZ(@"type": Type) bool {
+        return c.mlirTypeIsAFloat8E5M2FNUZ(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f16 type.
+    pub fn isFloat16(@"type": Type) bool {
+        return c.mlirTypeIsAF16(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f32 type.
+    pub fn isAF32(@"type": Type) bool {
+        return c.mlirTypeIsAF32(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an f64 type.
+    pub fn isAF64(@"type": Type) bool {
+        return c.mlirTypeIsAF64(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an TF32 type.
+    pub fn isATF32(@"type": Type) bool {
+        return c.mlirTypeIsATF32(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a bf16 type.
+    pub fn isABF16(@"type": Type) bool {
+        return c.mlirTypeIsABF16(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a Shaped type.
+    pub fn isAShaped(@"type": Type) bool {
+        return c.mlirTypeIsAShaped(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a Vector type.
+    pub fn isAVector(@"type": Type) bool {
+        return c.mlirTypeIsAVector(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a Tensor type.
+    pub fn isATensor(@"type": Type) bool {
+        return c.mlirTypeIsATensor(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a ranked tensor type.
+    pub fn isARankedTensor(@"type": Type) bool {
+        return c.mlirTypeIsARankedTensor(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an unranked tensor type.
+    pub fn isAUnrankedTensor(@"type": Type) bool {
+        return c.mlirTypeIsARankedTensor(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a MemRef type.
+    pub fn isAMemRef(@"type": Type) bool {
+        return c.mlirTypeIsAMemRef(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an UnrankedMemRef type.
+    pub fn isAUnrankedMemRef(@"type": Type) bool {
+        return c.mlirTypeIsAUnrankedMemRef(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a tuple type.
+    pub fn isATuple(@"type": Type) bool {
+        return c.mlirTypeIsATuple(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is a function type.
+    pub fn isAFunction(@"type": Type) bool {
+        return c.mlirTypeIsAFunction(@"type".getRaw());
+    }
+
+    /// Checks whether the given type is an opaque type.
+    pub fn isAOpaque(@"type": Type) bool {
+        return c.mlirTypeIsAOpaque(@"type".getRaw());
+    }
 };
 
 //===----------------------------------------------------------------------===//
@@ -1393,6 +1515,128 @@ pub const Attribute = struct {
     /// Prints the attribute to the standard error stream.
     pub fn dump(attr: Attribute) void {
         c.mlirAttributeDump(attr.getRaw());
+    }
+
+    pub fn isLocation(attr: Attribute) bool {
+        return c.mlirAttributeIsALocation(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is an affine map attribute.
+    pub fn isAffineMap(attr: Attribute) bool {
+        return c.mlirAttributeIsAAffineMap(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is an array attribute.
+    pub fn isArray(attr: Attribute) bool {
+        return c.mlirAttributeIsAArray(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a dictionary attribute.
+    pub fn isDictionary(attr: Attribute) bool {
+        return c.mlirAttributeIsADictionary(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a floating point attribute.
+    pub fn isFloat(attr: Attribute) bool {
+        return c.mlirAttributeIsAFloat(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is an integer attribute.
+    pub fn isInteger(attr: Attribute) bool {
+        return c.mlirAttributeIsAInteger(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a bool attribute.
+    pub fn isBool(attr: Attribute) bool {
+        return c.mlirAttributeIsABool(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is an integer set attribute.
+    pub fn isIntegerSet(attr: Attribute) bool {
+        return c.mlirAttributeIsAIntegerSet(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is an opaque attribute.
+    pub fn isOpaque(attr: Attribute) bool {
+        return c.mlirAttributeIsAOpaque(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a string attribute.
+    pub fn isString(attr: Attribute) bool {
+        return c.mlirAttributeIsAString(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a symbol reference attribute.
+    pub fn isSymbolRef(attr: Attribute) bool {
+        return c.mlirAttributeIsASymbolRef(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a flat symbol reference attribute.
+    pub fn isFlatSymbolRef(attr: Attribute) bool {
+        return c.mlirAttributeIsAFlatSymbolRef(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a type attribute.
+    pub fn isType(attr: Attribute) bool {
+        return c.mlirAttributeIsAType(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a unit attribute.
+    pub fn isUnit(attr: Attribute) bool {
+        return c.mlirAttributeIsAUnit(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is an elements attribute.
+    pub fn isElements(attr: Attribute) bool {
+        return c.mlirAttributeIsAElements(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a dense array attribute.
+    pub fn isDenseBoolArray(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseBoolArray(attr.getRaw());
+    }
+    pub fn isDenseI8Array(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseI8Array(attr.getRaw());
+    }
+    pub fn isDenseI16Array(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseI16Array(attr.getRaw());
+    }
+    pub fn isDenseI32Array(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseI32Array(attr.getRaw());
+    }
+    pub fn isDenseI64Array(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseI64Array(attr.getRaw());
+    }
+    pub fn isDenseF32Array(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseF32Array(attr.getRaw());
+    }
+    pub fn isDenseF64Array(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseF64Array(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a dense elements attribute.
+    pub fn isDenseElements(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseElements(attr.getRaw());
+    }
+    pub fn isDenseIntElements(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseIntElements(attr.getRaw());
+    }
+    pub fn isDenseFPElements(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseFPElements(attr.getRaw());
+    }
+
+    pub fn isDenseResourceElements(attr: Attribute) bool {
+        return c.mlirAttributeIsADenseResourceElements(attr.getRaw());
+    }
+
+    /// Checks whether the given attribute is a sparse elements attribute.
+    pub fn isSparseElements(attr: Attribute) bool {
+        return c.mlirAttributeIsASparseElements(attr.getRaw());
+    }
+
+    // Checks wheather the given attribute is a strided layout attribute.
+    pub fn isStridedLayout(attr: Attribute) bool {
+        return c.mlirAttributeIsAStridedLayout(attr.getRaw());
     }
 };
 

@@ -43,6 +43,13 @@ pub const StringRef = struct {
     ///  - an MlirStringRef representing the current portion of the string
     ///  - a pointer to user data forwarded from the printing call.
     pub const StringCallback = c.MlirStringCallback;
+
+    /// Converts a string ref into a []const u8 by using the `ptr` and `len` fields.
+    /// Returned slice is still a reference to underlying data.
+    pub fn slice(string: StringRef) []const u8 {
+        const raw = string.getRaw();
+        return raw.data[0..raw.length];
+    }
 };
 
 //===----------------------------------------------------------------------===//
