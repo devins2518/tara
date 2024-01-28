@@ -1,9 +1,15 @@
 \documentclass[10pt]{article}
+\usepackage[top=3cm, bottom=3cm, left=3cm, right=3cm]{geometry}
 
 \usepackage{amsmath}
-\usepackage{listings}
-\usepackage{amsthm}
 \usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[center]{caption}
+\usepackage{comment}
+\usepackage{listings}
+\usepackage{multicol}
+\usepackage{float}
+\usepackage{mdframed}
 
 \newcommand{\alt}{~~|~~}
 \newcommand{\comp}[1]{\llbracket #1 \rrbracket}
@@ -64,174 +70,137 @@
 \newcommand{\falsev}     {\mathsf{false}}
 \newcommand{\truev}      {\mathsf{true}}
 
-\setlength{\abovedisplayskip}{2pt}
-\setlength{\belowdisplayskip}{2pt}
-
 \begin{document}
+
+\section{Research Questions}
+
+\begin{itemize}
+	\item Can better HDL design make hardware design more intuitive for software programmers?
+	      \begin{enumerate}
+		      \item Can a better HDL improve usability and intuitiveness of hardware design?
+		      \item Can a abetter HDL result in more reliable mapped simulation behavior?
+	      \end{enumerate}
+	\item Can software constructs be reliably simulated as hardware constructs?
+	      \begin{enumerate}
+		      \item Can software constructs decrease time needed for prototyping novel architectures?
+		      \item Can software constructs reliably emulate the performance of novel architectures?
+		      \item Can software constructs allow for immediate integration of prototypes into real-world designs?
+	      \end{enumerate}
+\end{itemize}
+
 
 \section{Language Definition}
 
-Notes:
-\begin{itemize}
-	\item How to separate dataflow and control flow in a simple manner?
-\end{itemize}
+\setlength{\abovedisplayskip}{2pt}
+\setlength{\belowdisplayskip}{2pt}
 
 \[
 	\begin{array}{rclrclrcl}
-		p  & \in  & \verb|PORTS|                           & m & \in & \verb|MODULES| & x & \in & \verb|VARIABLES|  \\
-		t  & \in  & \verb|TYPES|                           & e & \in & \verb|EXPRS|   & s & \in & \verb|STATEMENTS| \\
-		op & \in  & \andop \alt \orop \alt \verb|&|        & b & \in & \verb|BLOCKS|  &   &     &                   \\
-		   & \alt & \verb|\|| \alt \verb|^| \alt \verb|<|  &   &     &                &   &                         \\
-		   & \alt & \verb|>| \alt \verb|<=| \alt \verb|>=| &   &     &                &   &                         \\
-		   & \alt & \verb|==| \alt \verb|!=| \alt \verb|+| &   &     &                &   &                         \\
-		   & \alt & \verb|-| \alt \verb|*|  \alt \verb|\|  &   &     &                &   &                         \\
+		p   & \in  & \verb|PORTS|                           & m & \in & \verb|MODULES|    & x & \in & \verb|VARIABLES|  \\
+		t   & \in  & \verb|TYPES|                           & e & \in & \verb|EXPRS|      & s & \in & \verb|STATEMENTS| \\
+		b   & \in  & \verb|BLOCKS|                          & S & \in & \verb|STRUCTS|    & f & \in & \verb|FUNCTIONS|  \\
+		L_n & \in  & \verb|NUMERIC VALUES|                  & I & \in & \verb|INTERFACES| &   &     &                   \\
+		op  & \in  & \andop \alt \orop \alt \verb|&|        &   &     &                   &   &     &                   \\
+		    & \alt & \verb|\| \alt \verb|^| \alt \verb|<|   &   &     &                   &   &     &                   \\
+		    & \alt & \verb|>| \alt \verb|<=| \alt \verb|>=| &   &     &                   &   &     &                   \\
+		    & \alt & \verb|==| \alt \verb|!=| \alt \verb|+| &   &     &                   &   &     &                   \\
+		    & \alt & \verb|-| \alt \verb|*| \alt \verb|\|   &   &     &                   &   &     &                   \\
+		    & \alt & \verb|<<| \alt \verb|>>|               &   &     &                   &   &     &                   \\
 	\end{array}
 \]
 \[
 	\begin{array}{rcl}
-		P   & :=   & (\verb|requires | e)^?\ (\verb|ensures | e)^?\                                                  \\
-		t   & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig|                      \\
-		    & \alt & m \alt \verb|[|e\verb|]var|^?\ e \alt p \alt \verb|type|                                        \\
-		e   & :=   & t \alt {e}\:\mathit{op}\:{e} \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}() \alt (e)             \\
-		    & \alt & \&\verb|var|^? e \alt b \alt \verb|undefined| \alt \verb|true| \alt \verb|false| \alt x         \\
-		    & \alt & e\verb|.*| \alt \verb|expect | e                                                                \\
-		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?                                                               \\
-		p_f & :=   & id \verb|: &var|^? t                                                                            \\
-		p   & :=   & \verb|port {| \overline{p_f} \verb|}|                                                           \\
-		m   & :=   & \verb|module | P \verb| { | \overline{p_f}\ \overline{s}\ \overline{c} \verb| }|                \\
-		x   & :=   & id                                                                                              \\
-		s_p & :=   & pub                                                                                             \\
-		s_q & :=   & \verb|var| \alt \verb|const|                                                                    \\
-		s   & :=   & s_p^?\ s_q\ x (\verb|: | t)^? \verb| = | e \verb|;|                                             \\
-		    & \alt & x = e;                                                                                          \\
-		    & \alt & \ifline{e}\ \{\overline{s}\}\ (\verb|else | (\ifline{e})^?\ \{\overline{s}\})^?                 \\
-		c   & :=   & s_p^?\ \verb|comb | id \verb|(|\overline{id:\ p} \verb|) | t\ P \verb| {| \overline{s} \verb|}| \\
-		b   & :=   & (id\verb|:|)^? \verb|{ | \overline{s} \verb| }|                                                 \\
-		%% TODO: for loops with unrolling
+		P   & :=   & \overline{\texttt{require } e}\ \overline{\texttt{ensure } e}                                                         \\
+		t   & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig| \alt m \alt \verb|[|e\verb|]var|^?\ e      \\
+		    & \alt & p \alt \verb|type| \alt \verb|clock| \alt \verb|reset| \alt S \alt I                                                  \\
+		e   & :=   & t \alt {e}\:\mathit{op}\:{e} \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}(\overline{e}) \alt (e) \alt \&\verb|var|^? e \\
+		    & \alt & b \alt \verb|undefined| \alt \verb|true| \alt \verb|false| \alt x \alt e\verb|.*|                                     \\
+		    & \alt & \verb|expect | e \alt e\verb|..|e \alt l_f \alt e\verb|[|e\verb|]| \alt \verb|return | e                              \\
+		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?                                                                                     \\
+		    & \alt & \verb|switch (| e \verb|) { | \overline{e \texttt{ => } e,} \verb| }|                                                 \\
+		p_f & :=   & id \verb|: &var|^? t                                                                                                  \\
+		p   & :=   & \verb|port { | \overline{p_f} \verb| }|                                                                               \\
+		m   & :=   & \verb|module | P \verb| { | \overline{p_f}\ \overline{s}\ \overline{c} \verb| }|                                      \\
+		x   & :=   & id                                                                                                                    \\
+		q_p & :=   & \verb|pub|                                                                                                            \\
+		s_q & :=   & \verb|var| \alt \verb|const|                                                                                          \\
+		s   & :=   & q_p^?\ s_q\ x (\verb|: | t)^? \verb| = | e \verb|;|                                                                   \\
+		    & \alt & x = e;                                                                                                                \\
+		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?\verb|;|                                                                             \\
+		c   & :=   & q_p^?\ \verb|comb | id \verb|(|\overline{id:\ e} \verb|) | t\ P \verb| {| \overline{s} \verb|}|                       \\
+		b   & :=   & (id\verb|:|)^? \verb|{ | \overline{s} \verb| }|                                                                       \\
+		l_f & :=   & (\verb|inline (|e\verb|)|^?)^? \verb| for (|e\verb|) | e                                                              \\
+		S_q & :=   & (\verb|extern| \alt \verb|packed|)^?                                                                                  \\
+		S   & :=   & S_q\ \verb|struct { | \overline{S_f}\ \overline{s}\ \overline{f} \verb| }|                                            \\
+		S_f & :=   & id \verb|: | t                                                                                                        \\
+		f   & :=   & q_p^? \verb| fn | id \verb|(|\overline{id:\ e}\verb|) | t \verb| {| \overline{s} \verb|}|                             \\
+		L_n & :=   & \overline{0-9} \alt \verb|0b|\overline{(0 \alt 1)} \alt \verb|0x|(\overline{0-F})                                     \\
+		I   & :=   & \verb|interface { | \overline{S_f}\ \overline{s}\ \overline{f} \verb| }|                                              \\
 	\end{array}
 \]
 
-\section{Drafting}
+\setlength{\abovedisplayskip}{0pt}
+\setlength{\belowdisplayskip}{0pt}
+
+\section{Examples}
+
+\subsection{Full Adder Comb} \label{sec:full_adder}
 
 \begin{verbatim}
-const Adder = module() {
-    const P = port {
-        a: &u1,
-        b: &u1,
-        out: &var u1,
-        carry: &var u1,
-    };
-
-    comb add(p: P) 
-        ensures p.out = p.a +% p.b;
-    {
-        p.out = p.a ^ p.b; 
-        p.carry = p.a & p.b;
-    }
+const Sum = struct {
+    sum: u1,
+    carry: u1
 };
-comb adder(a: &u1, b: &u1, out: &var u1, carry: &var u1)
-    ensures carry = a +% b;
+comb full_adder(a: &u1, b: &u1, carry_in: &u1) Sum
+    ensure ret.sum == (a + b)[0];
+    ensure ret.carry == (a + b) >> 1;
 {
-    out = a ^ b;
-    carry = a & b;
-}
-comb main() {
-    const mod = CoolMod();
-    const a = 1;
-    const b = 1;
-    var out = undefined;
-    var carry = undefined;
-    mod.add(.{ .a = a, .b = b, .out = out, .carry = carry });
+    return Sum {
+        .sum = a ^ b,
+        .carry = a & b,
+    };
 }
 \end{verbatim}
 
-Version with ports at module level:
-\begin{itemize}
-	\item Need to resolve multidriven ports across combs
-\end{itemize}
+\subsection{4 Bit Ripple Carry Adder Module}
 
 \begin{verbatim}
-const CoolMod = module(p: CoolMod.P) {
-    const P = port {
-        a: &u1,
-        b: &u1,
-        out: &var u1,
-        carry: &var u1,
+const Adder4Bit = module {
+    pub const Out = struct {
+        sum: u4,
+        overflow: u1,
     };
 
-    comb add() {
-        p.out = p.a ^ p.b; 
-        p.carry = p.a & p.b;
+    pub comb add(a: &u4, b: &u4) Out {
+        const adders: [4]Sum = inline for (0..4) |i| {
+            const carry = if (i > 0) adders[i-1].carry else 0;
+            adders[i] = full_adder(a[i], b[i], carry);
+        };
+        return Out {
+            // `concat` is a generic function returning a u4
+            .sum = concat(.{
+                adders[3].sum,
+                adders[2].sum,
+                adders[1].sum,
+                adders[0].sum
+            }),
+            .overflow = adders[3].carry,
+        };
     }
 };
 \end{verbatim}
 
-\begin{itemize}
-	\item It came to me in a dream
-\end{itemize}
+\subsection{2FF Synchronizer}
 
 \begin{verbatim}
-const Sync0 = module(clk: clock, nrst: reset) {
-    prev: [2]u1 = @reg(.{ clk, nrst }),
-
-    comb sync(sync: Sync, async_in: &u1) u1 {
-        sync.prev.next = &.{sync.prev[0], async_in.*};
-
-        return sync.prev[1];
-    }
-};
-comb top(clk: clock, nrst: reset) {
-    const sync = Sync(clk, nrst);
-    const async_in = ...;
-    const sync_out = sync.sync(&async_in);
-    ...
-}
-\end{verbatim}
-
-\begin{itemize}
-	\item Registers and other signals can live at module level to allow for any comb to access them,
-	      however, only one comb can drive each register (should this be done at comb call level?)
-	\item Language "constructs" (i.e. stage blocks) can create implicitly registers/memories,
-	      however expressions should not be able to implicitly.
-\end{itemize}
-
-\begin{itemize}
-	\item Modules have shared resources as fields created lazily as used by called combs, empty box if created and no combs called
-	\item Comb invocation provides dataflow to signals within module
-\end{itemize}
-
-\begin{verbatim}
-const Sync2FF = module {
-    clk: clock,
-    nrst: reset,
-
-    pub comb sync(self: &Sync2FF, async_in: &sig) u1 {
-        const prev: u2 = @reg(self.clk, self.nrst);
-
-        prev.next = &.{prev[0], async_in};
-        return prev[1];
-    }
-};
-// Alternatively, the module can be collapsed into a single comb
-// which stores the previous state
 comb sync(clk: &clock, nrst: &reset, async_in: &sig) u1 {
-    const prev: u2 = @reg(clk, nrst);
-
-    prev.next = &.{prev[0], async_in};
-    return prev[1];
-}
-comb top(async_in: &sig) void {
-    const clk = @clockInit();
-    const nrst = @resetInit(.negedge);
-    const sync = Sync2FF{ .clk = clk, .nrst = nrst };
-    const sync_out = sync.sync(&async_in);
+    const syncer: u2 = @reg(.{ .clk, .nrst });
+    syncer.next = [_]u1{sync.curr[0], @intFromSig(async_in)};
+    return syncer.curr[1];
 }
 \end{verbatim}
 
-\begin{itemize}
-	\item Structs can be used as pseudo-modules
-	\item Function calls instantaneous and non-synthesizable but simulatable
-\end{itemize}
+\subsection{Structs as Pseudo-Modules}
 
 \begin{verbatim}
 const Sync2FF = struct {
@@ -241,9 +210,9 @@ const Sync2FF = struct {
         return .{ .prev = std.Reg.init(clk, nrst, 0b00) };
     }
 
-    pub fn sync(self: Sync2FF, async_in: *sig) u1 {
+    pub fn sync(self: Sync2FF, async_in: sig) u1 {
         const ret = self.prev[1];
-        self.prev.nextVal(&.{self.prev[0], async_in.*});
+        self.prev.nextVal([_]u1{self.prev[0], async_in.*});
         return ret;
     }
 };
@@ -255,86 +224,112 @@ comb top(asyn_in: &sig) void {
 }
 \end{verbatim}
 
-\begin{itemize}
-	\item Testing
-\end{itemize}
+\subsection{Testing}
 
 \begin{verbatim}
 fn Unsigned(comptime len: u16) type {
     return @Int(.unsigned, len)
 }
+fn AdderRet(comptime len: u16) type {
+    return struct { sum: Unsigned(len), overflow: u1 };
+}
 comb adder(
     comptime len: u16,
-    a: Unsigned(len),
-    b: Unsigned(len),
+    a: &Unsigned(len),
+    b: &Unsigned(len),
     carry_in: u1
-) struct {
-    sum: Unsigned(len),
-    overflow u1,
-} {
+) AdderRet(len) {
     ...
 }
 
 // Exhaustive dynamic testing
 test adder {
     inline for (1..4) |adder_size| {
-        // pseudo loop
-        for (0..2^adder_size) |a| {
-            for (0..2^adder_size) |b| {
-                for (0..1) |carry| {
+        for (0..(1 << adder_size) + 1) |a| {
+            for (0..(1 << adder_size) + 1) |b| {
+                for (0..2) |carry| {
                     const out = adder(adder_size, a, b, carry);
-                    const expected = @addWithOverflow(
-                        a,
-                        b + carry
-                    );
-                    try std.testing.expect(
-                        out.sum,
-                        expected.sum
-                    );
-                    try std.testing.expect(
-                        out.overflow,
-                        expected.overflow
-                    );
+                    const expected = @addWithOverflow(a, b + carry);
+                    try std.testing.expect(out.sum, expected.sum);
+                    try std.testing.expect(out.overflow, expected.overflow);
                 }
             }
         }
     }
 }
 
-// Static module level verification, done at compile time
-// through Z3, symbolic execution, or such
-comb adder(...) struct { ... } requires ... ensures 
-    // Figures out some way to prove this
-    ret.sum = a + b + carry_in and
-    ret.overflow = (@as(Unsigned(len+1), a) + b + carry_in)>>len 
+// Static comb level verification, done at compile time
+comb adder(...) T
+    require ...;
+    ensure ret.sum = a + b + carry_in;
+    ensure ret.overflow = (@as(Unsigned(len+1), a) + b + carry_in) >> len;
 {
     ...
 }
 
-// Module level predicates can be used to provide invariates
-const Mod = module ensures Mod.a != Mod.b {
-    a: u2,
-    b: u2,
+// Module level predicates can be used to provide invariants
+const Mod = module ensure Mod.a != Mod.b {
+    a: &u1,
+    b: &u1,
     ...
+
+    comb doStuff(mod: &Mod) u1 {
+        return mod.a + mod.b; // Can be optimized to `return 1`
+    }
 };
 
 // `expect` statements can be used to provide run-time checks
 // for predicates
-comb adder(...) u2 requires ... ensures ret == a + b {
+comb adder(...) u2
+    requires ...;
+    ensure ret == a + b;
+{
     ...
     expect ret == a + b;
     return ret;
 }
 \end{verbatim}
 
-\section{CPU Example (Taken from Spade)}
+\subsection{IO Pad}
 
 \begin{verbatim}
-// Mandatory `delay(N)` attribute, used for API purposes,
-// must match number of stages
+const IOPad = module {
+    // A `&mut sig` is slightly more special than a generic `&mut T` as reading is
+    // allowed due to the `sig`s interior impedability. Its linear requirements
+    // are also relaxed.
+    raw: &mut sig,
+    direction: &enum { in, out },
+
+    pub comb in(self: &IOPad) u1 {
+        return if (self.direction == .in)
+            switch (self.raw) {
+                0bZ => 0,
+                0bX => 0,
+                0b0 => 0,
+                0b1 => 1,
+            }
+        else
+            0;
+    }
+
+    pub comb out(self: &IOPad, val: &u1) void {
+        if (self.direction == .out)
+            self.raw = val
+        else
+            self.raw = 0bZ;
+    }
+};
+\end{verbatim}
+
+\begin{comment}
+\subsection{CPU Example (Taken from Spade)}
+
+%% TODO: how to determine future stage use semantically valid
+\begin{verbatim}
+// Mandatory `delay(N)` attribute, used for API purposes, must match number
+// of stages
 // Stages ordered by declaration order
-// How to ensure future stage reg uses are semantically valid?
-pipe Cpu3Stage(clk: clock, nrst: reset, halt: &bool) delay(4) {
+pipe Cpu3Stage(clk: &clock, nrst: &reset, halt: &bool) u32 delay(4) {
     const fetch = stage {
         const stall = decode.stall | halt;
         const pc_mod = Pc{ .clk = &clk, .nrst = &nrst };
@@ -388,81 +383,547 @@ const Insn = struct {
 const Regfile = struct {
     ...,
 
-    pub linear comb read0(regfile: Regfile, idx: u5) u32 {
+    // Read port 0
+    pub comb read0(regfile: &Regfile, idx: u5) u32 {
         ...
     }
-    pub linear comb read1(regfile: Regfile, idx: u5) u32 {
+    // Read port 1
+    pub comb read1(regfile: &Regfile, idx: u5) u32 {
+        ...
+    }
+    // Write port 0
+    pub comb write0(regfile: &mut Regfile, idx: u32, val: u32) {
         ...
     }
 }
 \end{verbatim}
+\end{comment}
 
-\section{Possible Lowering to Calyx}
+\begin{comment}
+%% TODO
+\subsection{Trigger Types}
+\end{comment}
+
+\begin{comment}
+%% TODO
+\subsection{Event Types}
+\end{comment}
+
+\begin{comment}
+%% TODO
+\subsection{Pipelines}
+\end{comment}
+
+\begin{comment}
+%% TODO
+\subsection{FSMs}
+\end{comment}
+
+\section{Core Language}
+
+The minimum viable language will be able to produce combinational circuits in a dataflow model.
+Modules without shared resources and simple combs are supported. The full adder shown in Section
+\ref{sec:full_adder} is an example of a minimal circuit which could reasonably be generated. An even
+more simple example of a minimal half adder is shown below. Basic affine checking of combs can be
+implemented. Structs will be implemented along with basic function code generation. Aggregate Level
+Interfacing does not need to be implemented. Basic binary and unary operations will be supported.
+Basic numeric literals (not including \verb|Z| or \verb|X| parsing) will be supported. Test blocks
+will be implemented. Code generation should ideally result in synthesizable Verilog (2005).
 
 \begin{verbatim}
-const Adder = module { ... };
-
-// Implements (m0 + m1) + (m2 + m3)
-const Reducer = module {
-    a0: Adder,
-    a1: Adder,
-    a2: Adder,
-
-    pub comb reduce(
-        self: Reducer,
-        m0: u8,
-        m1: u8,
-        m2: u8,
-        m3: u8
-    ) u8 {
-        const a0: u8 = @reg(.{.clk = clk, .rst = nrst});
-        const a1: u8 = @reg(.{.clk = clk, .rst = nrst});
-        const a2: u8 = @reg(.{.clk = clk, .rst = nrst});
-        a0.next = self.a0.add(m0, m1);
-        a1.next = self.a1.add(m2, m3);
-        a2.next = self.a2.add(a0, a1);
-        return a2.curr;
+const HalfAdder = module {
+    pub comb sum(a: &u1, b: &u1) u1 {
+        return a ^ b;
     }
-};
+    pub comb carry(a: &u1, b: &u1) u1 {
+        return a & b;
+    }
+}
 \end{verbatim}
 
-\section{Types}
+\section{Language Reference}
 
-\subsection{General}
-Types will be first class values, allowing for simple polymorphism through function calls at compile
-time. Synthesizable references use the \verb|&| syntax as an invalid reference to a net is not possible.
-Nonsynthesizable references should use the \verb|*| syntax as invalid references to variables is possible
-(i.e. pointer casts). Verilog conversion will attempt to track use of \verb|z| and \verb|x| (i.e.
-net not always driven) for conversion into \verb|uN|. Use of these will probably be valid compile
-error.
+\subsection{Types as Values}
+Types are first class values, allowing for simple parametric polymorphism through function calls at
+compile time. An example of a generic ripple carry adder is shown in Figure \ref{fig:generic_rca}.
+
+\begin{figure}[H]
+	\begin{verbatim}
+fn Adder(len: u8) type {
+    return module {
+        const I = @Int(.unsigned, len);
+
+        pub const Out = struct {
+            sum: I,
+            overflow: u1,
+        };
+
+        pub comb add(a: &I, b: &I) Out {
+            const adders: [len]Sum = inline for (0..len) |i| {
+                const carry = if (i > 0) adders[i-1].carry else 0;
+                adders[i] = full_adder(a[i], b[i], carry);
+            };
+            const sum: I = inline for (0..len) |i| {
+                sum[i] = adders[i].sum;
+            }
+            const overflow = adders[len-1].carry;
+            return Out { .sum, .overflow };
+        }
+    };
+}
+	\end{verbatim}
+	\vspace*{-5mm}
+	\caption{A Generic Ripple Carry Adder Implementation}
+	\label{fig:generic_rca}
+\end{figure}
+
+\subsection{Modules}\label{sec:modules}
+Modules are best-effort synthesizable constructs which map to a hierarchy of combinational and
+sequential logic. Fields in a module represent shared resources across combs and as such follow the
+rules for shared resources described in Section \ref{sec:shared_res}. Modules may perform Aggregate
+Level Interfacing (see Section \ref{sec:ali}). All fields in a module are private, and can only be
+initialized through a comb instantiating the module. An example is shown in Figure
+\ref{fig:mod_fields_inst}.
+\begin{figure}[H]
+	\begin{verbatim}
+const Mod = module {
+    inner: &u3,
+    hidden_mod: &HiddenMod,
+
+    pub comb init(inner: &u3) Mod {
+        return Mod { .inner = inner, .hidden_mod = HiddenMod.init(inner) };
+    }
+};
+	\end{verbatim}
+	\vspace*{-5mm}
+	\caption{Example of Instantiation of Module with Fields}
+	\label{fig:mod_fields_inst}
+\end{figure}
+
+At the module level, comb's with parameters of the same name are treated as a single port. An example
+is shown in Figure \ref{fig:mod_comb_port_share}. In the example, the \verb|Mod| module has a single
+port named \verb|clk| which is forwarded to both \verb|Mod.foo| and \verb|Mod.bar|. One implication
+of this restriction is that all combs must obey the rules for Shared Resources (see Section
+\ref{sec:shared_res}). In this context, this means that only one comb may have contain \verb|&mut T|
+port while all others are allowed to hold \verb|&T| ports. An example can be seen in Figure
+\ref{fig:mod_comb_port_linearity} in which only \verb|Mod.foo| can hold a \verb|&mut u1| to
+\verb|baz|. To reduce implementation complexity, \verb|&Mod| cannot coerce into a \verb|Mod| outside
+of the body of \verb|Mod| itself. This prevents the passing of modules as references which is
+generally nonsensical in synthesis.
+
+\begin{multicols}{2}
+	\begin{figure}[H]
+		\begin{verbatim}
+const Mod = module {
+    pub comb foo(clk: &clock) void {
+        ...
+    }
+    pub comb bar(clk: &clock) void {
+        ...
+    }
+};
+    \end{verbatim}
+		\vspace*{-10mm}
+		\caption{Example of Module Level Comb Port Sharing}
+		\label{fig:mod_comb_port_share}
+	\end{figure}
+	\columnbreak
+	\begin{figure}[H]
+		\begin{verbatim}
+const Mod = module {
+    pub comb foo(baz: &var u1) void {
+        ...
+    }
+    pub comb bar(baz: &u1) void {
+        ...
+    }
+};
+    \end{verbatim}
+		\vspace*{-10mm}
+		\caption{Example of Module Level Comb Parameter Linearity}
+		\label{fig:mod_comb_port_linearity}
+	\end{figure}
+\end{multicols}
+
+\begin{mdframed}[frametitle=A Note on the Synthesizability of Modules]
+	Modules are only best-effort synthesizable constructs due to Aggregate Level Interfacing which may
+	require the creation of non-synthesizable structs for simulation. Synthesis pollution (the
+	introduction of non-synthesizable constructed in a synthesizable context) will be tracked and
+	reported as a compile error when attempting to synthesize a design. However, synthesis pollution
+	analysis is lazy, and an error will only occur when a non-synthesizable aggregate is actually
+	used as opposed to a context in which a non-synthesizable construct could be used is detected.
+\end{mdframed}
+
+\subsection{Combs}
+Combs model purely combinational logic and are best-effort synthesizable. Combs can be either
+methods (when a \verb|&Mod| or \verb|&var Mod| is the first parameter) or free standing. Method
+combs are affine and may only be called at most once per instantiation of a module. Free standing
+combs are monomorphized at the call site. As mentioned in Section \ref{sec:modules}, method combs
+with parameters of the same names refer to the same port in the synthesized design. As such, calls
+of method combs with different arguments to parameters of the same name are compile errors.
+
+\begin{mdframed}[frametitle=A Note on Sequential Elements]
+	All sequential elements to a circuit are implemented through the use of compiler intrinsics. This
+	communicates intent clearly (as opposed to inferring DFF type through usage) and allows for
+	fine-grained user control over the generation of specific flip-flops/RAM blocks. This restriction
+	also allows combs to be purely combinational. An example of an instantiation of a flip flop is shown
+	in Figure \ref{fig:seq_example}.
+
+	\begin{figure}[H]
+		\begin{verbatim}
+comb sync(clk: &clock, nrst: &reset, async_in: &sig) u1 {
+    const prev: u2 = @reg(clk, nrst, 0);
+    ...
+}
+    \end{verbatim}
+		\vspace*{-10mm}
+		\caption{Example of the Instantiation of a Register}
+		\label{fig:seq_example}
+	\end{figure}
+\end{mdframed}
+
+\begin{mdframed}[frametitle=A Note on the Synthesizability of Combs]
+	Combs are only best-effort synthesizable constructs due to Aggregate Level Interfacing which may
+	require the creation of non-synthesizable structs for simulation. Synthesis pollution (the
+	introduction of non-synthesizable constructed in a synthesizable context) will be tracked and
+	reported as a compile error when attempting to synthesize a design. However, synthesis pollution
+	analysis is lazy, and an error will only occur when a non-synthesizable aggregate is actually
+	used as opposed to a context in which a non-synthesizable construct could be used is detected.
+\end{mdframed}
 
 \subsection{Ports}
 Ports are guaranteed-synthesizable constructs which map to wires. The only valid fields are net
-references (\verb|&T|).
+references (\verb|&T| or \verb|&mut T|). An example port can be seen in Figure
+\ref{fig:port_example}.
+
+\begin{figure}[H]
+	\begin{verbatim}
+const P = port {
+    addr: &u32,
+    ren: &bool,
+    rdata: &mut u32,
+    wen: &bool,
+    wdata: &u32,
+};
+    \end{verbatim}
+	\vspace*{-10mm}
+	\caption{Example of a Port Type}
+	\label{fig:port_example}
+\end{figure}
+
+\subsection{Clock}
+The \verb|clock| type is an extremely restricted type which is only used to be inputs into
+a sequential element instantiation. No other operations may be performed on a clock type. A clock
+can be created through the use of the \verb|@clockInit()| compiler builtin function. This allows
+the compiler to track which clock was used to instantiate registers which can be used to prevent
+accidental clock-domain crossings while being robust enough to support multi-clock domain designs.
+An example of a clock generation and use can be seen in \ref{fig:clock_example}. Usually,
+\verb|clock| will be an input to the top-level comb.
+\begin{figure}[H]
+	\begin{verbatim}
+pub comb top() void {
+    const clk = @clockInit();
+    const state: u1 = @reg(clk, 0);
+}
+    \end{verbatim}
+	\vspace*{-10mm}
+	\caption{Example of Clock Generation}
+	\label{fig:clock_example}
+\end{figure}
+
+\subsection{Reset}
+The \verb|reset| type is similar to the \verb|clock| type in that it is an extemely restricted type
+which is only useful to be an input into a sequential element. A reset signal is created through the
+use of the \verb|@resetInit(...)| compiler builtin function. It is synchronous to clocks passed into
+the builtin function, however it is asynchronous to any other clock. Only \verb|reset| signals which
+are synchronous to a clock may be used as a synchronous reset for sequential elements which use that
+clock. In these cases, the \verb|reset| signal may coerce into a boolean, however, in all other
+cases it does not coerce into any other type. An example of reset signal generation and usage is
+shown in Figure \ref{fig:reset_example}.
+%% TODO
+%% Should reset be guaranteed async assert, sync deassert
+\begin{figure}[H]
+	\begin{verbatim}
+pub comb top() void {
+    const clk0 = @clockInit();
+    const clk1 = @clockInit();
+    const reset0 = @resetInit(clk0);
+    const reset1 = @resetInit(clk1);
+    const state: u1 = @reg(clk0, reset1, 0);
+    state.next = if (!reset0) { ... } else { ... };
+    ...
+}
+    \end{verbatim}
+	\vspace*{-10mm}
+	\caption{Example of Reset Signal Usage}
+	\label{fig:reset_example}
+\end{figure}
+
+\subsection{Structs}
+Structs are non-guaranteed synthesizable constructs which can map to physical memory usage during
+simulation or bundles of wires in synthesis. Generally, their structure is not guaranteed and may be
+reorganized by the compiler for performance reasons. As such, when using structs to bundle data
+across physical wires to potentially external modules and combs, structs must be marked as
+\verb|extern| (in which case they follow the C struct layout) or \verb|packed| (in which case they
+are layed out from with the fields at the top at the LSB) in order to have a defined memory layout.
+It is a compiler error to pass structs without a defined memory layout to external modules or combs.
+An example of a struct is shown in Figure \ref{fig:struct_example}. Structs may perform Aggregate
+Level Interfacing (see Section \ref{sec:ali}). Files are parsed as structs which allow them to hold
+fields at the top level.
+\begin{figure}[H]
+	\begin{verbatim}
+const RGBValue = struct {
+    red: u8,
+    green: u8,
+    blue: u8,
+};
+    \end{verbatim}
+	\vspace*{-10mm}
+	\caption{Example of a Struct Definition}
+	\label{fig:struct_example}
+\end{figure}
+Synthesizability of structs is best-effort from the compiler, and as such their usage in hardware
+contexts is limited to field access. Structs can contain functions which can be methods (as
+indicated by the \verb|*T| or \verb|*var T| first parameter).
+
+\subsection{Functions}
+Functions are guaranteed non-synthesizable constructs which exist outside the hardware domain and
+may be used to control hardware designs. Functions may be executed at compile time which can be
+used to implement parameteric polymorphism of other language constructs such as structs, modules,
+and ports. An example of a function is shown in Figure \ref{fig:function_example}. Functions may be
+public in order to be accessed outside of the containing struct.
+\begin{figure}[H]
+	\begin{verbatim}
+pub fn add(a: u8, b: u8) u8 {
+    return a + b;
+}
+    \end{verbatim}
+	\vspace*{-10mm}
+	\caption{Example of a Function Definition}
+	\label{fig:function_example}
+\end{figure}
+
+\subsection{Integral Types}
+Integral types can be either signed or unsigned and can be an arbitrary bit-width up to 65535 bits
+(maximum 16-bit value). Signed integrals are of type \verb|iN|, and unsigned integrals are of type
+\verb|uN|. Binary integral expressions produce the type of the left-hand side.
+
+\subsection{Boolean}
+Booleans can either be \verb|true| or \verb|false|.
+
+\subsection{Sig Type}
+The \verb|sig| type represents a seven-valued logic type which can either be a strong 0 or 1, a weak
+0 or 1, an unknown value (\verb|X|), or a high-impedance value (\verb|Z|). A \verb|sig| value can
+only be translated into a \verb|u1| through the use of the \verb|@intFromSig()| builtin signal
+which translates a strong 0 or 1 to a strong 0 or 1, a weak 0 or 1 to a 0 or 1 unless driven by
+a strong signal, an unknown value to a random 0 or 1, a high impedance value to a weak 1 value.
 
 \subsection{References and Pointers}
 References to nets use the \verb|&| syntax (\verb|&T|) as opposed to pointers to variables which use
-the \verb|*| syntax (\verb|*T|). References are guaranteed to point to semantically valid variables.
-In the case of references to non-synthesizable constructs, they are guaranteed to be semantically
-valid (not assigned to using \verb|undefined|). There are a few rules for coercion and typing when using the
+the \verb|*| syntax (\verb|*T|). There are a few rules for coercion and typing when using the
 \verb|&| operator:
 
 \begin{itemize}
 	\item Use of the \verb|&| operator in a synthesizable context (comb, module, etc) creates a \verb|&T|.
-	\item Use of the \verb|&| operator in a non-synthesizable context (fn) creates a \verb|*T|.
+	\item Use of the \verb|&| operator in a non-synthesizable context (fn, top level environment, etc) creates a \verb|*T|.
 	\item A \verb|&T| can decay into a \verb|*T|.
-	\item A \verb|*T| can be promoted to a \verb|&T| through the \verb|@strongRef()| builtin function.
-	      \begin{enumerate}
-		      \item The pointer will be checked to ensure it is properly aligned, and the use of undefined
-		            will be tracked to ensure that all fields are semantically valid.
-	      \end{enumerate}
+	\item A \verb|*T| cannot promote into a \verb|&T|
 \end{itemize}
 
-Unlike pointers, references are not meant to be used for non-synthesizable use cases. This is
-because \verb|&var T| is a read-illegal, write-once type. It can be thought of as a more restrictive
-linear type in which reads are not legal. This is because \verb|&var T| type represents an output
-port; it may cause combinatorial loops when read, and multiple writes simply cannot be synthesized.
-Unlike pointers, references do not support the dereference (\verb|v.*|) operator and freely decay
-into a \verb|T| when used.
+Unlike pointers, references are not meant to be used in non-synthesizable use cases. This is because
+\verb|&var T| is a read-illegal, write-once type. It can be thought of as a more restrictive linear
+type in which reads are not legal. This is because \verb|&var T| type represents an output port; it
+may cause combinatorial loops when read, and multiple writes to a single port simply cannot be
+synthesized. A special case of this is \verb|&var sig| for which reading is legal due to the
+\verb|sig|'s interior impedability. Unlike pointers, references do not support the dereference
+(\verb|v.*|) operator and freely decay into a \verb|T| when used.
+
+%% TODO: event type, trigger types
+
+\subsection{Shared Resources} \label{sec:shared_res}
+Shared resources are modeled using linear types which require that each instance of a linear type
+must be consumed exactly once. Shared resources are mostly relevant to hardware designs where the
+mapping of language constructs to gates and wires requires that resources cannot be used twice.
+
+\subsection{Aggregate Level Interfacing} \label{sec:ali}
+Aggregate Level Interfacing is a form of checked type coercion in which aggregate types (structs,
+modules) may act as one another with respect to a clock. In order to coerce properly, they much have
+matching public interfaces. An example of two types which would pass Aggregate Level Interfacing is
+shown in Figure \ref{fig:ali_fig_pass}, and an example of two types which would fail Aggregate Level
+Interfacing is shown in Figure \ref{fig:ali_fig_fail}. The types in Figure \ref{fig:ali_fig_fail}
+would fail for two reasons:
+\begin{itemize}
+	\item The public function \verb|foo| has an extra parameter of \verb|a|
+	\item The public function \verb|bar| has a different return type than the comb \verb|Mod.foo|
+\end{itemize}
+
+\begin{figure}[H]
+	\begin{multicols}{2}
+		\begin{verbatim}
+const Mod = module {
+    a: u3,
+    b: u2
+    c: u4,
+
+    pub const A = 32;
+
+    pub comb foo(self: &Mod) void {
+        ...
+    }
+
+    pub comb bar() void {
+        ...
+    }
+};
+const S = struct {
+    pub a: u3,
+    pub b: u2
+    d: u8,
+
+    pub const A = 48;
+
+    pub fn foo(self: &S) void {
+        ...
+    }
+
+    pub fn bar() void {
+        ...
+    }
+};
+        \end{verbatim}
+		\vspace*{-5mm}
+		\caption{Types which would pass ALI}
+		\label{fig:ali_fig_pass}
+		\columnbreak
+		\begin{verbatim}
+const Mod = module {
+    a: u3,
+    b: u2
+    c: u4,
+
+    pub const A = 42;
+
+    pub comb foo(self: &Mod) void {
+        ...
+    }
+
+    pub comb bar() void {
+        ...
+    }
+};
+const S = struct {
+    pub a: u3,
+    b: u2
+    d: u8,
+
+    // Differently named top level
+    // declaration
+    pub const B = 32;
+
+    // Extra parameter
+    pub fn foo(self: &S, a: u8) void {
+        ...
+    }
+
+    // Different return type
+    pub fn bar() u32 {
+        ...
+    }
+};
+    \end{verbatim}
+		\vspace*{-5mm}
+		\caption{Types which would fail ALI}
+		\label{fig:ali_fig_fail}
+	\end{multicols}
+\end{figure}
+
+The only type for which modules and structs can coerce into to perform Aggregate Level Interfacing
+is the \verb|interface| type which expresses the public API of coercible aggregates. An example is
+shown in Figure \ref{fig:ali_interface}. The valid method of an interface is a function. Interfaces
+may contain top level declarations.
+
+\begin{figure}[H]
+	\begin{verbatim}
+const If = interface {
+    const A;
+
+    pub fn foo(self: &If) void;
+
+    pub fn bar() void;
+}
+    \end{verbatim}
+	\vspace*{-5mm}
+	\caption{Example of a Interface to Perform ALI with the Types Shown in Figure \ref{fig:ali_fig_pass}}
+	\label{fig:ali_interface}
+\end{figure}
+
+Because interfaces are meant to represent abstract types, they are not allowed to have container
+fields. Interfaces used in function signatures make the function generic over all possible types
+which can coerce into the interface.
+
+Both synthesizable modules and non-synthesizable structs can coerce into an interface, and as such
+have impacts on the synthesizability of designs using interfaces. When an interface is used such
+that it causes a normally synthesizable construct into a non-synthesizable construct, it is referred
+to as synthesis pollution. Synthesis pollution analysis (SPA) is only performed when synthesizing the top
+level design. SPA is done lazily, so modules which are not instantiated and combs which are not
+invoked will not be analyzed.
+
+\subsection{Builtin Functions}
+Builtin functions are functions which may require special compiler handling in order to implement
+functionality which is not possible through the use of the base language. The current list of
+planned builtin functions is shown in Table \ref{tab:builtin_table}.
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{c|l}
+		Function Name                                         & Description                                       \\
+		\hline
+		                                                      & Creates a register from with the                  \\
+		\verb|@reg(clock, reset, T, t)|                       & specified clock and reset, of the                 \\
+		                                                      & specified type with the specified                 \\
+		                                                      & reset value.                                      \\
+		\hline
+		\verb|@memory(blocks, size)|                          & Creates a RAM block of with \verb|blocks|         \\
+		                                                      & number of blocks each of size \verb|size|         \\
+		\hline
+		\verb|@clockInit()|                                   & Generates a clock which can be used to            \\
+		                                                      & clock sequential elements.                        \\
+		\hline
+		                                                      & Generates a reset signal which can be             \\
+		\verb|@resetInit(|$\overline{\texttt{clock}}$\verb|)| & synchronized to any number of clocks if           \\
+		                                                      & needed.                                           \\
+		\hline
+		\verb|@as(T, u)|                                      & Attempts type coercion of \verb|u| into \verb|T|. \\
+		\hline
+		                                                      & Coerces a \verb|sig| into a \verb|u1|. A strong   \\
+		                                                      & 0 or 1 is converted to a 0 or 1, a weak 0 or 1    \\
+		\verb|@intFromSig(sig)|                               & is driven to a 0 or 1 unless driven by a strong   \\
+		                                                      & signal, an \verb|X| is driven to a random 0 or 1, \\
+		                                                      & and a \verb|Z| is driven to a weak 1 unless       \\
+		                                                      & driven by a stronger signal.                      \\
+		\hline
+	\end{tabular}
+	\caption{List of Builtin Compiler Functions}
+	\label{tab:builtin_table}
+\end{table}
+
+\section{HCI Specific Questions}
+
+\subsection{Usability/Syntax Survey}
+\begin{itemize}
+	\item Is Tara syntax intuitive for hardware designers and software developers alike?
+	\item Can Tara express common HDL constructs and idioms?
+	\item Is it simpler to program in Tara vs Verilog?
+	\item Are Tara hardware designs more scalable than Verilog designs?
+	\item Are Tara hardware designs more maintainable than Verilog designs?
+\end{itemize}
+
+\subsection{Verification Survey}
+\begin{itemize}
+	\item Is a general-purpose langauge suitable for verification tasks (general)?
+	\item Is a function level parametric type system suitable for randomized constrained testing?
+	\item Is a function level parametric type system suitable for heavily hierarchical UVM objects?
+	\item Can software constructs interoperating with hardware constructs allow for easier golden model generation.
+\end{itemize}
 
 \end{document}
