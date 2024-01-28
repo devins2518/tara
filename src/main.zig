@@ -30,5 +30,8 @@ test "simple test" {
     _ = @import("UTirGen.zig");
     _ = @import("UTir.zig");
     _ = @import("mlir/ir.zig");
+    _ = @import("mlir/attribute.zig");
+    _ = @import("mlir/type.zig");
+    _ = @import("mlir/dialect/arith.zig");
     std.testing.refAllDeclsRecursive(@This());
 }
