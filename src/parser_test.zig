@@ -171,74 +171,6 @@ test parseExprWithPrecedenceAndMemberAccess {
     try parseExprWithPrecedenceAndMemberAccess();
 }
 
-fn parseMultipleStructsAndModule() !void {
-    const src =
-        \\const In = struct {
-        \\    a: bool,
-        \\    b: bool,
-        \\};
-        \\const Out = struct {
-        \\    c: bool,
-        \\};
-        \\const Mod = module(in: &In, out: &var Out) void {
-        \\    out.c = in.a & in.b;
-        \\};
-    ;
-    const expected_nodes = [_]Node{
-        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(11) } }, // root
-        .{ .tag = .identifier, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
-        .{ .tag = .container_field, .main_idx = 5, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // a: bool
-        .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
-        .{ .tag = .container_field, .main_idx = 9, .data = .{ .lhs = @enumFromInt(3), .rhs = Node.null_node } }, // b: bool
-        .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(2) } }, // struct { ... }
-        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(5) } }, // const In = struct { ... };
-        .{ .tag = .identifier, .main_idx = 22, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
-        .{ .tag = .container_field, .main_idx = 20, .data = .{ .lhs = @enumFromInt(7), .rhs = Node.null_node } }, // c: bool
-        .{ .tag = .struct_decl, .main_idx = 18, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(3) } }, // struct { ... }
-        .{ .tag = .var_decl, .main_idx = 15, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(9) } }, // const Out = struct { ... };
-        .{ .tag = .identifier, .main_idx = 34, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // In
-        .{ .tag = .reference, .main_idx = 33, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // &In
-        .{ .tag = .module_arg, .main_idx = 31, .data = .{ .lhs = @enumFromInt(12), .rhs = Node.null_node } }, // in: &In
-        .{ .tag = .identifier, .main_idx = 40, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // Out
-        .{ .tag = .reference, .main_idx = 38, .data = .{ .lhs = @enumFromInt(14), .rhs = Node.null_node } }, // &var Out
-        .{ .tag = .module_arg, .main_idx = 36, .data = .{ .lhs = @enumFromInt(15), .rhs = Node.null_node } }, // out: &var Out
-        .{ .tag = .identifier, .main_idx = 42, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // void
-        .{ .tag = .module_sig, .main_idx = 30, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(17) } }, // (in: &In, out: &var Out) void
-        .{ .tag = .identifier, .main_idx = 44, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // out
-        .{ .tag = .identifier, .main_idx = 46, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
-        .{ .tag = .member, .main_idx = 45, .data = .{ .lhs = @enumFromInt(19), .rhs = @enumFromInt(20) } }, // out.c
-        .{ .tag = .identifier, .main_idx = 48, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // in
-        .{ .tag = .identifier, .main_idx = 50, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // a
-        .{ .tag = .member, .main_idx = 49, .data = .{ .lhs = @enumFromInt(22), .rhs = @enumFromInt(23) } }, // in.a
-        .{ .tag = .identifier, .main_idx = 52, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // in
-        .{ .tag = .identifier, .main_idx = 54, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
-        .{ .tag = .member, .main_idx = 53, .data = .{ .lhs = @enumFromInt(25), .rhs = @enumFromInt(26) } }, // in.b
-        .{ .tag = .bit_and, .main_idx = 51, .data = .{ .lhs = @enumFromInt(24), .rhs = @enumFromInt(27) } }, // in.a & in.b
-        .{ .tag = .assignment, .main_idx = 47, .data = .{ .lhs = @enumFromInt(21), .rhs = @enumFromInt(28) } }, // out.c = in.a & in.b;
-        .{ .tag = .module_body, .main_idx = 43, .data = .{ .lhs = @enumFromInt(7), .rhs = @enumFromInt(8) } }, // { ... }
-        .{ .tag = .module_decl, .main_idx = 29, .data = .{ .lhs = @enumFromInt(18), .rhs = @enumFromInt(30) } }, // module(...){ ... };
-        .{ .tag = .var_decl, .main_idx = 26, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(31) } }, // const Mod = module(...){ ... };
-    };
-    const expected_extra_data = [_]Node.Idx{
-        @enumFromInt(2), // In.a
-        @enumFromInt(4), // In.b
-        @enumFromInt(8), // Out.c
-        @enumFromInt(13), // in: &In
-        @enumFromInt(16), // out: &Out
-        @enumFromInt(3), // ModuleArgs.args_start
-        @enumFromInt(5), // ModuleArgs.args_end
-        @enumFromInt(29), // out.c = in.a & in.b
-        @enumFromInt(6), // In
-        @enumFromInt(10), // Out
-        @enumFromInt(32), // Mod
-    };
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
-}
-
-test parseMultipleStructsAndModule {
-    try parseMultipleStructsAndModule();
-}
-
 fn parseNumbers() !void {
     const src =
         \\const A = 3 + 4;
@@ -260,39 +192,81 @@ test parseNumbers {
     try parseNumbers();
 }
 
-fn parseModule() !void {
+fn parseModuleOnlyFields() !void {
     const src =
-        \\const Mod = module(in0: u1, in1: u1) u1 {
-        \\    const ret = in0 | in1;
-        \\}
+        \\const Mod = module {
+        \\    a: u1,
+        \\    b: u1,
+        \\};
     ;
     const expected_nodes = [_]Node{
-        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // root,
+        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(3) } }, // root,
         .{ .tag = .identifier, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // u1
-        .{ .tag = .module_arg, .main_idx = 5, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // in0: u1
+        .{ .tag = .container_field, .main_idx = 5, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // a: u1
         .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // u1
-        .{ .tag = .module_arg, .main_idx = 9, .data = .{ .lhs = @enumFromInt(3), .rhs = Node.null_node } }, // in1: u1
-        .{ .tag = .identifier, .main_idx = 13, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // u1
-        .{ .tag = .module_sig, .main_idx = 4, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(5) } }, // module(in0: u1, in1: u1) u1
-        .{ .tag = .identifier, .main_idx = 18, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // in0
-        .{ .tag = .identifier, .main_idx = 20, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // in1
-        .{ .tag = .bit_or, .main_idx = 19, .data = .{ .lhs = @enumFromInt(7), .rhs = @enumFromInt(8) } }, // in0 | in1
-        .{ .tag = .var_decl, .main_idx = 15, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(9) } }, // const ret = in0 | in1;
-        .{ .tag = .module_body, .main_idx = 14, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... };
-        .{ .tag = .module_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(11) } }, // module(...){ ... };
-        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(12) } }, // module(...){ ... };
+        .{ .tag = .container_field, .main_idx = 9, .data = .{ .lhs = @enumFromInt(3), .rhs = Node.null_node } }, // b: u1
+        .{ .tag = .module_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(2) } }, // module { ... }
+        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(5) } }, // const Mod = module { ... };
     };
     const expected_extra_data = [_]Node.Idx{
-        @enumFromInt(2), // in0: u1
-        @enumFromInt(4), // in1: u1
-        @enumFromInt(0), // ModuleArgs.args_start
-        @enumFromInt(2), // ModuleArgs.args_end
-        @enumFromInt(10), // const ret = in0 | in1
-        @enumFromInt(13), // root.Mod
+        @enumFromInt(2), // struct field 0
+        @enumFromInt(4), // struct field 1
+        @enumFromInt(6), // root
     };
     try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
 }
 
-test parseModule {
-    try parseModule();
+test parseModuleOnlyFields {
+    try parseModuleOnlyFields();
+}
+
+fn parseModuleWithFieldsAndDecls() !void {
+    const src =
+        \\const Mod = module {
+        \\    a: u1,
+        \\    b: u1,
+        \\
+        \\    const A = 2;
+        \\};
+    ;
+    const expected_nodes = [_]Node{
+        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(3), .rhs = @enumFromInt(4) } }, // root,
+        .{ .tag = .identifier, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // u1
+        .{ .tag = .container_field, .main_idx = 5, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // a: u1
+        .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // u1
+        .{ .tag = .container_field, .main_idx = 9, .data = .{ .lhs = @enumFromInt(3), .rhs = Node.null_node } }, // b: u1
+        .{ .tag = .int, .main_idx = 16, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // 2
+        .{ .tag = .var_decl, .main_idx = 13, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(5) } }, // const A = 2;
+        .{ .tag = .module_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(3) } }, // module { ... }
+        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(7) } }, // const Mod = module { ... };
+    };
+    const expected_extra_data = [_]Node.Idx{
+        @enumFromInt(2), // struct field 0
+        @enumFromInt(4), // struct field 1
+        @enumFromInt(6), // Mod.A
+        @enumFromInt(8), // root
+    };
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+}
+
+test parseModuleWithFieldsAndDecls {
+    try parseModuleWithFieldsAndDecls();
+}
+
+fn parseModuleWithPubComb() !void {
+    const src =
+        \\const Mod = module {
+        \\    pub comb a(a: &bool, b: &bool) bool {
+        \\        return a & b;
+        \\    }
+        \\};
+    ;
+    const expected_nodes = [_]Node{};
+    const expected_extra_data = [_]Node.Idx{};
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+}
+
+test parseModuleWithPubComb {
+    // try parseMultipleStructsWithModuleAndPubComb();
+    return error.SkipZigTest;
 }

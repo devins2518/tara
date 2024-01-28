@@ -345,71 +345,75 @@ fn parseReference(self: *Parser) !Node.Idx {
 
 fn parseModuleDecl(self: *Parser) !Node.Idx {
     log.debug("parseModuleDecl\n", .{});
-    const main_idx = self.eat(.keyword_module) orelse return Node.null_node;
-    const module_sig = try self.parseModuleSig();
-    const module_body = try self.parseModuleBody();
+    const main_idx = self.nextToken();
+    const module_decl: Node.Tag = switch (self.tokens[main_idx].tag) {
+        .keyword_module => .module_decl,
+        else => return Node.null_node,
+    };
+    _ = self.eat(.lbrace);
+    const members = try self.parseModuleMembers();
     _ = self.eat(.rbrace);
+
     return self.addNode(.{
-        .tag = .module_decl,
+        .tag = module_decl,
         .main_idx = main_idx,
         .data = .{
-            .lhs = module_sig,
-            .rhs = module_body,
+            .lhs = members.start,
+            .rhs = members.end,
         },
     });
 }
 
-fn parseModuleSig(self: *Parser) !Node.Idx {
-    log.debug("parseModuleSig\n", .{});
-    const main_idx = self.eat(.lparen) orelse return Node.null_node;
-    const module_args = try self.parseModuleArgs();
-    _ = self.eat(.rparen);
-    const ret_ty = try self.parseTypeExpr();
-    return self.addNode(.{
-        .tag = .module_sig,
-        .main_idx = main_idx,
-        .data = .{
-            .lhs = module_args,
-            .rhs = ret_ty,
-        },
-    });
-}
+// TODO: can be used for comb parsing
+// fn parseModuleSig(self: *Parser) !Node.Idx {
+//     log.debug("parseModuleSig\n", .{});
+//     const main_idx = self.eat(.lparen) orelse return Node.null_node;
+//     const module_args = try self.parseModuleArgs();
+//     _ = self.eat(.rparen);
+//     const ret_ty = try self.parseTypeExpr();
+//     return self.addNode(.{
+//         .tag = .module_sig,
+//         .main_idx = main_idx,
+//         .data = .{
+//             .lhs = module_args,
+//             .rhs = ret_ty,
+//         },
+//     });
+// }
+//
+// fn parseModuleArgs(self: *Parser) !Node.Idx {
+//     log.debug("parseModuleArgs\n", .{});
+//     const scratch_top = self.scratchpad.items.len;
+//     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
+//
+//     while (true) {
+//         switch (self.tokens[self.tok_idx].tag) {
+//             .rparen => break,
+//             .identifier => {
+//                 const main_idx = self.eat(.identifier).?;
+//                 _ = self.eat(.colon);
+//                 const type_expr = try self.parseTypeExpr();
+//                 try self.scratchpad.append(self.allocator, try self.addNode(.{
+//                     .tag = .module_arg,
+//                     .main_idx = main_idx,
+//                     .data = .{ .lhs = type_expr, .rhs = Node.null_node },
+//                 }));
+//                 _ = self.eat(.comma);
+//             },
+//             // TODO: error handling
+//             else => @panic("Unexpected token when parsing module_args"),
+//         }
+//     }
+//
+//     const sublist = try self.scratchToSubList(scratch_top);
+//     return try self.addExtra(Node.ModuleArgs{
+//         .args_start = sublist.start,
+//         .args_end = sublist.end,
+//     });
+// }
 
-fn parseModuleArgs(self: *Parser) !Node.Idx {
-    log.debug("parseModuleArgs\n", .{});
-    const scratch_top = self.scratchpad.items.len;
-    defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
-
-    while (true) {
-        switch (self.tokens[self.tok_idx].tag) {
-            .rparen => break,
-            .identifier => {
-                const main_idx = self.eat(.identifier).?;
-                _ = self.eat(.colon);
-                const type_expr = try self.parseTypeExpr();
-                try self.scratchpad.append(self.allocator, try self.addNode(.{
-                    .tag = .module_arg,
-                    .main_idx = main_idx,
-                    .data = .{ .lhs = type_expr, .rhs = Node.null_node },
-                }));
-                _ = self.eat(.comma);
-            },
-            // TODO: error handling
-            else => @panic("Unexpected token when parsing module_args"),
-        }
-    }
-
-    const sublist = try self.scratchToSubList(scratch_top);
-    return try self.addExtra(Node.ModuleArgs{
-        .args_start = sublist.start,
-        .args_end = sublist.end,
-    });
-}
-
-fn parseModuleBody(self: *Parser) !Node.Idx {
-    log.debug("parseModuleStatements\n", .{});
-
-    const main_idx = self.eat(.lbrace) orelse return Node.null_node;
+fn parseModuleMembers(self: *Parser) !Node.SubList {
+    log.debug("parseModuleMembers\n", .{});
     const scratch_top = self.scratchpad.items.len;
     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
 
@@ -422,24 +426,16 @@ fn parseModuleBody(self: *Parser) !Node.Idx {
             .keyword_const,
             .keyword_var,
             => try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement()),
-            .identifier => try self.scratchpad.append(self.allocator, try self.parseAssignmentStatement()),
+            .identifier => try self.scratchpad.append(self.allocator, try self.parseContainerField()),
             .rbrace => break,
             else => {
-                std.debug.print("[ERROR]: unhandled module statement: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
+                std.debug.print("[ERROR]: unhandled module member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
                 break;
             },
         }
     }
 
-    const sublist = try self.scratchToSubList(scratch_top);
-    return try self.addNode(.{
-        .tag = .module_body,
-        .main_idx = main_idx,
-        .data = .{
-            .lhs = sublist.start,
-            .rhs = sublist.end,
-        },
-    });
+    return try self.scratchToSubList(scratch_top);
 }
 
 fn eat(self: *Parser, tag: Token.Tag) ?Ast.TokenIdx {

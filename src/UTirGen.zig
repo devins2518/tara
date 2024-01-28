@@ -288,7 +288,6 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .root,
         .var_decl,
         .module_decl,
-        .module_arg,
         .container_field,
         .@"or",
         .@"and",
@@ -307,8 +306,6 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .reference,
         .assignment,
         .member,
-        .module_sig,
-        .module_body,
         => unreachable,
     }
 }

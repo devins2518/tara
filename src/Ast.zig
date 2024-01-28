@@ -39,26 +39,13 @@ pub const Node = struct {
         // If there is a single field or decl, then lhs is 0 and data.rhs is a single field or decl indexing nodes
         // If there are 2 or more fields or decls, then data.lhs is extra_index index of a `StructBody` and data.rhs is 0
         struct_decl,
-        // `module (args) ret_ty { statements* }`
+        // `module { module_fields* module_statements* }`
         // `main_idx` is module
-        // `lhs` is extra_index index of a `module_sig`
-        // `rhs` is extra_index index of a `module_body`
+        // `lhs` is extra_index index of the start of a list of node indexes
+        // `rhs` is extra_index index of the end of a list of node indexes
+        // `lhs`..`rhs` can contain `container_field`s or `comb_def`s
+        // TODO: implement comb parsing
         module_decl,
-        // `module (args) ret_ty`
-        // `main_idx` is `(`
-        // `lhs` is extra_index index of `ModuleArgs` which indexes into `extra_data`
-        // `rhs` is index of ret_ty
-        module_sig,
-        // `{ statements* }`
-        // `main_idx` is `{`
-        // `lhs` is the start of extra_index index of module statements
-        // `rhs` is the end of extra_index indexes of module statmenets
-        module_body,
-        // `ident: type_expr`
-        // `main_idx` is ident
-        // lhs is `nodes` index of `type_expr`
-        // rhs is unused
-        module_arg,
         // `ident: type_expr( = expr)?`
         // `main_idx` is ident
         // lhs is `type_expr`, indexes `nodes`
