@@ -438,6 +438,23 @@ fn parseModuleMembers(self: *Parser) !Node.SubList {
     return try self.scratchToSubList(scratch_top);
 }
 
+fn parseReturnStatement(self: *Parser) !Node.Idx {
+    const main_idx = self.eat(.keyword_return) orelse return Node.null_node;
+
+    const expr = try self.parseExpr();
+
+    _ = self.eat(.semicolon);
+
+    return try self.addNode(.{
+        .tag = .@"return",
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = expr,
+            .rhs = Node.null_node,
+        },
+    });
+}
+
 fn eat(self: *Parser, tag: Token.Tag) ?Ast.TokenIdx {
     return if (self.tokens[self.tok_idx].tag == tag) self.nextToken() else null;
 }

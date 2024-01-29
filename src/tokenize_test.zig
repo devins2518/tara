@@ -326,3 +326,40 @@ fn tokenizeMultipleStructsAndModule() !void {
 test tokenizeMultipleStructsAndModule {
     try tokenizeMultipleStructsAndModule();
 }
+
+fn tokenizeKeywords() !void {
+    const src =
+        \\and
+        \\comb
+        \\const
+        \\enum
+        \\fn
+        \\module
+        \\or
+        \\pub
+        \\struct
+        \\union
+        \\var
+        \\return
+        \\
+    ;
+    const expected = [_]Token.Tag{
+        .keyword_and,
+        .keyword_comb,
+        .keyword_const,
+        .keyword_enum,
+        .keyword_fn,
+        .keyword_module,
+        .keyword_or,
+        .keyword_pub,
+        .keyword_struct,
+        .keyword_union,
+        .keyword_var,
+        .keyword_return,
+    };
+    try runTestExpectSuccess(src, &expected);
+}
+
+test tokenizeKeywords {
+    try tokenizeKeywords();
+}
