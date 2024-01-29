@@ -45,26 +45,26 @@ pub const Node = struct {
         // `rhs` is extra_index index of the end of a list of node indexes
         // `lhs`..`rhs` can contain `container_field`s or `comb_def`s
         module_decl,
-        // `pub? comb ident(args*) ret_ty { statements* }`
+        // `pub? (comb|fn) ident(args*) ret_ty { statements* }`
         // `main_idx` is `ident`
-        // `lhs` is index of `CombArgs`
-        // `rhs` is index of `SubList`
-        comb_decl,
+        // `lhs` is index of `subroutine_sig`
+        // `rhs` is index of `subroutine_body`
+        subroutine_decl,
         // `(args*) ret_ty`
         // `main_idx` is `(`
-        // `lhs` is extra_index index of `CombArgs` which indexes into `extra_data`
+        // `lhs` is extra_index index of `SubroutineArgs` which indexes into `extra_data`
         // `rhs` is index of ret_ty
-        comb_sig,
+        subroutine_sig,
         // `{ statements* }`
         // `main_idx` is `{`
-        // `lhs` is the start of extra_index index of comb statements
-        // `rhs` is the end of extra_index indexes of comb statmenets
-        comb_body,
+        // `lhs` is the start of extra_index index of subroutine statements
+        // `rhs` is the end of extra_index indexes of subroutine statmenets
+        subroutine_body,
         // `ident: type_expr`
         // `main_idx` is ident
         // lhs is `nodes` index of `type_expr`
         // rhs is unused
-        comb_arg,
+        subroutine_arg,
         // `ident: type_expr( = expr)?`
         // `main_idx` is ident
         // lhs is `type_expr`, indexes `nodes`
@@ -120,6 +120,11 @@ pub const Node = struct {
         // `lhs` is an expression
         // `rhs` is unused
         reference,
+        // `*var? lhs`
+        // `main_idx` is *
+        // `lhs` is an expression
+        // `rhs` is unused
+        ptr_ty,
         // `lhs assignment_op rhs`
         // `main_idx` is assignment_op
         // `lhs` is an lvalue expression

@@ -283,26 +283,26 @@ fn parseModuleWithComb() !void {
         .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // root,
         .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
         .{ .tag = .reference, .main_idx = 10, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // &bool
-        .{ .tag = .comb_arg, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: &bool
+        .{ .tag = .subroutine_arg, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: &bool
         .{ .tag = .identifier, .main_idx = 16, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
         .{ .tag = .reference, .main_idx = 15, .data = .{ .lhs = @enumFromInt(4), .rhs = Node.null_node } }, // &bool
-        .{ .tag = .comb_arg, .main_idx = 13, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: &bool
+        .{ .tag = .subroutine_arg, .main_idx = 13, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: &bool
         .{ .tag = .identifier, .main_idx = 18, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
-        .{ .tag = .comb_sig, .main_idx = 7, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: &bool, c: &bool) bool
+        .{ .tag = .subroutine_sig, .main_idx = 7, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: &bool, c: &bool) bool
         .{ .tag = .identifier, .main_idx = 21, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
         .{ .tag = .identifier, .main_idx = 23, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
         .{ .tag = .@"and", .main_idx = 22, .data = .{ .lhs = @enumFromInt(9), .rhs = @enumFromInt(10) } }, // b and c
         .{ .tag = .@"return", .main_idx = 20, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // return b and c;
-        .{ .tag = .comb_body, .main_idx = 19, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
-        .{ .tag = .comb_decl, .main_idx = 6, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // comb a(...) { ... }
+        .{ .tag = .subroutine_body, .main_idx = 19, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
+        .{ .tag = .subroutine_decl, .main_idx = 6, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // comb a(...) { ... }
         .{ .tag = .module_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // module { ... }
         .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const Mod = module { ... };
     };
     const expected_extra_data = [_]Node.Idx{
         @enumFromInt(3), // b: &bool
         @enumFromInt(6), // c: &bool
-        @enumFromInt(0), // CombArgs.args_start
-        @enumFromInt(2), // CombArgs.args_end
+        @enumFromInt(0), // SubroutineArgs.args_start
+        @enumFromInt(2), // SubroutineArgs.args_end
         @enumFromInt(12), // return b and c
         @enumFromInt(14), // Mod.a
         @enumFromInt(16), // Mod
@@ -326,26 +326,26 @@ fn parseModuleWithPubComb() !void {
         .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // root,
         .{ .tag = .identifier, .main_idx = 12, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
         .{ .tag = .reference, .main_idx = 11, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // &bool
-        .{ .tag = .comb_arg, .main_idx = 9, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: &bool
+        .{ .tag = .subroutine_arg, .main_idx = 9, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: &bool
         .{ .tag = .identifier, .main_idx = 17, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
         .{ .tag = .reference, .main_idx = 16, .data = .{ .lhs = @enumFromInt(4), .rhs = Node.null_node } }, // &bool
-        .{ .tag = .comb_arg, .main_idx = 14, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: &bool
+        .{ .tag = .subroutine_arg, .main_idx = 14, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: &bool
         .{ .tag = .identifier, .main_idx = 19, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
-        .{ .tag = .comb_sig, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: &bool, c: &bool) bool
+        .{ .tag = .subroutine_sig, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: &bool, c: &bool) bool
         .{ .tag = .identifier, .main_idx = 22, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
         .{ .tag = .identifier, .main_idx = 24, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
         .{ .tag = .@"and", .main_idx = 23, .data = .{ .lhs = @enumFromInt(9), .rhs = @enumFromInt(10) } }, // b and c
         .{ .tag = .@"return", .main_idx = 21, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // return b and c;
-        .{ .tag = .comb_body, .main_idx = 20, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
-        .{ .tag = .comb_decl, .main_idx = 7, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // pub comb a(...) { ... }
+        .{ .tag = .subroutine_body, .main_idx = 20, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
+        .{ .tag = .subroutine_decl, .main_idx = 7, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // pub comb a(...) { ... }
         .{ .tag = .module_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // module { ... }
         .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const Mod = module { ... };
     };
     const expected_extra_data = [_]Node.Idx{
         @enumFromInt(3), // b: &bool
         @enumFromInt(6), // c: &bool
-        @enumFromInt(0), // CombArgs.args_start
-        @enumFromInt(2), // CombArgs.args_end
+        @enumFromInt(0), // SubroutineArgs.args_start
+        @enumFromInt(2), // SubroutineArgs.args_end
         @enumFromInt(12), // return b and c
         @enumFromInt(14), // Mod.a
         @enumFromInt(16), // Mod
@@ -355,4 +355,90 @@ fn parseModuleWithPubComb() !void {
 
 test parseModuleWithPubComb {
     try parseModuleWithPubComb();
+}
+
+fn parseStructWithFn() !void {
+    const src =
+        \\const S = struct {
+        \\    fn a(b: *bool, c: *bool) bool {
+        \\        return b and c;
+        \\    }
+        \\};
+    ;
+    const expected_nodes = [_]Node{
+        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // root,
+        .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .ptr_ty, .main_idx = 10, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // *bool
+        .{ .tag = .subroutine_arg, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: *bool
+        .{ .tag = .identifier, .main_idx = 16, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .ptr_ty, .main_idx = 15, .data = .{ .lhs = @enumFromInt(4), .rhs = Node.null_node } }, // *bool
+        .{ .tag = .subroutine_arg, .main_idx = 13, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: *bool
+        .{ .tag = .identifier, .main_idx = 18, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .subroutine_sig, .main_idx = 7, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: *bool, c: *bool) bool
+        .{ .tag = .identifier, .main_idx = 21, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+        .{ .tag = .identifier, .main_idx = 23, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+        .{ .tag = .@"and", .main_idx = 22, .data = .{ .lhs = @enumFromInt(9), .rhs = @enumFromInt(10) } }, // b and c
+        .{ .tag = .@"return", .main_idx = 20, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // return b and c;
+        .{ .tag = .subroutine_body, .main_idx = 19, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
+        .{ .tag = .subroutine_decl, .main_idx = 6, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // fn a(...) { ... }
+        .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // struct { ... }
+        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const S = struct { ... };
+    };
+    const expected_extra_data = [_]Node.Idx{
+        @enumFromInt(3), // b: *bool
+        @enumFromInt(6), // c: *bool
+        @enumFromInt(0), // SubroutineArgs.args_start
+        @enumFromInt(2), // SubroutineArgs.args_end
+        @enumFromInt(12), // return b and c
+        @enumFromInt(14), // S.a
+        @enumFromInt(16), // S
+    };
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
+}
+
+test parseStructWithFn {
+    try parseStructWithFn();
+}
+
+fn parseStructWithPubFn() !void {
+    const src =
+        \\const S = struct {
+        \\    pub fn a(b: *bool, c: *bool) bool {
+        \\        return b and c;
+        \\    }
+        \\};
+    ;
+    const expected_nodes = [_]Node{
+        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // root,
+        .{ .tag = .identifier, .main_idx = 12, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .ptr_ty, .main_idx = 11, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // *bool
+        .{ .tag = .subroutine_arg, .main_idx = 9, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: *bool
+        .{ .tag = .identifier, .main_idx = 17, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .ptr_ty, .main_idx = 16, .data = .{ .lhs = @enumFromInt(4), .rhs = Node.null_node } }, // *bool
+        .{ .tag = .subroutine_arg, .main_idx = 14, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: *bool
+        .{ .tag = .identifier, .main_idx = 19, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .subroutine_sig, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: *bool, c: *bool) bool
+        .{ .tag = .identifier, .main_idx = 22, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+        .{ .tag = .identifier, .main_idx = 24, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+        .{ .tag = .@"and", .main_idx = 23, .data = .{ .lhs = @enumFromInt(9), .rhs = @enumFromInt(10) } }, // b and c
+        .{ .tag = .@"return", .main_idx = 21, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // return b and c;
+        .{ .tag = .subroutine_body, .main_idx = 20, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
+        .{ .tag = .subroutine_decl, .main_idx = 7, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // pub fn a(...) { ... }
+        .{ .tag = .struct_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // struct { ... }
+        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const S = struct { ... };
+    };
+    const expected_extra_data = [_]Node.Idx{
+        @enumFromInt(3), // b: *bool
+        @enumFromInt(6), // c: *bool
+        @enumFromInt(0), // SubroutineArgs.args_start
+        @enumFromInt(2), // SubroutineArgs.args_end
+        @enumFromInt(12), // return b and c
+        @enumFromInt(14), // S.a
+        @enumFromInt(16), // S
+    };
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
+}
+
+test parseStructWithPubFn {
+    try parseStructWithPubFn();
 }

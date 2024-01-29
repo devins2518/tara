@@ -60,12 +60,21 @@ fn parseContainerMembers(self: *Parser) Error!Node.SubList {
         switch (self.tokens[self.tok_idx].tag) {
             .keyword_pub => {
                 self.tok_idx += 1;
-                try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement());
+                const member = switch (self.tokens[self.tok_idx].tag) {
+                    .identifier => try self.parseVarDeclStatement(),
+                    .keyword_fn => try self.parseMethod(.keyword_fn),
+                    else => {
+                        std.debug.print("[ERROR]: unexpected public container member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
+                        break;
+                    },
+                };
+                try self.scratchpad.append(self.allocator, member);
             },
             .keyword_const,
             .keyword_var,
             => try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement()),
             .identifier => try self.scratchpad.append(self.allocator, try self.parseContainerField()),
+            .keyword_fn => try self.scratchpad.append(self.allocator, try self.parseMethod(.keyword_fn)),
             .eof, .rbrace => break,
             else => {
                 std.debug.print("[ERROR]: unhandled container member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
@@ -306,6 +315,7 @@ fn parseTypeExpr(self: *Parser) Error!Node.Idx {
             .data = .{ .lhs = Node.null_node, .rhs = Node.null_node },
         }),
         .op_and => self.parseReference(),
+        .op_star => self.parsePointer(),
         else => Node.null_node,
     };
 }
@@ -343,6 +353,17 @@ fn parseReference(self: *Parser) !Node.Idx {
     });
 }
 
+fn parsePointer(self: *Parser) !Node.Idx {
+    const main_idx = self.eat(.op_star) orelse return Node.null_node;
+    _ = self.eat(.keyword_var);
+    const expr = try self.parseExpr();
+    return self.addNode(.{
+        .tag = .ptr_ty,
+        .main_idx = main_idx,
+        .data = .{ .lhs = expr, .rhs = Node.null_node },
+    });
+}
+
 fn parseModuleDecl(self: *Parser) !Node.Idx {
     log.debug("parseModuleDecl\n", .{});
     const main_idx = self.nextToken();
@@ -367,11 +388,11 @@ fn parseModuleDecl(self: *Parser) !Node.Idx {
 fn parseCombDecl(self: *Parser) !Node.Idx {
     _ = self.eat(.keyword_comb);
     const main_idx = self.eat(.identifier) orelse return Node.null_node;
-    const comb_sig = try self.parseCombSig();
-    const comb_body = try self.parseCombBody();
+    const comb_sig = try self.parseSubroutineSig();
+    const comb_body = try self.parseSubroutineBody();
 
     return self.addNode(.{
-        .tag = .comb_decl,
+        .tag = .subroutine_decl,
         .main_idx = main_idx,
         .data = .{
             .lhs = comb_sig,
@@ -380,24 +401,48 @@ fn parseCombDecl(self: *Parser) !Node.Idx {
     });
 }
 
-fn parseCombSig(self: *Parser) !Node.Idx {
-    log.debug("parseModuleSig\n", .{});
+fn parseFnDecl(self: *Parser) !Node.Idx {
+    _ = self.eat(.keyword_fn);
+    const main_idx = self.eat(.identifier) orelse return Node.null_node;
+    const fn_sig = try self.parseSubroutineSig();
+    const fn_body = try self.parseSubroutineBody();
+
+    return self.addNode(.{
+        .tag = .subroutine_decl,
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = fn_sig,
+            .rhs = fn_body,
+        },
+    });
+}
+
+fn parseMethod(self: *Parser, comptime keyword: Token.Tag) !Node.Idx {
+    return switch (keyword) {
+        .keyword_comb => try self.parseCombDecl(),
+        .keyword_fn => try self.parseFnDecl(),
+        else => @compileError("Expected .keyword_fn or .keyword_comb in Parser.parseMethod, found " ++ @tagName(keyword)),
+    };
+}
+
+fn parseSubroutineSig(self: *Parser) !Node.Idx {
+    log.debug("parseSubroutineSig\n", .{});
     const main_idx = self.eat(.lparen) orelse return Node.null_node;
-    const comb_args = try self.parseCombArgs();
+    const subroutine_args = try self.parseSubroutineArgs();
     _ = self.eat(.rparen);
     const ret_ty = try self.parseTypeExpr();
     return self.addNode(.{
-        .tag = .comb_sig,
+        .tag = .subroutine_sig,
         .main_idx = main_idx,
         .data = .{
-            .lhs = comb_args,
+            .lhs = subroutine_args,
             .rhs = ret_ty,
         },
     });
 }
 
-fn parseCombArgs(self: *Parser) !Node.Idx {
-    log.debug("parseModuleArgs\n", .{});
+fn parseSubroutineArgs(self: *Parser) !Node.Idx {
+    log.debug("parseSubroutineArgs\n", .{});
     const scratch_top = self.scratchpad.items.len;
     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
 
@@ -409,14 +454,14 @@ fn parseCombArgs(self: *Parser) !Node.Idx {
                 _ = self.eat(.colon);
                 const type_expr = try self.parseTypeExpr();
                 try self.scratchpad.append(self.allocator, try self.addNode(.{
-                    .tag = .comb_arg,
+                    .tag = .subroutine_arg,
                     .main_idx = main_idx,
                     .data = .{ .lhs = type_expr, .rhs = Node.null_node },
                 }));
                 _ = self.eat(.comma);
             },
             // TODO: error handling
-            else => @panic("Unexpected token when parsing module_args"),
+            else => @panic("Unexpected token when parsing subroutine_args"),
         }
     }
 
@@ -427,8 +472,8 @@ fn parseCombArgs(self: *Parser) !Node.Idx {
     });
 }
 
-fn parseCombBody(self: *Parser) !Node.Idx {
-    log.debug("parseModuleStatements\n", .{});
+fn parseSubroutineBody(self: *Parser) !Node.Idx {
+    log.debug("parseSubroutineStatements\n", .{});
 
     const main_idx = self.eat(.lbrace) orelse return Node.null_node;
     const scratch_top = self.scratchpad.items.len;
@@ -447,7 +492,7 @@ fn parseCombBody(self: *Parser) !Node.Idx {
             .keyword_return => try self.scratchpad.append(self.allocator, try self.parseReturnStatement()),
             .rbrace => break,
             else => {
-                std.debug.print("[ERROR]: unhandled module statement: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
+                std.debug.print("[ERROR]: unhandled subroutine statement: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
                 break;
             },
         }
@@ -455,7 +500,7 @@ fn parseCombBody(self: *Parser) !Node.Idx {
 
     const sublist = try self.scratchToSubList(scratch_top);
     return try self.addNode(.{
-        .tag = .comb_body,
+        .tag = .subroutine_body,
         .main_idx = main_idx,
         .data = .{
             .lhs = sublist.start,
@@ -475,7 +520,7 @@ fn parseModuleMembers(self: *Parser) !Node.SubList {
                 self.tok_idx += 1;
                 const member = switch (self.tokens[self.tok_idx].tag) {
                     .identifier => try self.parseVarDeclStatement(),
-                    .keyword_comb => try self.parseCombDecl(),
+                    .keyword_comb => try self.parseMethod(.keyword_comb),
                     else => {
                         std.debug.print("[ERROR]: unexpected public module member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
                         break;
@@ -487,7 +532,7 @@ fn parseModuleMembers(self: *Parser) !Node.SubList {
             .keyword_var,
             => try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement()),
             .identifier => try self.scratchpad.append(self.allocator, try self.parseContainerField()),
-            .keyword_comb => try self.scratchpad.append(self.allocator, try self.parseCombDecl()),
+            .keyword_comb => try self.scratchpad.append(self.allocator, try self.parseMethod(.keyword_comb)),
             .rbrace => break,
             else => {
                 std.debug.print("[ERROR]: unhandled module member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
