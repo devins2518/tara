@@ -6,7 +6,7 @@ const allocator = std.testing.allocator;
 const Node = Ast.Node;
 const Token = tokenize.Token;
 
-fn runTestExpectSuccess(src: [:0]const u8, expected_nodes: []const Node, expected_extra_data: []const Node.Idx) !void {
+fn runTestExpectSuccess(src: [:0]const u8, expected_nodes: []const Node, expected_extra_data: []const Node.Idx, debug_print: bool) !void {
     var t = tokenize.Tokenizer.init(src);
     var tokens = std.ArrayList(Token).init(allocator);
     defer tokens.deinit();
@@ -28,11 +28,29 @@ fn runTestExpectSuccess(src: [:0]const u8, expected_nodes: []const Node, expecte
 
     try p.parseRoot();
 
+    if (debug_print) {
+        for (0..p.nodes.len) |i| {
+            std.debug.print("{}\n\n", .{p.nodes.get(i)});
+        }
+        for (p.extra_data.items) |e| {
+            std.debug.print("{}\n\n", .{e});
+        }
+    }
+
     for (expected_nodes, 0..) |e, i| {
         try std.testing.expectEqual(e, p.nodes.get(i));
     }
+
+    if (debug_print) {
+        std.debug.print("Passed nodes!\n\n", .{});
+    }
+
     for (expected_extra_data, p.extra_data.items) |e, a| {
         try std.testing.expectEqual(e, a);
+    }
+
+    if (debug_print) {
+        std.debug.print("Passed extra data!\n\n", .{});
     }
 }
 
@@ -47,7 +65,7 @@ fn parseEmptyStruct() !void {
         .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = @enumFromInt(0), .rhs = @enumFromInt(1) } }, // const In = struct { ... };
     };
     const expected_extra_data = [_]Node.Idx{@enumFromInt(2)};
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseEmptyStruct {
@@ -80,7 +98,7 @@ fn parseStructWithFields() !void {
         @enumFromInt(6), // struct field 2
         @enumFromInt(8), // root
     };
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseStructWithFields {
@@ -106,7 +124,7 @@ fn parseExprWithPrecedence() !void {
         .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(9) } },
     };
     const expected_extra_data = [_]Node.Idx{@enumFromInt(10)};
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseExprWithPrecedence {
@@ -132,7 +150,7 @@ fn parseExprWithPrecedenceAndParentheses() !void {
         .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(9) } },
     };
     const expected_extra_data = [_]Node.Idx{@enumFromInt(10)};
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseExprWithPrecedenceAndParentheses {
@@ -164,7 +182,7 @@ fn parseExprWithPrecedenceAndMemberAccess() !void {
         .{ .tag = .var_decl, .main_idx = 7, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const B = c.d + (e.f - g.h);
     };
     const expected_extra_data = [_]Node.Idx{ @enumFromInt(4), @enumFromInt(16) };
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseExprWithPrecedenceAndMemberAccess {
@@ -185,7 +203,7 @@ fn parseNumbers() !void {
     const expected_extra_data = [_]Node.Idx{
         @enumFromInt(4),
     };
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseNumbers {
@@ -213,7 +231,7 @@ fn parseModuleOnlyFields() !void {
         @enumFromInt(4), // struct field 1
         @enumFromInt(6), // root
     };
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseModuleOnlyFields {
@@ -246,27 +264,95 @@ fn parseModuleWithFieldsAndDecls() !void {
         @enumFromInt(6), // Mod.A
         @enumFromInt(8), // root
     };
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseModuleWithFieldsAndDecls {
     try parseModuleWithFieldsAndDecls();
 }
 
-fn parseModuleWithPubComb() !void {
+fn parseModuleWithComb() !void {
     const src =
         \\const Mod = module {
-        \\    pub comb a(a: &bool, b: &bool) bool {
-        \\        return a & b;
+        \\    comb a(b: &bool, c: &bool) bool {
+        \\        return b and c;
         \\    }
         \\};
     ;
-    const expected_nodes = [_]Node{};
-    const expected_extra_data = [_]Node.Idx{};
-    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data);
+    const expected_nodes = [_]Node{
+        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // root,
+        .{ .tag = .identifier, .main_idx = 11, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .reference, .main_idx = 10, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // &bool
+        .{ .tag = .comb_arg, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: &bool
+        .{ .tag = .identifier, .main_idx = 16, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .reference, .main_idx = 15, .data = .{ .lhs = @enumFromInt(4), .rhs = Node.null_node } }, // &bool
+        .{ .tag = .comb_arg, .main_idx = 13, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: &bool
+        .{ .tag = .identifier, .main_idx = 18, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .comb_sig, .main_idx = 7, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: &bool, c: &bool) bool
+        .{ .tag = .identifier, .main_idx = 21, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+        .{ .tag = .identifier, .main_idx = 23, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+        .{ .tag = .@"and", .main_idx = 22, .data = .{ .lhs = @enumFromInt(9), .rhs = @enumFromInt(10) } }, // b and c
+        .{ .tag = .@"return", .main_idx = 20, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // return b and c;
+        .{ .tag = .comb_body, .main_idx = 19, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
+        .{ .tag = .comb_decl, .main_idx = 6, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // comb a(...) { ... }
+        .{ .tag = .module_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // module { ... }
+        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const Mod = module { ... };
+    };
+    const expected_extra_data = [_]Node.Idx{
+        @enumFromInt(3), // b: &bool
+        @enumFromInt(6), // c: &bool
+        @enumFromInt(0), // CombArgs.args_start
+        @enumFromInt(2), // CombArgs.args_end
+        @enumFromInt(12), // return b and c
+        @enumFromInt(14), // Mod.a
+        @enumFromInt(16), // Mod
+    };
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
+}
+
+test parseModuleWithComb {
+    try parseModuleWithComb();
+}
+
+fn parseModuleWithPubComb() !void {
+    const src =
+        \\const Mod = module {
+        \\    pub comb a(b: &bool, c: &bool) bool {
+        \\        return b and c;
+        \\    }
+        \\};
+    ;
+    const expected_nodes = [_]Node{
+        .{ .tag = .root, .main_idx = 0, .data = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(7) } }, // root,
+        .{ .tag = .identifier, .main_idx = 12, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .reference, .main_idx = 11, .data = .{ .lhs = @enumFromInt(1), .rhs = Node.null_node } }, // &bool
+        .{ .tag = .comb_arg, .main_idx = 9, .data = .{ .lhs = @enumFromInt(2), .rhs = Node.null_node } }, // b: &bool
+        .{ .tag = .identifier, .main_idx = 17, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .reference, .main_idx = 16, .data = .{ .lhs = @enumFromInt(4), .rhs = Node.null_node } }, // &bool
+        .{ .tag = .comb_arg, .main_idx = 14, .data = .{ .lhs = @enumFromInt(5), .rhs = Node.null_node } }, // c: &bool
+        .{ .tag = .identifier, .main_idx = 19, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // bool
+        .{ .tag = .comb_sig, .main_idx = 8, .data = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(7) } }, // (b: &bool, c: &bool) bool
+        .{ .tag = .identifier, .main_idx = 22, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // b
+        .{ .tag = .identifier, .main_idx = 24, .data = .{ .lhs = Node.null_node, .rhs = Node.null_node } }, // c
+        .{ .tag = .@"and", .main_idx = 23, .data = .{ .lhs = @enumFromInt(9), .rhs = @enumFromInt(10) } }, // b and c
+        .{ .tag = .@"return", .main_idx = 21, .data = .{ .lhs = @enumFromInt(11), .rhs = Node.null_node } }, // return b and c;
+        .{ .tag = .comb_body, .main_idx = 20, .data = .{ .lhs = @enumFromInt(4), .rhs = @enumFromInt(5) } }, // { ... }
+        .{ .tag = .comb_decl, .main_idx = 7, .data = .{ .lhs = @enumFromInt(8), .rhs = @enumFromInt(13) } }, // pub comb a(...) { ... }
+        .{ .tag = .module_decl, .main_idx = 3, .data = .{ .lhs = @enumFromInt(5), .rhs = @enumFromInt(6) } }, // module { ... }
+        .{ .tag = .var_decl, .main_idx = 0, .data = .{ .lhs = Node.null_node, .rhs = @enumFromInt(15) } }, // const Mod = module { ... };
+    };
+    const expected_extra_data = [_]Node.Idx{
+        @enumFromInt(3), // b: &bool
+        @enumFromInt(6), // c: &bool
+        @enumFromInt(0), // CombArgs.args_start
+        @enumFromInt(2), // CombArgs.args_end
+        @enumFromInt(12), // return b and c
+        @enumFromInt(14), // Mod.a
+        @enumFromInt(16), // Mod
+    };
+    try runTestExpectSuccess(src, &expected_nodes, &expected_extra_data, false);
 }
 
 test parseModuleWithPubComb {
-    // try parseMultipleStructsWithModuleAndPubComb();
-    return error.SkipZigTest;
+    try parseModuleWithPubComb();
 }

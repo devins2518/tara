@@ -364,56 +364,73 @@ fn parseModuleDecl(self: *Parser) !Node.Idx {
     });
 }
 
-// TODO: can be used for comb parsing
-// fn parseModuleSig(self: *Parser) !Node.Idx {
-//     log.debug("parseModuleSig\n", .{});
-//     const main_idx = self.eat(.lparen) orelse return Node.null_node;
-//     const module_args = try self.parseModuleArgs();
-//     _ = self.eat(.rparen);
-//     const ret_ty = try self.parseTypeExpr();
-//     return self.addNode(.{
-//         .tag = .module_sig,
-//         .main_idx = main_idx,
-//         .data = .{
-//             .lhs = module_args,
-//             .rhs = ret_ty,
-//         },
-//     });
-// }
-//
-// fn parseModuleArgs(self: *Parser) !Node.Idx {
-//     log.debug("parseModuleArgs\n", .{});
-//     const scratch_top = self.scratchpad.items.len;
-//     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
-//
-//     while (true) {
-//         switch (self.tokens[self.tok_idx].tag) {
-//             .rparen => break,
-//             .identifier => {
-//                 const main_idx = self.eat(.identifier).?;
-//                 _ = self.eat(.colon);
-//                 const type_expr = try self.parseTypeExpr();
-//                 try self.scratchpad.append(self.allocator, try self.addNode(.{
-//                     .tag = .module_arg,
-//                     .main_idx = main_idx,
-//                     .data = .{ .lhs = type_expr, .rhs = Node.null_node },
-//                 }));
-//                 _ = self.eat(.comma);
-//             },
-//             // TODO: error handling
-//             else => @panic("Unexpected token when parsing module_args"),
-//         }
-//     }
-//
-//     const sublist = try self.scratchToSubList(scratch_top);
-//     return try self.addExtra(Node.ModuleArgs{
-//         .args_start = sublist.start,
-//         .args_end = sublist.end,
-//     });
-// }
+fn parseCombDecl(self: *Parser) !Node.Idx {
+    _ = self.eat(.keyword_comb);
+    const main_idx = self.eat(.identifier) orelse return Node.null_node;
+    const comb_sig = try self.parseCombSig();
+    const comb_body = try self.parseCombBody();
 
-fn parseModuleMembers(self: *Parser) !Node.SubList {
-    log.debug("parseModuleMembers\n", .{});
+    return self.addNode(.{
+        .tag = .comb_decl,
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = comb_sig,
+            .rhs = comb_body,
+        },
+    });
+}
+
+fn parseCombSig(self: *Parser) !Node.Idx {
+    log.debug("parseModuleSig\n", .{});
+    const main_idx = self.eat(.lparen) orelse return Node.null_node;
+    const comb_args = try self.parseCombArgs();
+    _ = self.eat(.rparen);
+    const ret_ty = try self.parseTypeExpr();
+    return self.addNode(.{
+        .tag = .comb_sig,
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = comb_args,
+            .rhs = ret_ty,
+        },
+    });
+}
+
+fn parseCombArgs(self: *Parser) !Node.Idx {
+    log.debug("parseModuleArgs\n", .{});
+    const scratch_top = self.scratchpad.items.len;
+    defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
+
+    while (true) {
+        switch (self.tokens[self.tok_idx].tag) {
+            .rparen => break,
+            .identifier => {
+                const main_idx = self.eat(.identifier).?;
+                _ = self.eat(.colon);
+                const type_expr = try self.parseTypeExpr();
+                try self.scratchpad.append(self.allocator, try self.addNode(.{
+                    .tag = .comb_arg,
+                    .main_idx = main_idx,
+                    .data = .{ .lhs = type_expr, .rhs = Node.null_node },
+                }));
+                _ = self.eat(.comma);
+            },
+            // TODO: error handling
+            else => @panic("Unexpected token when parsing module_args"),
+        }
+    }
+
+    const sublist = try self.scratchToSubList(scratch_top);
+    return try self.addExtra(Node.CombArgs{
+        .args_start = sublist.start,
+        .args_end = sublist.end,
+    });
+}
+
+fn parseCombBody(self: *Parser) !Node.Idx {
+    log.debug("parseModuleStatements\n", .{});
+
+    const main_idx = self.eat(.lbrace) orelse return Node.null_node;
     const scratch_top = self.scratchpad.items.len;
     defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
 
@@ -426,7 +443,51 @@ fn parseModuleMembers(self: *Parser) !Node.SubList {
             .keyword_const,
             .keyword_var,
             => try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement()),
+            .identifier => try self.scratchpad.append(self.allocator, try self.parseAssignmentStatement()),
+            .keyword_return => try self.scratchpad.append(self.allocator, try self.parseReturnStatement()),
+            .rbrace => break,
+            else => {
+                std.debug.print("[ERROR]: unhandled module statement: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
+                break;
+            },
+        }
+    }
+
+    const sublist = try self.scratchToSubList(scratch_top);
+    return try self.addNode(.{
+        .tag = .comb_body,
+        .main_idx = main_idx,
+        .data = .{
+            .lhs = sublist.start,
+            .rhs = sublist.end,
+        },
+    });
+}
+
+fn parseModuleMembers(self: *Parser) !Node.SubList {
+    log.debug("parseModuleMembers\n", .{});
+    const scratch_top = self.scratchpad.items.len;
+    defer self.scratchpad.shrinkRetainingCapacity(scratch_top);
+
+    while (true) {
+        switch (self.tokens[self.tok_idx].tag) {
+            .keyword_pub => {
+                self.tok_idx += 1;
+                const member = switch (self.tokens[self.tok_idx].tag) {
+                    .identifier => try self.parseVarDeclStatement(),
+                    .keyword_comb => try self.parseCombDecl(),
+                    else => {
+                        std.debug.print("[ERROR]: unexpected public module member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});
+                        break;
+                    },
+                };
+                try self.scratchpad.append(self.allocator, member);
+            },
+            .keyword_const,
+            .keyword_var,
+            => try self.scratchpad.append(self.allocator, try self.parseVarDeclStatement()),
             .identifier => try self.scratchpad.append(self.allocator, try self.parseContainerField()),
+            .keyword_comb => try self.scratchpad.append(self.allocator, try self.parseCombDecl()),
             .rbrace => break,
             else => {
                 std.debug.print("[ERROR]: unhandled module member: {s}", .{@tagName(self.tokens[self.tok_idx].tag)});

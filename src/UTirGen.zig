@@ -306,6 +306,11 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .reference,
         .assignment,
         .member,
+        .comb_decl,
+        .comb_sig,
+        .comb_body,
+        .comb_arg,
+        .@"return",
         => unreachable,
     }
 }

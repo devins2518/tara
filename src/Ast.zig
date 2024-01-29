@@ -44,8 +44,27 @@ pub const Node = struct {
         // `lhs` is extra_index index of the start of a list of node indexes
         // `rhs` is extra_index index of the end of a list of node indexes
         // `lhs`..`rhs` can contain `container_field`s or `comb_def`s
-        // TODO: implement comb parsing
         module_decl,
+        // `pub? comb ident(args*) ret_ty { statements* }`
+        // `main_idx` is `ident`
+        // `lhs` is index of `CombArgs`
+        // `rhs` is index of `SubList`
+        comb_decl,
+        // `(args*) ret_ty`
+        // `main_idx` is `(`
+        // `lhs` is extra_index index of `CombArgs` which indexes into `extra_data`
+        // `rhs` is index of ret_ty
+        comb_sig,
+        // `{ statements* }`
+        // `main_idx` is `{`
+        // `lhs` is the start of extra_index index of comb statements
+        // `rhs` is the end of extra_index indexes of comb statmenets
+        comb_body,
+        // `ident: type_expr`
+        // `main_idx` is ident
+        // lhs is `nodes` index of `type_expr`
+        // rhs is unused
+        comb_arg,
         // `ident: type_expr( = expr)?`
         // `main_idx` is ident
         // lhs is `type_expr`, indexes `nodes`
@@ -145,7 +164,8 @@ pub const Node = struct {
     };
 
     // Indexes into extra data
-    pub const ModuleArgs = struct {
+    // Each index is a `comb_arg`
+    pub const CombArgs = struct {
         args_start: Idx,
         args_end: Idx,
     };
