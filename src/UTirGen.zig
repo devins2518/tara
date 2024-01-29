@@ -217,7 +217,7 @@ fn genStructInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
                 const ty_node = self.ast.nodes.items(.data)[@intFromEnum(member)].lhs;
                 const field_ty = try self.genContainerFieldType(&struct_env, ty_node);
 
-                try env.addExtra(Inst.StructDecl.Field{ .name = str_idx, .type = field_ty });
+                try env.addExtra(Inst.ContainerField{ .name = str_idx, .type = field_ty });
                 fields += 1;
             },
             else => unreachable,
@@ -230,6 +230,50 @@ fn genStructInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
 
     env.setInst(struct_decl, .{ .struct_decl = .{ .ed_idx = ed_idx } });
     return struct_decl;
+}
+
+fn genModuleInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
+    const module_decl = try env.reserveInst();
+    const full_module = self.ast.assembledModule(node_idx).?;
+
+    var namespace = Environment.Scope.Namespace{
+        .parent = env.scope,
+    };
+    defer namespace.deinit(self.allocator);
+    var module_env = env.derive(&namespace.base);
+    defer module_env.finish();
+
+    var fields: u32 = 0;
+    var decls: u32 = 0;
+    for (full_module.members) |member| {
+        // TODO: have this be all fields followed by all decls to have some sense of order
+        switch (self.ast.nodes.items(.tag)[@intFromEnum(member)]) {
+            .var_decl => {
+                try module_env.addRef(try self.genVarDecl(&module_env, member));
+                decls += 1;
+            },
+            .container_field => {
+                const name_tok = self.ast.nodes.items(.main_idx)[@intFromEnum(member)];
+                const name_str = self.tokToString(name_tok);
+                try module_env.scope.addField(self.allocator, name_str);
+                const str_idx = try self.addStringBytes(name_str);
+
+                const ty_node = self.ast.nodes.items(.data)[@intFromEnum(member)].lhs;
+                const field_ty = try self.genContainerFieldType(&module_env, ty_node);
+
+                try env.addExtra(Inst.ContainerField{ .name = str_idx, .type = field_ty });
+                fields += 1;
+            },
+            else => unreachable,
+        }
+    }
+
+    const ed_idx = try self.addExtra(Inst.ModuleDecl{ .fields = fields, .decls = decls });
+    const module_decl_extras: []const u32 = module_env.extra.items[module_env.bottom..];
+    _ = try self.addExtraSlice(u32, module_decl_extras);
+
+    env.setInst(module_decl, .{ .module_decl = .{ .ed_idx = ed_idx } });
+    return module_decl;
 }
 
 // Generates an instruction from a variable declation. Returns reference to instruction
@@ -282,12 +326,12 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
     const tags = self.ast.nodes.items(.tag);
     switch (tags[@intFromEnum(node_idx)]) {
         .struct_decl => return self.genStructInner(env, node_idx),
+        .module_decl => return self.genModuleInner(env, node_idx),
         .identifier => return self.genIdentifier(env, node_idx),
         .int => return self.genInteger(env, node_idx),
         .add => return self.genBinOp(env, node_idx, .add),
         .root,
         .var_decl,
-        .module_decl,
         .container_field,
         .@"or",
         .@"and",

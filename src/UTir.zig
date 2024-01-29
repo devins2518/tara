@@ -19,6 +19,8 @@ string_bytes: std.StringArrayHashMapUnmanaged(void),
 pub const Inst = union(enum(u32)) {
     // Declares the type of a struct
     struct_decl: Payload(StructDecl),
+    // Declares the type of a struct
+    module_decl: Payload(ModuleDecl),
     // Used to refer to the value of a declaration using a string
     decl_val: Str,
     // Declares a local block which contains an arbitrary number of instructions
@@ -63,20 +65,29 @@ pub const Inst = union(enum(u32)) {
         string_bytes_idx: StrIdx,
     };
 
-    // A `StructDecl` is followed by `Struct.fields` number of `Struct.Field`s
-    // and a `Struct.decls` number of `Struct.Decl`s
+    // A `StructDecl` is followed by `Struct.fields` number of `ContainerField`s
+    // and a `Struct.decls` number of `ContainerDecl`s
     pub const StructDecl = struct {
         fields: u32,
         decls: u32,
+    };
 
-        pub const Field = struct {
-            name: StrIdx,
-            type: Ref,
-        };
+    // A `ContainerField` is a binding between a `name` and a `type`
+    pub const ContainerField = struct {
+        name: StrIdx,
+        type: Ref,
+    };
 
-        pub const Decl = struct {
-            ref: Ref,
-        };
+    // A `ContainerField` is a reference to an arbitrary expression.
+    pub const ContainerDecl = struct {
+        ref: Ref,
+    };
+
+    // A `ModuleDecl` is followed by `Module.fields` number of `ContainerField`s
+    // and a `Module.decls` number of `ContainerDecl`s
+    pub const ModuleDecl = struct {
+        fields: u32,
+        decls: u32,
     };
 
     // A `Block` is followed by `Block.instrs` number of `Block.Item`
@@ -217,6 +228,7 @@ const Writer = struct {
 
     fn writeExpr(self: *Writer, stream: anytype, inst_idx: Inst.Ref) @TypeOf(stream).Error!void {
         try switch (self.utir.tagFromRef(inst_idx)) {
+            .module_decl => self.writeModuleDecl(stream, inst_idx),
             .struct_decl => self.writeStructDecl(stream, inst_idx),
             .decl_val => self.writeDeclVal(stream, inst_idx),
             .int_small => self.writeIntSmall(stream, inst_idx),
@@ -227,11 +239,11 @@ const Writer = struct {
         };
     }
 
-    fn writeContainerMember(self: *Writer, stream: anytype, decl: Inst.StructDecl.Decl) !void {
+    fn writeContainerMember(self: *Writer, stream: anytype, decl: Inst.ContainerDecl) !void {
         try self.writeExpr(stream, decl.ref);
     }
 
-    fn writeContainerField(self: *Writer, stream: anytype, field: Inst.StructDecl.Field) !void {
+    fn writeContainerField(self: *Writer, stream: anytype, field: Inst.ContainerField) !void {
         try self.writeExpr(stream, field.type);
         const name = self.utir.string_bytes.keys()[@intFromEnum(field.name)];
         try stream.print("{s} : %{}\n", .{ name, @intFromEnum(field.type) });
@@ -250,16 +262,46 @@ const Writer = struct {
             const fields_base: u32 = ed_idx + 2;
             for (0..fields_len) |field_num| {
                 const field_offset: u32 = @truncate(field_num);
-                const field_idx: u32 = fields_base + field_offset * u32s(Inst.StructDecl.Field);
-                const field = self.utir.extra(Inst.StructDecl.Field, field_idx);
+                const field_idx: u32 = fields_base + field_offset * u32s(Inst.ContainerField);
+                const field = self.utir.extra(Inst.ContainerField, field_idx);
                 try self.writeContainerField(stream, field);
             }
 
-            const decls_base: u32 = ed_idx + 2 + fields_len * u32s(Inst.StructDecl.Field);
+            const decls_base: u32 = ed_idx + 2 + fields_len * u32s(Inst.ContainerField);
             for (0..decls_len) |decl_num| {
                 const decl_offset: u32 = @truncate(decl_num);
-                const decl_idx: u32 = decls_base + decl_offset * u32s(Inst.StructDecl.Decl);
-                const decl = self.utir.extra(Inst.StructDecl.Decl, decl_idx);
+                const decl_idx: u32 = decls_base + decl_offset * u32s(Inst.ContainerDecl);
+                const decl = self.utir.extra(Inst.ContainerDecl, decl_idx);
+                try self.writeContainerMember(stream, decl);
+            }
+        }
+        self.decIndent(stream);
+        try stream.writeAll("})\n");
+    }
+
+    fn writeModuleDecl(self: *Writer, stream: anytype, inst_idx: Inst.Ref) @TypeOf(stream).Error!void {
+        assert(self.utir.tagFromRef(inst_idx) == .module_decl);
+        try stream.print("%{} = module_decl({{", .{@intFromEnum(inst_idx)});
+        const ed_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].module_decl.ed_idx);
+        const fields_len = self.utir.extra_data[ed_idx];
+        const decls_len = self.utir.extra_data[ed_idx + 1];
+        self.incIndent(stream);
+        if (fields_len + decls_len > 0) {
+            try stream.print("\n", .{});
+
+            const fields_base: u32 = ed_idx + 2;
+            for (0..fields_len) |field_num| {
+                const field_offset: u32 = @truncate(field_num);
+                const field_idx: u32 = fields_base + field_offset * u32s(Inst.ContainerField);
+                const field = self.utir.extra(Inst.ContainerField, field_idx);
+                try self.writeContainerField(stream, field);
+            }
+
+            const decls_base: u32 = ed_idx + 2 + fields_len * u32s(Inst.ContainerField);
+            for (0..decls_len) |decl_num| {
+                const decl_offset: u32 = @truncate(decl_num);
+                const decl_idx: u32 = decls_base + decl_offset * u32s(Inst.ContainerDecl);
+                const decl = self.utir.extra(Inst.ContainerDecl, decl_idx);
                 try self.writeContainerMember(stream, decl);
             }
         }

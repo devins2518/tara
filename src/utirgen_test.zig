@@ -7,11 +7,15 @@ const Allocator = std.mem.Allocator;
 
 const allocator = std.testing.allocator;
 
-fn runTestExpectSuccess(src: [:0]const u8, expected_utir: []const Inst, expected_extra_data: []const u32, expected_utir_str: []const u8) !void {
+fn runTestExpectSuccess(src: [:0]const u8, expected_utir: []const Inst, expected_extra_data: []const u32, expected_utir_str: []const u8, debug_print: bool) !void {
     var ast = try Ast.parse(allocator, src);
     defer ast.deinit(allocator);
     var utir = try UTirGen.genUTir(allocator, &ast);
     defer utir.deinit(allocator);
+
+    if (debug_print) {
+        std.debug.print("{}\n\n", .{utir});
+    }
 
     for (expected_utir, 0..) |e, i| {
         try std.testing.expectEqual(e, utir.instructions.get(i));
@@ -44,7 +48,7 @@ fn testEmptyGen() !void {
         \\%0 = struct_decl({})
         \\
     ;
-    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testEmptyGen {
@@ -78,7 +82,7 @@ fn testManyDeclGen() !void {
         \\})
         \\
     ;
-    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testManyDeclGen {
@@ -135,7 +139,7 @@ fn testNestedDeclGen() !void {
         \\})
         \\
     ;
-    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testNestedDeclGen {
@@ -161,7 +165,7 @@ fn testDeclValGen() !void {
         \\})
         \\
     ;
-    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testDeclValGen {
@@ -201,7 +205,7 @@ fn testManyFieldGen() !void {
         \\})
         \\
     ;
-    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testManyFieldGen {
@@ -241,7 +245,7 @@ fn testMixedFieldDeclGen() !void {
         \\})
         \\
     ;
-    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testMixedFieldDeclGen {
@@ -271,9 +275,37 @@ fn testNumberGen() !void {
         \\})
         \\
     ;
-    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str);
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testNumberGen {
     try testNumberGen();
+}
+
+fn testEmptyModuleGen() !void {
+    const src =
+        \\const Mod = module {};
+    ;
+    const expected_utir = [_]Inst{
+        .{ .struct_decl = .{ .ed_idx = @enumFromInt(2) } }, // Root
+        .{ .module_decl = .{ .ed_idx = @enumFromInt(0) } }, // Mod
+    };
+    const expected_extra_data = [_]u32{
+        0, // Mod.fields
+        0, // Mod.decls
+        0, // Root.fields
+        1, // Root.decls
+        1, // Mod
+    };
+    const expected_utir_str =
+        \\%0 = struct_decl({
+        \\    %1 = module_decl({})
+        \\})
+        \\
+    ;
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
+}
+
+test testEmptyModuleGen {
+    try testEmptyModuleGen();
 }

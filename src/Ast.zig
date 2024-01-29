@@ -219,6 +219,11 @@ pub const Assembled = struct {
         members: []const Node.Idx,
     };
 
+    pub const Module = struct {
+        token: TokenIdx,
+        members: []const Node.Idx,
+    };
+
     pub const VarDecl = struct {
         token: TokenIdx,
         type_expr: Node.Idx,
@@ -253,6 +258,19 @@ pub fn assembledVarDecl(self: *const Ast, node_idx: Node.Idx) ?Assembled.VarDecl
             .token = token,
             .type_expr = type_expr,
             .expr = expr,
+        },
+        else => null,
+    };
+}
+
+pub fn assembledModule(self: *const Ast, node_idx: Node.Idx) ?Assembled.Module {
+    const idx = @intFromEnum(node_idx);
+    const lhs = @intFromEnum(self.nodes.items(.data)[idx].lhs);
+    const rhs = @intFromEnum(self.nodes.items(.data)[idx].rhs);
+    return switch (self.nodes.items(.tag)[idx]) {
+        .module_decl => .{
+            .token = self.nodes.items(.main_idx)[idx],
+            .members = self.extra_data[lhs..rhs],
         },
         else => null,
     };
