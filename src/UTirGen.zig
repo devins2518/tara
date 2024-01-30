@@ -235,7 +235,7 @@ fn genStructInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
                 const ty_node = self.ast.nodes.items(.data)[@intFromEnum(member)].lhs;
                 const field_ty = try self.genContainerFieldType(&struct_env, ty_node);
 
-                try env.addExtra(Inst.ContainerField{ .name = str_idx, .type = field_ty });
+                try struct_env.addExtra(Inst.ContainerField{ .name = str_idx, .type = field_ty });
                 fields += 1;
             },
             else => unreachable,
@@ -279,7 +279,7 @@ fn genModuleInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
                 const ty_node = self.ast.nodes.items(.data)[@intFromEnum(member)].lhs;
                 const field_ty = try self.genContainerFieldType(&module_env, ty_node);
 
-                try env.addExtra(Inst.ContainerField{ .name = str_idx, .type = field_ty });
+                try module_env.addExtra(Inst.ContainerField{ .name = str_idx, .type = field_ty });
                 fields += 1;
             },
             else => unreachable,
@@ -352,6 +352,7 @@ fn genInlineBlock(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
 
     const return_value = switch (tags[@intFromEnum(node_idx)]) {
         .add => try self.genBinOp(&block_env, node_idx, .add),
+        .reference => try self.genRefTy(&block_env, node_idx),
         .struct_decl,
         .module_decl,
         .identifier,
@@ -373,7 +374,6 @@ fn genInlineBlock(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
         .sub,
         .mul,
         .div,
-        .reference,
         .assignment,
         .member,
         .subroutine_decl,
@@ -397,6 +397,13 @@ fn genInlineBlock(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
     return inline_block;
 }
 
+fn genRefTy(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
+    const data = self.ast.nodes.items(.data);
+    const child_node_idx = data[@intFromEnum(node_idx)].lhs;
+    const child_expr = try self.genExpr(env, child_node_idx);
+    return try env.addInst(.{ .ref_ty = .{ .child = child_expr } });
+}
+
 fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
     const tags = self.ast.nodes.items(.tag);
     switch (tags[@intFromEnum(node_idx)]) {
@@ -405,6 +412,7 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .identifier => return self.genIdentifier(env, node_idx),
         .int => return self.genInteger(env, node_idx),
         .add => return self.genInlineBlock(env, node_idx),
+        .reference => return self.genInlineBlock(env, node_idx),
         .root,
         .var_decl,
         .container_field,
@@ -422,7 +430,6 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .sub,
         .mul,
         .div,
-        .reference,
         .assignment,
         .member,
         .subroutine_decl,

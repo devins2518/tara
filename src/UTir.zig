@@ -34,6 +34,10 @@ pub const Inst = union(enum(u32)) {
     int_small: Int.Small,
     // Performs `add` operation on the two instructions
     add: BinOp,
+    // Creates a reference type of `PtrTy.child` type
+    ref_ty: PtrTy,
+    // Creates a pointer type of `PtrTy.child` type
+    ptr_ty: PtrTy,
 
     pub const Tag = std.meta.Tag(Inst);
 
@@ -61,6 +65,10 @@ pub const Inst = union(enum(u32)) {
             }
         };
     }
+
+    pub const PtrTy = struct {
+        child: Ref,
+    };
 
     // A `Str` is an index into `string_bytes`
     pub const Str = struct {
@@ -245,7 +253,10 @@ const Writer = struct {
             .add => self.writeBinOp(stream, inst_idx, .add),
             .inline_block => self.writeInlineBlock(stream, inst_idx),
             .inline_block_break => self.writeBinOp(stream, inst_idx, .inline_block_break),
-            .as => unreachable,
+            .ref_ty => self.writeRefTy(stream, inst_idx),
+            .as,
+            .ptr_ty,
+            => unreachable,
         };
     }
 
@@ -332,6 +343,12 @@ const Writer = struct {
         assert(self.utir.tagFromRef(inst_idx) == .int_small);
         const int = self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].int_small.int;
         try stream.print("%{} = int({})\n", .{ @intFromEnum(inst_idx), int });
+    }
+
+    fn writeRefTy(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+        assert(self.utir.tagFromRef(inst_idx) == .ref_ty);
+        const child = self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].ref_ty.child;
+        try stream.print("%{} = ref_ty(%{})\n", .{ @intFromEnum(inst_idx), @intFromEnum(child) });
     }
 
     fn writeBinOp(self: *Writer, stream: anytype, inst_idx: Inst.Ref, op: Inst.Tag) !void {

@@ -319,3 +319,67 @@ fn testEmptyModuleGen() !void {
 test testEmptyModuleGen {
     try testEmptyModuleGen();
 }
+
+fn testModuleWithFieldsGen() !void {
+    const src =
+        \\const Mod = module {
+        \\    a: &bool,
+        \\    b: &bool,
+        \\};
+    ;
+    const expected_utir = [_]Inst{
+        .{ .struct_decl = .{ .ed_idx = @enumFromInt(14) } }, // Root
+        .{ .module_decl = .{ .ed_idx = @enumFromInt(8) } }, // Mod
+        .{ .inline_block = .{ .ed_idx = @enumFromInt(0) } }, // blk
+        .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(1) } }, // bool
+        .{ .ref_ty = .{ .child = @enumFromInt(3) } }, // &bool
+        .{ .inline_block_break = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(4) } }, // break &bool
+        .{ .inline_block = .{ .ed_idx = @enumFromInt(4) } }, // blk
+        .{ .decl_val = .{ .string_bytes_idx = @enumFromInt(1) } }, // bool
+        .{ .ref_ty = .{ .child = @enumFromInt(7) } }, // &bool
+        .{ .inline_block_break = .{ .lhs = @enumFromInt(6), .rhs = @enumFromInt(8) } }, // break &bool
+    };
+    const expected_extra_data = [_]u32{
+        3, // Block.instrs
+        3, // bool
+        4, // &bool
+        5, // break &bool
+        3, // Block.instrs
+        7, // bool
+        8, // &bool
+        9, // break &bool
+        2, // Mod.fields
+        0, // Mod.decls
+        0, // Mod.a.name
+        2, // Mod.a.type
+        2, // Mod.b.name
+        6, // Mod.b.type
+        0, // Root.fields
+        1, // Root.decls
+        1, // Mod
+    };
+    const expected_utir_str =
+        \\%0 = struct_decl({
+        \\    %1 = module_decl({
+        \\        %2 = inline_block({
+        \\            %3 = decl_val("bool")
+        \\            %4 = ref_ty(%3)
+        \\            %5 = inline_block_break(%2, %4)
+        \\        })
+        \\        a : %2
+        \\        %6 = inline_block({
+        \\            %7 = decl_val("bool")
+        \\            %8 = ref_ty(%7)
+        \\            %9 = inline_block_break(%6, %8)
+        \\        })
+        \\        b : %6
+        \\    })
+        \\})
+        \\
+    ;
+    try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
+}
+
+test testModuleWithFieldsGen {
+    try testModuleWithFieldsGen();
+}
