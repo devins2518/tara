@@ -466,7 +466,7 @@ fn parseSubroutineArgs(self: *Parser) !Node.Idx {
     }
 
     const sublist = try self.scratchToSubList(scratch_top);
-    return try self.addExtra(Node.CombArgs{
+    return try self.addExtra(Node.SubroutineArgs{
         .args_start = sublist.start,
         .args_end = sublist.end,
     });

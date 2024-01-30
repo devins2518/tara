@@ -170,7 +170,7 @@ pub const Node = struct {
 
     // Indexes into extra data
     // Each index is a `comb_arg`
-    pub const CombArgs = struct {
+    pub const SubroutineArgs = struct {
         args_start: Idx,
         args_end: Idx,
     };
