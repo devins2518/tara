@@ -24,7 +24,9 @@ pub const Inst = union(enum(u32)) {
     // Used to refer to the value of a declaration using a string
     decl_val: Str,
     // Declares a local block which contains an arbitrary number of instructions
-    block: Payload(Block),
+    inline_block: Payload(Block),
+    // Breaks from `BinOp.lhs` inline block with `BinOp.rhs` instruction
+    inline_block_break: BinOp,
     // Used to perform type coercion
     as: Ref,
     // TODO: use payload to support integers > max(u32)
@@ -111,8 +113,7 @@ pub const Inst = union(enum(u32)) {
 
         pub fn tagIsBinOp(tag: Tag) bool {
             return switch (tag) {
-                .add => true,
-                else => false,
+                inline else => |t| std.meta.TagPayload(Inst, t) == BinOp,
             };
         }
 
@@ -147,14 +148,23 @@ pub fn format(utir: *const UTir, comptime _: []const u8, _: std.fmt.FormatOption
 
 fn extra(utir: *const UTir, comptime T: type, idx: u32) T {
     var result: T = undefined;
-    const fields = std.meta.fields(T);
-    inline for (fields, 0..) |field, i| {
-        assert(@sizeOf(field.type) == @sizeOf(u32));
-        switch (@typeInfo(field.type)) {
-            .Enum => @field(result, field.name) = @enumFromInt(utir.extra_data[idx + i]),
-            .Int => @field(result, field.name) = utir.extra_data[idx + i],
-            else => @compileError("Unexpected type encountered in extra " ++ @typeName(field.type)),
-        }
+    switch (@typeInfo(T)) {
+        .Struct => {
+            const fields = std.meta.fields(T);
+            inline for (fields, 0..) |field, i| {
+                assert(@sizeOf(field.type) == @sizeOf(u32));
+                @field(result, field.name) = utir.extra(field.type, @intCast(idx + i));
+            }
+        },
+        .Enum => {
+            assert(@sizeOf(T) == @sizeOf(u32));
+            result = @enumFromInt(utir.extra_data[idx]);
+        },
+        .Int => {
+            assert(@sizeOf(T) == @sizeOf(u32));
+            result = utir.extra_data[idx];
+        },
+        else => @compileError("Unexpected type encountered in extra " ++ @typeName(T)),
     }
     return result;
 }
@@ -233,9 +243,9 @@ const Writer = struct {
             .decl_val => self.writeDeclVal(stream, inst_idx),
             .int_small => self.writeIntSmall(stream, inst_idx),
             .add => self.writeBinOp(stream, inst_idx, .add),
-            .block,
-            .as,
-            => unreachable,
+            .inline_block => self.writeInlineBlock(stream, inst_idx),
+            .inline_block_break => self.writeBinOp(stream, inst_idx, .inline_block_break),
+            .as => unreachable,
         };
     }
 
@@ -326,13 +336,28 @@ const Writer = struct {
 
     fn writeBinOp(self: *Writer, stream: anytype, inst_idx: Inst.Ref, op: Inst.Tag) !void {
         const bin_op = Inst.BinOp.fromUtir(self.utir, inst_idx);
-        try self.writeExpr(stream, bin_op.lhs);
-        try self.writeExpr(stream, bin_op.rhs);
         try stream.print("%{} = {s}(%{}, %{})\n", .{
             @intFromEnum(inst_idx),
             @tagName(op),
             @intFromEnum(bin_op.lhs),
             @intFromEnum(bin_op.rhs),
         });
+    }
+
+    fn writeInlineBlock(self: *Writer, stream: anytype, inst_idx: Inst.Ref) !void {
+        assert(self.utir.tagFromRef(inst_idx) == .inline_block);
+        try stream.print("%{} = inline_block({{", .{@intFromEnum(inst_idx)});
+        const ed_idx = @intFromEnum(self.utir.instructions.items(.data)[@intFromEnum(inst_idx)].inline_block.ed_idx);
+        const instr_len = self.utir.extra_data[ed_idx];
+        self.incIndent(stream);
+        if (instr_len > 0) {
+            try stream.print("\n", .{});
+        }
+        for (0..instr_len) |i| {
+            const instr = self.utir.extra(Inst.Ref, @intCast(ed_idx + 1 + i));
+            try self.writeExpr(stream, instr);
+        }
+        self.decIndent(stream);
+        try stream.writeAll("})\n");
     }
 };

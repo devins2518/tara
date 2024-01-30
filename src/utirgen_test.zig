@@ -257,21 +257,31 @@ fn testNumberGen() !void {
         \\const A = 3 + 4;
     ;
     const expected_utir = [_]Inst{
-        .{ .struct_decl = .{ .ed_idx = @enumFromInt(0) } }, // Root
+        .{ .struct_decl = .{ .ed_idx = @enumFromInt(5) } }, // Root
+        .{ .inline_block = .{ .ed_idx = @enumFromInt(0) } }, // blk
         .{ .int_small = .{ .int = 3 } }, // 3
         .{ .int_small = .{ .int = 4 } }, // 4
-        .{ .add = .{ .lhs = @enumFromInt(1), .rhs = @enumFromInt(2) } }, // 4
+        .{ .add = .{ .lhs = @enumFromInt(2), .rhs = @enumFromInt(3) } }, // 3 + 4
+        .{ .inline_block_break = .{ .lhs = @enumFromInt(1), .rhs = @enumFromInt(4) } }, // break 3 + 4
     };
     const expected_extra_data = [_]u32{
+        4, // Block.instrs
+        2, // 3
+        3, // 4
+        4, // 3 + 4
+        5, // break 3 + 4
         0, // Root.fields
         1, // Root.decls
-        3, // A
+        1, // A
     };
     const expected_utir_str =
         \\%0 = struct_decl({
-        \\    %1 = int(3)
-        \\    %2 = int(4)
-        \\    %3 = add(%1, %2)
+        \\    %1 = inline_block({
+        \\        %2 = int(3)
+        \\        %3 = int(4)
+        \\        %4 = add(%2, %3)
+        \\        %5 = inline_block_break(%1, %4)
+        \\    })
         \\})
         \\
     ;

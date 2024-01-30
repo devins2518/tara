@@ -30,6 +30,7 @@ const Environment = struct {
         top,
         namespace,
         var_decl,
+        inline_block,
 
         const Top = struct {
             base: Scope = .top,
@@ -52,6 +53,11 @@ const Environment = struct {
             parent: *Scope,
         };
 
+        const InlineBlock = struct {
+            base: Scope = .inline_block,
+            parent: *Scope,
+        };
+
         pub fn addDecl(self: *Scope, allocator: Allocator, decl: []const u8, ref: Inst.Ref) !void {
             var s = self;
             while (true) {
@@ -68,6 +74,10 @@ const Environment = struct {
                         s = var_decl.parent;
                     },
                     .top => break,
+                    .inline_block => {
+                        const inline_block = s.toInlineBlock();
+                        s = inline_block.parent;
+                    },
                 }
             }
 
@@ -95,6 +105,11 @@ const Environment = struct {
             assert(self.* == .var_decl);
             return @fieldParentPtr(VarDecl, "base", self);
         }
+
+        pub fn toInlineBlock(self: *Scope) *InlineBlock {
+            assert(self.* == .inline_block);
+            return @fieldParentPtr(InlineBlock, "base", self);
+        }
     };
 
     // Used to associate an environment with a scope. This can be useful for
@@ -102,8 +117,8 @@ const Environment = struct {
     scope: *Scope,
     // All environments share the same list of extra data
     extra: *std.ArrayListUnmanaged(u32),
-    // `bottom` refers to the top of `extra` at the time the current environment was derived
-    bottom: usize,
+    // `extra_bottom` refers to the top of `extra` at the time the current environment was derived
+    extra_bottom: usize,
     // All environments share the same `utir_gen`
     utir_gen: *UTirGen,
 
@@ -112,7 +127,7 @@ const Environment = struct {
         return .{
             .scope = scope,
             .extra = env.extra,
-            .bottom = env.extra.items.len,
+            .extra_bottom = env.extra.items.len,
             .utir_gen = env.utir_gen,
         };
     }
@@ -124,6 +139,9 @@ const Environment = struct {
     fn addInst(self: *Environment, inst: Inst) UTirGenError!Inst.Ref {
         const result: Inst.Ref = @enumFromInt(self.utir_gen.instructions.len);
         try self.utir_gen.instructions.append(self.utir_gen.allocator, inst);
+        if (self.scope.* == .inline_block) {
+            try self.addRef(result);
+        }
         return result;
     }
 
@@ -158,7 +176,7 @@ const Environment = struct {
 
     // Used to assert that no extras have been leaked by environment
     pub fn finish(self: *const Environment) void {
-        self.extra.shrinkRetainingCapacity(self.bottom);
+        self.extra.shrinkRetainingCapacity(self.extra_bottom);
     }
 };
 
@@ -176,7 +194,7 @@ pub fn genUTir(allocator: Allocator, ast: *const Ast) UTirGenError!UTir {
     var env = Environment{
         .scope = &top_scope.base,
         .extra = &extra,
-        .bottom = 0,
+        .extra_bottom = 0,
         .utir_gen = &utir_gen,
     };
     _ = try utir_gen.genStructInner(&env, @enumFromInt(0));
@@ -225,7 +243,7 @@ fn genStructInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
     }
 
     const ed_idx = try self.addExtra(Inst.StructDecl{ .fields = fields, .decls = decls });
-    const struct_decl_extras: []const u32 = struct_env.extra.items[struct_env.bottom..];
+    const struct_decl_extras: []const u32 = struct_env.extra.items[struct_env.extra_bottom..];
     _ = try self.addExtraSlice(u32, struct_decl_extras);
 
     env.setInst(struct_decl, .{ .struct_decl = .{ .ed_idx = ed_idx } });
@@ -269,7 +287,7 @@ fn genModuleInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
     }
 
     const ed_idx = try self.addExtra(Inst.ModuleDecl{ .fields = fields, .decls = decls });
-    const module_decl_extras: []const u32 = module_env.extra.items[module_env.bottom..];
+    const module_decl_extras: []const u32 = module_env.extra.items[module_env.extra_bottom..];
     _ = try self.addExtraSlice(u32, module_decl_extras);
 
     env.setInst(module_decl, .{ .module_decl = .{ .ed_idx = ed_idx } });
@@ -322,6 +340,63 @@ fn genBinOp(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx, comptime 
     return try env.addInst(@unionInit(Inst, @tagName(op), .{ .lhs = lhs, .rhs = rhs }));
 }
 
+fn genInlineBlock(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
+    const tags = self.ast.nodes.items(.tag);
+    const inline_block = try env.reserveInst();
+
+    var namespace = Environment.Scope.InlineBlock{
+        .parent = env.scope,
+    };
+    var block_env = env.derive(&namespace.base);
+    defer block_env.finish();
+
+    const return_value = switch (tags[@intFromEnum(node_idx)]) {
+        .add => try self.genBinOp(&block_env, node_idx, .add),
+        .struct_decl,
+        .module_decl,
+        .identifier,
+        .int,
+        .root,
+        .var_decl,
+        .container_field,
+        .@"or",
+        .@"and",
+        .lt,
+        .gt,
+        .lte,
+        .gte,
+        .eq,
+        .neq,
+        .bit_and,
+        .bit_or,
+        .bit_xor,
+        .sub,
+        .mul,
+        .div,
+        .reference,
+        .assignment,
+        .member,
+        .subroutine_decl,
+        .subroutine_sig,
+        .subroutine_body,
+        .subroutine_arg,
+        .@"return",
+        .ptr_ty,
+        => unreachable,
+    };
+
+    _ = try block_env.addInst(.{ .inline_block_break = .{ .lhs = inline_block, .rhs = return_value } });
+
+    const ed_idx = try self.addExtra(Inst.Block{
+        .instrs = @intCast(block_env.extra.items.len - block_env.extra_bottom),
+    });
+    const inline_block_extras: []const u32 = block_env.extra.items[block_env.extra_bottom..];
+    _ = try self.addExtraSlice(u32, inline_block_extras);
+
+    env.setInst(inline_block, .{ .inline_block = .{ .ed_idx = ed_idx } });
+    return inline_block;
+}
+
 fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
     const tags = self.ast.nodes.items(.tag);
     switch (tags[@intFromEnum(node_idx)]) {
@@ -329,7 +404,7 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .module_decl => return self.genModuleInner(env, node_idx),
         .identifier => return self.genIdentifier(env, node_idx),
         .int => return self.genInteger(env, node_idx),
-        .add => return self.genBinOp(env, node_idx, .add),
+        .add => return self.genInlineBlock(env, node_idx),
         .root,
         .var_decl,
         .container_field,
