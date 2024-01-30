@@ -32,8 +32,36 @@ pub const Inst = union(enum(u32)) {
     // TODO: use payload to support integers > max(u32)
     // Used to refer to small integers
     int_small: Int.Small,
-    // Performs `add` operation on the two instructions
+    // Performs boolean `or` operation on the `BinOp.lhs` and `BinOp.rhs`
+    @"or": BinOp,
+    // Performs boolean `and` operation on the `BinOp.lhs` and `BinOp.rhs`
+    @"and": BinOp,
+    // Performs `lt` operation on the `BinOp.lhs` and `BinOp.rhs`
+    lt: BinOp,
+    // Performs `gt` operation on the `BinOp.lhs` and `BinOp.rhs`
+    gt: BinOp,
+    // Performs `lte` operation on the `BinOp.lhs` and `BinOp.rhs`
+    lte: BinOp,
+    // Performs `gte` operation on the `BinOp.lhs` and `BinOp.rhs`
+    gte: BinOp,
+    // Performs `eq` operation on the `BinOp.lhs` and `BinOp.rhs`
+    eq: BinOp,
+    // Performs `neq` operation on the `BinOp.lhs` and `BinOp.rhs`
+    neq: BinOp,
+    // Performs bitwise `and` operation on the `BinOp.lhs` and `BinOp.rhs`
+    bit_and: BinOp,
+    // Performs bitwise `or` operation on the `BinOp.lhs` and `BinOp.rhs`
+    bit_or: BinOp,
+    // Performs bitwise `xor` operation on the `BinOp.lhs` and `BinOp.rhs`
+    bit_xor: BinOp,
+    // Performs `add` operation on the `BinOp.lhs` and `BinOp.rhs`
     add: BinOp,
+    // Performs `sub` operation on the `BinOp.lhs` and `BinOp.rhs`
+    sub: BinOp,
+    // Performs `mul` operation on the `BinOp.lhs` and `BinOp.rhs`
+    mul: BinOp,
+    // Performs `div` operation on the `BinOp.lhs` and `BinOp.rhs`
+    div: BinOp,
     // Creates a reference type of `PtrTy.child` type
     ref_ty: PtrTy,
     // Creates a pointer type of `PtrTy.child` type
@@ -250,7 +278,22 @@ const Writer = struct {
             .struct_decl => self.writeStructDecl(stream, inst_idx),
             .decl_val => self.writeDeclVal(stream, inst_idx),
             .int_small => self.writeIntSmall(stream, inst_idx),
-            .add => self.writeBinOp(stream, inst_idx, .add),
+            inline .@"or",
+            .@"and",
+            .lt,
+            .gt,
+            .lte,
+            .gte,
+            .eq,
+            .neq,
+            .bit_and,
+            .bit_or,
+            .bit_xor,
+            .add,
+            .sub,
+            .mul,
+            .div,
+            => |op| self.writeBinOp(stream, inst_idx, op),
             .inline_block => self.writeInlineBlock(stream, inst_idx),
             .inline_block_break => self.writeBinOp(stream, inst_idx, .inline_block_break),
             .ref_ty => self.writeRefTy(stream, inst_idx),
