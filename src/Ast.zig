@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const MultiArrayList = std.MultiArrayList;
 const Parser = @import("Parser.zig");
@@ -169,7 +170,7 @@ pub const Node = struct {
     };
 
     // Indexes into extra data
-    // Each index is a `comb_arg`
+    // Each index is a `subroutine_arg`
     pub const SubroutineArgs = struct {
         args_start: Idx,
         args_end: Idx,
@@ -212,6 +213,29 @@ pub fn deinit(self: *Ast, allocator: Allocator) void {
     allocator.free(self.tokens);
 }
 
+fn extra(self: *const Ast, comptime T: type, idx: u32) T {
+    var result: T = undefined;
+    switch (@typeInfo(T)) {
+        .Struct => {
+            const fields = std.meta.fields(T);
+            inline for (fields, 0..) |field, i| {
+                assert(@sizeOf(field.type) == @sizeOf(u32));
+                @field(result, field.name) = self.extra(field.type, @intCast(idx + i));
+            }
+        },
+        .Enum => {
+            assert(@sizeOf(T) == @sizeOf(u32));
+            result = self.extra_data[idx];
+        },
+        .Int => {
+            assert(@sizeOf(T) == @sizeOf(u32));
+            result = self.extra_data[idx];
+        },
+        else => @compileError("Unexpected type encountered in extra " ++ @typeName(T)),
+    }
+    return result;
+}
+
 // Useful types for constructing assembled information about a Node
 pub const Assembled = struct {
     pub const Struct = struct {
@@ -228,6 +252,13 @@ pub const Assembled = struct {
         token: TokenIdx,
         type_expr: Node.Idx,
         expr: Node.Idx,
+    };
+
+    pub const Subroutine = struct {
+        name_tok: TokenIdx,
+        params: []const Node.Idx,
+        ret_ty: Node.Idx,
+        body: []const Node.Idx,
     };
 };
 
@@ -271,6 +302,34 @@ pub fn assembledModule(self: *const Ast, node_idx: Node.Idx) ?Assembled.Module {
         .module_decl => .{
             .token = self.nodes.items(.main_idx)[idx],
             .members = self.extra_data[lhs..rhs],
+        },
+        else => null,
+    };
+}
+
+pub fn assembledSubroutine(self: *const Ast, node_idx: Node.Idx) ?Assembled.Subroutine {
+    const idx = @intFromEnum(node_idx);
+
+    const signature_idx = @intFromEnum(self.nodes.items(.data)[idx].lhs);
+    assert(self.nodes.items(.tag)[signature_idx] == .subroutine_sig);
+    const subroutine_args_idx = @intFromEnum(self.nodes.items(.data)[signature_idx].lhs);
+    const subroutine_args = self.extra(Node.SubroutineArgs, subroutine_args_idx);
+    const subroutine_args_start = @intFromEnum(subroutine_args.args_start);
+    const subroutine_args_end = @intFromEnum(subroutine_args.args_end);
+    const ret_ty = self.nodes.items(.data)[signature_idx].rhs;
+
+    const subroutine_body_idx = @intFromEnum(self.nodes.items(.data)[idx].rhs);
+    assert(self.nodes.items(.tag)[subroutine_body_idx] == .subroutine_body);
+    const subroutine_body = self.nodes.items(.data)[subroutine_body_idx];
+    const subroutine_body_start = @intFromEnum(subroutine_body.lhs);
+    const subroutine_body_end = @intFromEnum(subroutine_body.rhs);
+
+    return switch (self.nodes.items(.tag)[idx]) {
+        .subroutine_decl => .{
+            .name_tok = self.nodes.items(.main_idx)[idx],
+            .params = self.extra_data[subroutine_args_start..subroutine_args_end],
+            .ret_ty = ret_ty,
+            .body = self.extra_data[subroutine_body_start..subroutine_body_end],
         },
         else => null,
     };

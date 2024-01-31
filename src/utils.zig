@@ -13,3 +13,7 @@ pub fn unionPayloadPtr(comptime T: type, union_ptr: anytype) ?T {
     }
     return null;
 }
+
+pub fn u32s(comptime T: type) comptime_int {
+    return @sizeOf(T) / @sizeOf(u32);
+}

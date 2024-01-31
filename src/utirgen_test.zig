@@ -7,7 +7,7 @@ const Allocator = std.mem.Allocator;
 
 const allocator = std.testing.allocator;
 
-fn runTestExpectSuccess(src: [:0]const u8, expected_utir: []const Inst, expected_extra_data: []const u32, expected_utir_str: []const u8, debug_print: bool) !void {
+fn runTestExpectSuccess(src: [:0]const u8, maybe_expected_utir: ?[]const Inst, maybe_expected_extra_data: ?[]const u32, expected_utir_str: []const u8, debug_print: bool) !void {
     var ast = try Ast.parse(allocator, src);
     defer ast.deinit(allocator);
     var utir = try UTirGen.genUTir(allocator, &ast);
@@ -17,12 +17,16 @@ fn runTestExpectSuccess(src: [:0]const u8, expected_utir: []const Inst, expected
         std.debug.print("{}\n\n", .{utir});
     }
 
-    for (expected_utir, 0..) |e, i| {
-        try std.testing.expectEqual(e, utir.instructions.get(i));
+    if (maybe_expected_utir) |expected_utir| {
+        for (expected_utir, 0..) |e, i| {
+            try std.testing.expectEqual(e, utir.instructions.get(i));
+        }
     }
 
-    for (expected_extra_data, utir.extra_data) |e, a| {
-        try std.testing.expectEqual(e, a);
+    if (maybe_expected_extra_data) |expected_extra_data| {
+        for (expected_extra_data, utir.extra_data) |e, a| {
+            try std.testing.expectEqual(e, a);
+        }
     }
 
     if (expected_utir_str.len > 0) {
@@ -46,7 +50,6 @@ fn testEmptyGen() !void {
     const expected_extra_data = [_]u32{ 0, 0 };
     const expected_utir_str =
         \\%0 = struct_decl({})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -80,7 +83,6 @@ fn testManyDeclGen() !void {
         \\    %1 = struct_decl({})
         \\    %2 = struct_decl({})
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -137,7 +139,6 @@ fn testNestedDeclGen() !void {
         \\    })
         \\    %5 = struct_decl({})
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -163,7 +164,6 @@ fn testDeclValGen() !void {
         \\%0 = struct_decl({
         \\    %1 = decl_val("bool")
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -203,7 +203,6 @@ fn testManyFieldGen() !void {
         \\    %3 = decl_val("u8")
         \\    c : %3
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -243,7 +242,6 @@ fn testMixedFieldDeclGen() !void {
         \\    b : %2
         \\    %3 = struct_decl({})
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -283,7 +281,6 @@ fn testNumberGen() !void {
         \\        %5 = inline_block_break(%1, %4)
         \\    })
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -311,7 +308,6 @@ fn testEmptyModuleGen() !void {
         \\%0 = struct_decl({
         \\    %1 = module_decl({})
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
@@ -375,11 +371,61 @@ fn testModuleWithFieldsGen() !void {
         \\        b : %6
         \\    })
         \\})
-        \\
     ;
     try runTestExpectSuccess(src, &expected_utir, &expected_extra_data, expected_utir_str, false);
 }
 
 test testModuleWithFieldsGen {
     try testModuleWithFieldsGen();
+}
+
+fn testModuleWithCombGen() !void {
+    const src =
+        \\const Mod = module {
+        \\    pub comb a(b: &u1, c: &u1) u1 {
+        \\        return b & c;
+        \\    }
+        \\};
+    ;
+    const expected_utir_str =
+        \\%0 = struct_decl({
+        \\    %1 = module_decl({
+        \\        %2 = subroutine_decl(
+        \\            "a",
+        \\            {
+        \\                %3 = inline_block({
+        \\                    %4 = decl_val("u1")
+        \\                    %5 = ref_ty(%4)
+        \\                    %6 = inline_block_break(%3, %5)
+        \\                })
+        \\                b : %3
+        \\                %7 = inline_block({
+        \\                    %8 = decl_val("u1")
+        \\                    %9 = ref_ty(%8)
+        \\                    %10 = inline_block_break(%7, %9)
+        \\                })
+        \\                c : %7
+        \\            },
+        \\            %11 = decl_val("u1"),
+        \\            {
+        \\                %12 = inline_block({
+        \\                    %13 = inline_block({
+        \\                        %14 = decl_val("b")
+        \\                        %15 = decl_val("c")
+        \\                        %16 = bit_and(%14, %15)
+        \\                        %17 = inline_block_break(%13, %16)
+        \\                    })
+        \\                    %18 = return(%13)
+        \\                    %19 = inline_block_break(%12, %18)
+        \\                })
+        \\            }
+        \\        )
+        \\    })
+        \\})
+    ;
+    try runTestExpectSuccess(src, null, null, expected_utir_str, false);
+}
+
+test testModuleWithCombGen {
+    try testModuleWithCombGen();
 }

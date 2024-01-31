@@ -4,9 +4,11 @@ const UTirGen = @This();
 const std = @import("std");
 const Ast = @import("Ast.zig");
 const UTir = @import("UTir.zig");
+const utils = @import("utils.zig");
 const Inst = UTir.Inst;
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
+const u32s = utils.u32s;
 
 const UTirGenError = error{
     ScopeFieldAlreadyExists,
@@ -31,6 +33,7 @@ const Environment = struct {
         namespace,
         var_decl,
         inline_block,
+        subroutine,
 
         const Top = struct {
             base: Scope = .top,
@@ -58,6 +61,16 @@ const Environment = struct {
             parent: *Scope,
         };
 
+        const Subroutine = struct {
+            base: Scope = .subroutine,
+            decls: std.StringHashMapUnmanaged(Inst.Ref) = .{},
+            parent: *Scope,
+
+            pub fn deinit(self: *Subroutine, allocator: Allocator) void {
+                self.decls.deinit(allocator);
+            }
+        };
+
         pub fn addDecl(self: *Scope, allocator: Allocator, decl: []const u8, ref: Inst.Ref) !void {
             var s = self;
             while (true) {
@@ -78,12 +91,27 @@ const Environment = struct {
                         const inline_block = s.toInlineBlock();
                         s = inline_block.parent;
                     },
+                    .subroutine => {
+                        const subroutine = s.toSubroutine();
+                        if (subroutine.decls.get(decl)) |_| {
+                            return UTirGenError.ScopeDeclAlreadyExists;
+                        }
+                        s = subroutine.parent;
+                    },
                 }
             }
 
-            const namespace = self.toNamespace();
-
-            try namespace.decls.putNoClobber(allocator, decl, ref);
+            switch (self.*) {
+                .namespace => {
+                    const namespace = self.toNamespace();
+                    try namespace.decls.putNoClobber(allocator, decl, ref);
+                },
+                .subroutine => {
+                    const subroutine = self.toSubroutine();
+                    try subroutine.decls.putNoClobber(allocator, decl, ref);
+                },
+                else => unreachable,
+            }
         }
 
         pub fn addField(self: *Scope, allocator: Allocator, field: []const u8) !void {
@@ -109,6 +137,11 @@ const Environment = struct {
         pub fn toInlineBlock(self: *Scope) *InlineBlock {
             assert(self.* == .inline_block);
             return @fieldParentPtr(InlineBlock, "base", self);
+        }
+
+        pub fn toSubroutine(self: *Scope) *Subroutine {
+            assert(self.* == .subroutine);
+            return @fieldParentPtr(Subroutine, "base", self);
         }
     };
 
@@ -282,6 +315,10 @@ fn genModuleInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
                 try module_env.addExtra(Inst.ContainerField{ .name = str_idx, .type = field_ty });
                 fields += 1;
             },
+            .subroutine_decl => {
+                try module_env.addRef(try self.genSubroutine(&module_env, member));
+                decls += 1;
+            },
             else => unreachable,
         }
     }
@@ -292,6 +329,67 @@ fn genModuleInner(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
 
     env.setInst(module_decl, .{ .module_decl = .{ .ed_idx = ed_idx } });
     return module_decl;
+}
+
+fn genSubroutine(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenError!Inst.Ref {
+    const subroutine_decl = try env.reserveInst();
+    const full_subroutine = self.ast.assembledSubroutine(node_idx).?;
+
+    var scope = Environment.Scope.Subroutine{
+        .parent = env.scope,
+    };
+    defer scope.deinit(self.allocator);
+    var subroutine_env = env.derive(&scope.base);
+    defer subroutine_env.finish();
+
+    const ident = self.tokToString(full_subroutine.name_tok);
+    const str_bytes = try self.addStringBytes(ident);
+
+    for (full_subroutine.params) |param_idx| {
+        const idx = @intFromEnum(param_idx);
+        const param_tok = self.ast.nodes.items(.main_idx)[idx];
+        const param_ident = self.tokToString(param_tok);
+        const param_str_bytes = try self.addStringBytes(param_ident);
+
+        const param_ty_idx = self.ast.nodes.items(.data)[idx].lhs;
+        const param_ty = try self.genExpr(&subroutine_env, param_ty_idx);
+
+        try subroutine_env.scope.addDecl(self.allocator, param_ident, param_ty);
+
+        try subroutine_env.addExtra(Inst.SubroutineDecl.Param{
+            .name = param_str_bytes,
+            .type = param_ty,
+        });
+    }
+
+    const ret_ty = try self.genExpr(&subroutine_env, full_subroutine.ret_ty);
+
+    for (full_subroutine.body) |body| {
+        const body_ref = try self.genExpr(&subroutine_env, body);
+        try subroutine_env.addExtra(body_ref);
+    }
+
+    const ed_idx = try self.addExtra(Inst.SubroutineDecl{
+        .name_idx = str_bytes,
+        .param_len = @intCast(full_subroutine.params.len),
+        .ret_ty = ret_ty,
+        .body_len = @intCast(full_subroutine.body.len),
+    });
+    env.setInst(subroutine_decl, .{ .subroutine_decl = .{ .ed_idx = ed_idx } });
+
+    const param_slice_start = subroutine_env.extra_bottom;
+    const param_slice_end = param_slice_start + (full_subroutine.params.len * u32s(Inst.SubroutineDecl.Param));
+    const param_slice = subroutine_env.extra.items[param_slice_start..param_slice_end];
+    _ = try self.addExtraSlice(u32, param_slice);
+
+    const body_slice_start = param_slice_end;
+    const body_slice_end = body_slice_start + full_subroutine.body.len;
+    const body_slice = subroutine_env.extra.items[body_slice_start..body_slice_end];
+    _ = try self.addExtraSlice(u32, body_slice);
+
+    try env.scope.addDecl(self.allocator, ident, subroutine_decl);
+
+    return subroutine_decl;
 }
 
 // Generates an instruction from a variable declation. Returns reference to instruction
@@ -367,6 +465,7 @@ fn genInlineBlock(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
         .mul => try self.genBinOp(&block_env, node_idx, .mul),
         .div => try self.genBinOp(&block_env, node_idx, .div),
         .reference => try self.genRefTy(&block_env, node_idx),
+        .@"return" => try self.genUnOp(&block_env, node_idx, .@"return"),
         .struct_decl,
         .module_decl,
         .identifier,
@@ -380,7 +479,6 @@ fn genInlineBlock(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTi
         .subroutine_sig,
         .subroutine_body,
         .subroutine_arg,
-        .@"return",
         .ptr_ty,
         => unreachable,
     };
@@ -411,11 +509,6 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .module_decl => return self.genModuleInner(env, node_idx),
         .identifier => return self.genIdentifier(env, node_idx),
         .int => return self.genInteger(env, node_idx),
-        .add => return self.genInlineBlock(env, node_idx),
-        .reference => return self.genInlineBlock(env, node_idx),
-        .root,
-        .var_decl,
-        .container_field,
         .@"or",
         .@"and",
         .lt,
@@ -427,19 +520,31 @@ fn genExpr(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx) UTirGenErr
         .bit_and,
         .bit_or,
         .bit_xor,
+        .add,
         .sub,
         .mul,
         .div,
+        .@"return",
+        .reference,
+        => return self.genInlineBlock(env, node_idx),
+        .root,
+        .var_decl,
+        .container_field,
         .assignment,
         .member,
         .subroutine_decl,
         .subroutine_sig,
         .subroutine_body,
         .subroutine_arg,
-        .@"return",
         .ptr_ty,
         => unreachable,
     }
+}
+
+fn genUnOp(self: *UTirGen, env: *Environment, node_idx: Ast.Node.Idx, comptime op: Inst.Tag) UTirGenError!Inst.Ref {
+    const data = self.ast.nodes.items(.data)[@intFromEnum(node_idx)];
+    const lhs = try self.genExpr(env, data.lhs);
+    return try env.addInst(@unionInit(Inst, @tagName(op), .{ .lhs = lhs }));
 }
 
 fn tokToString(self: *UTirGen, token_idx: Ast.TokenIdx) []const u8 {
