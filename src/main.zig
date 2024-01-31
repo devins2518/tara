@@ -1,5 +1,6 @@
 const std = @import("std");
 const Ast = @import("Ast.zig");
+const UTirGen = @import("UTirGen.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -21,6 +22,12 @@ pub fn main() !void {
 
     var ast = try Ast.parse(allocator, contents);
     defer ast.deinit(allocator);
+
+    var utir = try UTirGen.genUTir(allocator, &ast);
+    defer utir.deinit(allocator);
+
+    const stdout = std.io.getStdOut().writer();
+    try std.fmt.format(stdout, "{}\n", .{utir});
 }
 
 test "simple test" {
