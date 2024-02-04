@@ -441,6 +441,44 @@ const HalfAdder = module {
 }
 \end{verbatim}
 
+\[
+	\begin{array}{rclrclrcl}
+		p   & \in  & \verb|PORTS|                           & m & \in & \verb|MODULES| & x & \in & \verb|VARIABLES|  \\
+		t   & \in  & \verb|TYPES|                           & e & \in & \verb|EXPRS|   & s & \in & \verb|STATEMENTS| \\
+		b   & \in  & \verb|BLOCKS|                          & S & \in & \verb|STRUCTS| & f & \in & \verb|FUNCTIONS|  \\
+		L_n & \in  & \verb|NUMERIC VALUES|                  &   &     &                &   &     &                   \\
+		op  & \in  & \andop \alt \orop \alt \verb|&|        &   &     &                &   &     &                   \\
+		    & \alt & \verb|\| \alt \verb|^| \alt \verb|<|   &   &     &                &   &     &                   \\
+		    & \alt & \verb|>| \alt \verb|<=| \alt \verb|>=| &   &     &                &   &     &                   \\
+		    & \alt & \verb|==| \alt \verb|!=| \alt \verb|+| &   &     &                &   &     &                   \\
+		    & \alt & \verb|-| \alt \verb|*| \alt \verb|\|   &   &     &                &   &     &                   \\
+		    & \alt & \verb|<<| \alt \verb|>>|               &   &     &                &   &     &                   \\
+	\end{array}
+\]
+\[
+	\begin{array}{rcl}
+		t   & :=   & \verb|bool| \alt  (\verb|u| \alt \verb|i|)\overline{[0-9]} \alt \verb|sig| \alt m                                     \\
+		    & \alt & p \alt \verb|type| \alt \verb|clock| \alt \verb|reset| \alt S                                                         \\
+		e   & :=   & t \alt {e}\:\mathit{op}\:{e} \alt \mathit{op}\ {e} \alt {e}.{e} \alt {e}(\overline{e}) \alt (e) \alt \&\verb|var|^? e \\
+		    & \alt & b \alt \verb|undefined| \alt \verb|true| \alt \verb|false| \alt x \alt e\verb|.*|                                     \\
+		    & \alt & \verb|return | e \alt L_n                                                                                             \\
+		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?                                                                                     \\
+		p_f & :=   & id \verb|: &var|^? t                                                                                                  \\
+		m   & :=   & \verb|module { | \overline{p_f}\ \overline{s}\ \overline{c} \verb| }|                                                 \\
+		x   & :=   & id                                                                                                                    \\
+		q_p & :=   & \verb|pub|                                                                                                            \\
+		s_q & :=   & \verb|const|                                                                                                          \\
+		s   & :=   & q_p^?\ s_q\ x (\verb|: | t)^? \verb| = | e \verb|;|                                                                   \\
+		    & \alt & x = e;                                                                                                                \\
+		    & \alt & \ifline{e}\ e\ (\verb|else | e)^?\verb|;|                                                                             \\
+		c   & :=   & q_p^?\ \verb|comb | id \verb|(|\overline{id:\ e} \verb|) | t \verb| {| \overline{s} \verb|}|                          \\
+		S   & :=   & \verb|struct { | \overline{S_f}\ \overline{s}\ \overline{f} \verb| }|                                                 \\
+		S_f & :=   & id \verb|: | t                                                                                                        \\
+		f   & :=   & q_p^? \verb| fn | id \verb|(|\overline{id:\ e}\verb|) | t \verb| {| \overline{s} \verb|}|                             \\
+		L_n & :=   & \overline{0-9} \alt \verb|0b|\overline{(0 \alt 1)} \alt \verb|0x|(\overline{0-F})                                     \\
+	\end{array}
+\]
+
 \section{Language Reference}
 
 \subsection{Types as Values}
@@ -845,7 +883,7 @@ may contain top level declarations.
 \begin{figure}[H]
 	\begin{verbatim}
 const If = interface {
-    const A;
+    pub const A: u32;
 
     pub fn foo(self: &If) void;
 
