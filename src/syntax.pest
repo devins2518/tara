@@ -1,0 +1,100 @@
+root = { SOI ~ struct_inner ~ EOI }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT = _{ ("//" ~ (!NEWLINE ~ ANY)* ~ NEWLINE) | " " }
+
+container_field = { identifier ~ ":" ~ type_expr ~ ","? }
+
+container_decl = { fn_decl | decl }
+
+decl = { publicity ~ "const" ~ identifier ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
+
+publicity = { "pub"? }
+
+identifier = @{ ("_" | ASCII_ALPHA)+ ~ ("_" | ASCII_ALPHA | ASCII_DIGIT)* }
+
+type_expr = { struct_decl | module_decl | identifier | reference_ty | pointer_ty | expr }
+
+reference_ty = { "&" ~ expr }
+
+pointer_ty = { "*" ~ expr }
+
+fn_decl = { publicity ~ "fn" ~ identifier ~ "(" ~ (fn_param ~ ",")* ~ fn_param ~ ","? ~ ")" ~ type_expr ~ block }
+
+fn_param = { identifier ~ ":" ~ type_expr }
+
+expr = { prefix_operator* ~ primary_expr ~ (infix_operator ~ prefix_operator* ~ primary_expr )* }
+
+primary_expr = { parened_expr | identifier }
+
+parened_expr = { "(" ~ expr ~ ")" }
+
+prefix_operator = { neg_operator }
+
+neg_operator = { "-" }
+
+infix_operator = { or_operator          |
+                   and_operator         |
+                   lte_operator         |
+                   lt_operator          |
+                   gt_operator          |
+                   gte_operator         |
+                   eq_operator          |
+                   neq_operator         |
+                   bitwise_and_operator |
+                   bitwise_or_operator  |
+                   bitwise_xor_operator |
+                   add_operator         |
+                   sub_operator         |
+                   mul_operator         |
+                   div_operator
+}
+
+or_operator = { "or" }
+
+and_operator = { "and" }
+
+lte_operator = { "<=" }
+lt_operator  = { "<"  }
+gt_operator  = { ">"  }
+gte_operator = { ">=" }
+eq_operator  = { "==" }
+neq_operator = { "!=" }
+
+bitwise_and_operator = { "&" }
+bitwise_or_operator = { "|" }
+bitwise_xor_operator = { "^" }
+
+add_operator = { "+" }
+sub_operator = { "-" }
+
+mul_operator = { "*" }
+div_operator = { "/" }
+
+struct_decl = { "struct" ~ "{" ~ struct_inner ~ "}" }
+
+container_decls = { container_decl* }
+
+container_fields = { container_field* }
+
+struct_inner = { container_decls ~ container_fields ~ container_decls }
+
+module_decl = { "module" ~ "{" ~ module_member* ~ "}" }
+
+module_member = { module_field | module_inner_decl }
+
+module_field = { identifier ~ ":" ~ type_expr }
+
+module_inner_decl = { comb_decl | decl }
+
+comb_decl = { publicity ~ "comb" ~ identifier ~ "(" ~ (comb_param ~ ",")* ~ comb_param ~ ","? ~ ")" ~ type_expr ~ block }
+
+comb_param = { identifier ~ ":" ~ type_expr }
+
+block = { "{" ~ statement* ~ "}" }
+
+statement = { (decl_statement | expr_statement) }
+
+decl_statement = { "const" ~ identifier ~ (":" ~ type_expr)? ~ expr ~ ";" }
+
+expr_statement = { expr ~ ";" }
