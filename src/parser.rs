@@ -154,15 +154,17 @@ impl TaraParser {
                 Node::VarDecl(VarDecl {
                     publicity,
                     ident,
-                    ty: Box::new(None),
+                    ty: None,
                     expr: Box::new(init_expr),
                 })
             },
-            [identifier(ident), type_expr(ty_expr), type_expr(init_expr)] => {
-                print_type_of(&ident);
-                print_type_of(&ty_expr);
-                print_type_of(&init_expr);
-                unimplemented!()
+            [publicity(publicity), identifier(ident), type_expr(type_expr), expr(init_expr)] => {
+                Node::VarDecl(VarDecl {
+                    publicity,
+                    ident,
+                    ty: Some(Box::new(type_expr)),
+                    expr: Box::new(init_expr),
+                })
             },
         );
 

@@ -67,7 +67,7 @@ pub enum Publicity {
 pub struct VarDecl<'a> {
     pub publicity: Publicity,
     pub ident: GlobalSymbol,
-    pub ty: Box<Option<Node<'a>>>,
+    pub ty: Option<Box<Node<'a>>>,
     pub expr: Box<Node<'a>>,
 }
 
@@ -81,7 +81,7 @@ impl<'a> VarDecl<'a> {
         return Self {
             publicity,
             ident,
-            ty: Box::new(ty),
+            ty: ty.map(Box::new),
             expr: Box::new(expr),
         };
     }
