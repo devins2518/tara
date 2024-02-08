@@ -3,6 +3,8 @@ root = { SOI ~ struct_inner ~ EOI }
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 COMMENT = _{ ("//" ~ (!NEWLINE ~ ANY)* ~ NEWLINE) | " " }
 
+keyword = { "struct" | "const" | "pub" | "fn" | "or" | "and" | "module" | "comb" }
+
 container_field = { identifier ~ ":" ~ type_expr ~ ","? }
 
 container_decl = { fn_decl | decl }
@@ -11,9 +13,9 @@ decl = { publicity ~ "const" ~ identifier ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";
 
 publicity = { "pub"? }
 
-identifier = @{ ("_" | ASCII_ALPHA)+ ~ ("_" | ASCII_ALPHA | ASCII_DIGIT)* }
+identifier = @{ !keyword ~ ("_" | ASCII_ALPHA)+ ~ ("_" | ASCII_ALPHA | ASCII_DIGIT)* }
 
-type_expr = { struct_decl | module_decl | identifier | reference_ty | pointer_ty | expr }
+type_expr = { struct_decl | module_decl | identifier | reference_ty | pointer_ty }
 
 reference_ty = { "&" ~ expr }
 
@@ -25,7 +27,7 @@ fn_param = { identifier ~ ":" ~ type_expr }
 
 expr = { prefix_operator* ~ primary_expr ~ (infix_operator ~ prefix_operator* ~ primary_expr )* }
 
-primary_expr = { parened_expr | identifier }
+primary_expr = { parened_expr | identifier | type_expr }
 
 parened_expr = { "(" ~ expr ~ ")" }
 
@@ -79,11 +81,15 @@ container_fields = { container_field* }
 
 struct_inner = { container_decls ~ container_fields ~ container_decls }
 
-module_decl = { "module" ~ "{" ~ module_member* ~ "}" }
+module_decl = { "module" ~ "{" ~ module_inner ~ "}" }
 
-module_member = { module_field | module_inner_decl }
+module_decls = { module_inner_decl* }
 
-module_field = { identifier ~ ":" ~ type_expr }
+module_field = { identifier ~ ":" ~ type_expr ~ ","? }
+
+module_fields = { module_field* }
+
+module_inner = { module_decls ~ module_fields ~ module_decls }
 
 module_inner_decl = { comb_decl | decl }
 

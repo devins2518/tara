@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, Node, Publicity, StructInner, TypedName, VarDecl};
+use crate::ast::{BinOp, ModuleInner, Node, Publicity, StructInner, TypedName, VarDecl};
 use anyhow::Result as AResult;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
 use pest_consume::{match_nodes, Error, Parser};
@@ -111,26 +111,6 @@ impl TaraParser {
         );
     }
 
-    fn struct_inner(input: ParseNode) -> ParseResult<StructInner> {
-        let mut fields = Vec::new();
-
-        let mut members = Vec::new();
-
-        let node = match_nodes!(
-            input.into_children();
-            [container_decls(container_decls_pre), container_fields(container_fields), container_decls(container_decls_post)] => {
-                members.extend(container_decls_pre);
-                members.extend(container_decls_post);
-                fields.extend(container_fields);
-            },
-            [container_decl(container_decl)..] => {
-                members.extend(container_decl);
-            }
-        );
-
-        return Ok(StructInner::new(fields, members));
-    }
-
     fn container_fields(input: ParseNode) -> ParseResult<Vec<TypedName>> {
         match_nodes!(
             input.into_children();
@@ -205,31 +185,112 @@ impl TaraParser {
     fn type_expr(input: ParseNode) -> ParseResult<Node> {
         let node = match_nodes!(
             input.into_children();
-            [struct_decl(struct_decl)] => unimplemented!(),
-            [module_decl(module_decl)] => unimplemented!(),
+            [struct_decl(struct_decl)] => struct_decl,
+            [module_decl(module_decl)] => module_decl,
             [identifier(identifier)] => Node::Identifier(identifier),
-            [reference_ty(identifier)] => unimplemented!(),
-            [pointer_ty(identifier)] => unimplemented!(),
-            [expr(identifier)] => unimplemented!(),
+            [reference_ty(reference_ty)] => reference_ty,
+            [pointer_ty(pointer_ty)] => pointer_ty,
         );
 
         return Ok(node);
     }
 
     fn struct_decl(input: ParseNode) -> ParseResult<Node> {
-        unimplemented!()
+        match_nodes!(
+            input.into_children();
+            [struct_inner(struct_inner)] => Ok(Node::StructDecl(struct_inner)),
+        )
+    }
+
+    fn struct_inner(input: ParseNode) -> ParseResult<StructInner> {
+        let (fields, members) = match_nodes!(
+            input.into_children();
+            [container_decls(container_decls_pre), container_fields(container_fields), container_decls(container_decls_post)] => {
+                let mut members = Vec::new();
+                members.extend(container_decls_pre) ;
+                members.extend(container_decls_post) ;
+                (container_fields, members)
+            }
+        );
+
+        let struct_inner = StructInner::new(fields, members);
+        return Ok(struct_inner);
     }
 
     fn module_decl(input: ParseNode) -> ParseResult<Node> {
-        unimplemented!()
+        match_nodes!(
+            input.into_children();
+            [module_inner(module_inner)] => Ok(Node::ModuleDecl(module_inner)),
+        )
+    }
+
+    fn module_inner(input: ParseNode) -> ParseResult<ModuleInner> {
+        let (fields, members) = match_nodes!(
+            input.into_children();
+            [module_decls(container_decls_pre), module_fields(container_fields), module_decls(container_decls_post)] => {
+                let mut members = Vec::new();
+                members.extend(container_decls_pre) ;
+                members.extend(container_decls_post) ;
+                (container_fields, members)
+            }
+        );
+
+        let module_inner = ModuleInner::new(fields, members);
+        return Ok(module_inner);
+    }
+
+    fn module_decls(input: ParseNode) -> ParseResult<Vec<Node>> {
+        match_nodes!(
+            input.into_children();
+            [module_inner_decl(module_inner_decls)..] => {
+                return Ok(module_inner_decls.collect())
+            }
+        );
+    }
+
+    fn module_inner_decl(input: ParseNode) -> ParseResult<Node> {
+        match_nodes!(
+            input.into_children();
+            [decl(decl)] => return Ok(decl),
+            // TODO: parse combs
+            // [comb_decl(comb_decl)] => return Ok(comb_decl),
+        );
+    }
+
+    fn module_fields(input: ParseNode) -> ParseResult<Vec<TypedName>> {
+        match_nodes!(
+            input.into_children();
+            [module_field(module_fields)..] => {
+                return Ok(module_fields.collect())
+            }
+        );
+    }
+
+    fn module_field(input: ParseNode) -> ParseResult<TypedName> {
+        match_nodes!(
+            input.into_children();
+            [identifier(ident), type_expr(ty)] => {
+                return Ok(TypedName::new(ty, ident));
+            }
+        );
     }
 
     fn reference_ty(input: ParseNode) -> ParseResult<Node> {
-        unimplemented!()
+        let node = match_nodes!(
+            input.into_children();
+            [expr(expr)] => expr
+        );
+
+        return Ok(Node::ReferenceTy(Box::new(node)));
     }
 
     fn pointer_ty(input: ParseNode) -> ParseResult<Node> {
-        unimplemented!()
+        let node = match_nodes!(
+            input.into_children();
+            [expr(expr)] => expr
+        );
+
+        return Ok(Node::PointerTy(Box::new(node)));
     }
 
     fn expr(input: ParseNode) -> ParseResult<Node> {
@@ -241,6 +302,7 @@ impl TaraParser {
             input.into_children();
             [parened_expr(parened_expr)] => parened_expr,
             [identifier(identifier)] => Node::Identifier(identifier),
+            [type_expr(type_expr)] => type_expr,
         );
 
         return Ok(node);

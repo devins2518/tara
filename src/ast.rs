@@ -6,7 +6,7 @@ use symbol_table::GlobalSymbol;
 pub enum Node<'a> {
     StructDecl(StructInner<'a>),
     VarDecl(VarDecl<'a>),
-    ModuleDecl(),
+    ModuleDecl(ModuleInner<'a>),
     Or(BinOp<'a>),
     And(BinOp<'a>),
     Lt(BinOp<'a>),
@@ -23,6 +23,8 @@ pub enum Node<'a> {
     Mul(BinOp<'a>),
     Div(BinOp<'a>),
     Identifier(GlobalSymbol),
+    ReferenceTy(Box<Node<'a>>),
+    PointerTy(Box<Node<'a>>),
 }
 
 pub struct StructInner<'a> {
@@ -32,6 +34,22 @@ pub struct StructInner<'a> {
 }
 
 impl<'a> StructInner<'a> {
+    pub fn new(fields: Vec<TypedName<'a>>, members: Vec<Node<'a>>) -> Self {
+        return Self {
+            fields,
+            members,
+            _phantom: PhantomData,
+        };
+    }
+}
+
+pub struct ModuleInner<'a> {
+    pub fields: Vec<TypedName<'a>>,
+    pub members: Vec<Node<'a>>,
+    _phantom: PhantomData<&'a Node<'a>>,
+}
+
+impl<'a> ModuleInner<'a> {
     pub fn new(fields: Vec<TypedName<'a>>, members: Vec<Node<'a>>) -> Self {
         return Self {
             fields,
