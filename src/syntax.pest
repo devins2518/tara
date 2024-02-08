@@ -17,9 +17,9 @@ identifier = @{ !keyword ~ ("_" | ASCII_ALPHA)+ ~ ("_" | ASCII_ALPHA | ASCII_DIG
 
 type_expr = { struct_decl | module_decl | identifier | reference_ty | pointer_ty }
 
-reference_ty = { "&" ~ expr }
+reference_ty = ${ "&" ~ expr }
 
-pointer_ty = { "*" ~ expr }
+pointer_ty = ${ "*" ~ expr }
 
 fn_decl = { publicity ~ "fn" ~ identifier ~ "(" ~ (fn_param ~ ",")* ~ fn_param ~ ","? ~ ")" ~ type_expr ~ block }
 
