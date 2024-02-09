@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 2 {
+    if args.len() < 2 {
         println!("[ERROR] Expected ./prog <filename>");
         std::process::exit(1);
     }
@@ -17,8 +17,10 @@ fn main() -> Result<()> {
 
     let ast = Ast::parse(&contents)?;
 
-    println!("{}", ast.root.fields.len());
-    println!("{}", ast.root.members.len());
+    if &args[2] == "--dump-ast" {
+        println!("{}", ast.root.fields.len());
+        println!("{}", ast.root.members.len());
+    }
 
     return Ok(());
 }
