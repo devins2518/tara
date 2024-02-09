@@ -1,9 +1,9 @@
 root = { SOI ~ struct_inner ~ EOI }
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
-COMMENT = _{ ("//" ~ (!NEWLINE ~ ANY)* ~ NEWLINE) | " " }
+COMMENT = _{ ("//" ~ (!NEWLINE ~ ANY)* ~ (NEWLINE | EOI)) | " " }
 
-keyword = { "struct" | "const" | "pub" | "fn" | "or" | "and" | "module" | "comb" }
+keyword = { "struct" | "const" | "pub" | "fn" | "or" | "and" | "module" | "comb" | "var" | "return" | "if" | "else" }
 
 container_field = { identifier ~ ":" ~ type_expr ~ ","? }
 
@@ -15,41 +15,80 @@ publicity = { "pub"? }
 
 identifier = @{ !keyword ~ ("_" | ASCII_ALPHA)+ ~ ("_" | ASCII_ALPHA | ASCII_DIGIT)* }
 
+number = ${ bitwidth_number_literal | number_literal }
+
+number_literal = _{ binary_literal | hex_literal | decimal_literal }
+
+binary_prefix = _{ "0b" }
+hex_prefix = _{ "0x" }
+
+nonzero_decimal_number = { (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) }
+decimal_number = { nonzero_decimal_number | ASCII_DIGIT }
+binary_number = { ASCII_BIN_DIGIT+ }
+hex_number = { ASCII_HEX_DIGIT+ }
+
+decimal_literal = _{ decimal_number }
+binary_literal = _{ binary_prefix ~ binary_number }
+hex_literal = _{ hex_prefix ~ hex_number }
+
+bitwidth_number_literal = _{ bitwidth_binary_literal | bitwidth_hex_literal }
+bitwidth_binary_literal = { nonzero_decimal_number ~ "b" ~ binary_number }
+bitwidth_hex_literal = { nonzero_decimal_number ~ "x" ~ hex_number }
+
 type_expr = { struct_decl | module_decl | identifier | reference_ty | pointer_ty }
 
-reference_ty = ${ "&" ~ expr }
+ptr_var = { "var" }
 
-pointer_ty = ${ "*" ~ expr }
+reference_ty = ${ "&" ~ (ptr_var ~ WHITESPACE+)? ~ expr }
+
+pointer_ty = ${ "*" ~ (ptr_var ~ WHITESPACE+)? ~ expr }
 
 fn_decl = { publicity ~ "fn" ~ identifier ~ "(" ~ (fn_param ~ ",")* ~ fn_param ~ ","? ~ ")" ~ type_expr ~ block }
 
 fn_param = { identifier ~ ":" ~ type_expr }
 
-expr = { prefix_operator* ~ primary_expr ~ (infix_operator ~ prefix_operator* ~ primary_expr )* }
+expr = { prefix_operator* ~ primary_expr ~ postfix_operator* ~ (infix_operator ~ prefix_operator* ~ primary_expr ~ postfix_operator* )* }
 
-primary_expr = { parened_expr | identifier | type_expr }
+primary_expr = { parened_expr | identifier | type_expr | return_expr | number | if_expr }
 
 parened_expr = { "(" ~ expr ~ ")" }
 
-prefix_operator = { neg_operator }
+return_expr = { "return" ~ expr }
+
+if_expr = { "if" ~ "(" ~ expr ~ ")" ~ expr ~ "else" ~ expr }
+
+prefix_operator = _{ neg_operator }
 
 neg_operator = { "-" }
 
-infix_operator = { or_operator          |
-                   and_operator         |
-                   lte_operator         |
-                   lt_operator          |
-                   gt_operator          |
-                   gte_operator         |
-                   eq_operator          |
-                   neq_operator         |
-                   bitwise_and_operator |
-                   bitwise_or_operator  |
-                   bitwise_xor_operator |
-                   add_operator         |
-                   sub_operator         |
-                   mul_operator         |
-                   div_operator
+postfix_operator = _{ call_operator | deref_operator }
+
+deref_operator = { ".*" }
+
+call_operator = { "(" ~ param_list ~ ")" }
+
+param_list_end = _{ expr ~ ","? }
+
+param_list_middle = _{ expr ~ "," }
+
+param_list = _{ param_list_middle* ~ param_list_end? }
+
+infix_operator = _{ or_operator          |
+                    and_operator         |
+                    lte_operator         |
+                    lt_operator          |
+                    gt_operator          |
+                    gte_operator         |
+                    eq_operator          |
+                    neq_operator         |
+                    bitwise_and_operator |
+                    bitwise_or_operator  |
+                    bitwise_xor_operator |
+                    add_operator         |
+                    sub_operator         |
+                    mul_operator         |
+                    div_operator         |
+                    access_operator
 }
 
 or_operator = { "or" }
@@ -73,10 +112,13 @@ sub_operator = { "-" }
 mul_operator = { "*" }
 div_operator = { "/" }
 
+access_operator = @{ "." }
+
 struct_decl = { "struct" ~ "{" ~ struct_inner ~ "}" }
 
 container_decls = { container_decl* }
 
+// TODO: this doesn't force comma between fields
 container_fields = { container_field* }
 
 struct_inner = { container_decls ~ container_fields ~ container_decls }
@@ -87,6 +129,7 @@ module_decls = { module_inner_decl* }
 
 module_field = { identifier ~ ":" ~ type_expr ~ ","? }
 
+// TODO: this doesn't force comma between fields
 module_fields = { module_field* }
 
 module_inner = { module_decls ~ module_fields ~ module_decls }

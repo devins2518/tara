@@ -1,5 +1,9 @@
-use crate::ast::{BinOp, ModuleInner, Node, Publicity, StructInner, TypedName, VarDecl};
+use crate::ast::{
+    BinOp, Call, IfExpr, ModuleInner, Node, Publicity, SizedNumberLiteral, StructInner, TypedName,
+    UnOp, VarDecl,
+};
 use anyhow::Result as AResult;
+use num_bigint::BigUint;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
 use pest_consume::{match_nodes, Error, Parser};
 use symbol_table::GlobalSymbol;
@@ -32,6 +36,9 @@ impl std::error::Error for ParseError {}
 
 lazy_static::lazy_static! {
     static ref PRATT: PrattParser<Rule> = PrattParser::new()
+        .op(Op::prefix(Rule::neg_operator))
+        .op(Op::postfix(Rule::call_operator))
+        .op(Op::postfix(Rule::deref_operator))
         .op(Op::infix(Rule::or_operator, Assoc::Left))
         .op(Op::infix(Rule::and_operator, Assoc::Left))
         .op(Op::infix(Rule::lte_operator, Assoc::Left) | Op::infix(Rule::lt_operator, Assoc::Left) |
@@ -42,8 +49,7 @@ lazy_static::lazy_static! {
             Op::infix(Rule::bitwise_xor_operator, Assoc::Left))
         .op(Op::infix(Rule::add_operator, Assoc::Left) | Op::infix(Rule::sub_operator, Assoc::Left))
         .op(Op::infix(Rule::mul_operator, Assoc::Left) | Op::infix(Rule::div_operator, Assoc::Left))
-        .op(Op::infix(Rule::infix_operator, Assoc::Left))
-        .op(Op::prefix(Rule::neg_operator));
+        .op(Op::infix(Rule::access_operator, Assoc::Left));
 }
 
 #[derive(Parser)]
@@ -71,7 +77,7 @@ impl TaraParser {
                     lhs: lhs_box,
                     rhs: rhs_box,
                 };
-                let node = match op.into_inner().next().unwrap().as_rule() {
+                let node = match op.as_rule() {
                     Rule::or_operator => Node::Or(bin_op),
                     Rule::and_operator => Node::And(bin_op),
                     Rule::lt_operator => Node::Lt(bin_op),
@@ -87,10 +93,40 @@ impl TaraParser {
                     Rule::sub_operator => Node::Sub(bin_op),
                     Rule::mul_operator => Node::Mul(bin_op),
                     Rule::div_operator => Node::Div(bin_op),
+                    Rule::access_operator => Node::Access(bin_op),
                     _ => unreachable!(),
                 };
 
                 Ok(node)
+            })
+            .map_prefix(|op, rhs| {
+                let rhs_box = Box::new(rhs?);
+                let un_op = UnOp { lhs: rhs_box };
+                let node = match op.as_rule() {
+                    Rule::neg_operator => Node::Negate(un_op),
+                    _ => unreachable!(),
+                };
+
+                Ok(node)
+            })
+            .map_postfix(|lhs, op| {
+                let lhs_box = Box::new(lhs?);
+                match op.as_rule() {
+                    Rule::call_operator => {
+                        let args = TaraParser::call_operator(ParseNode::new(op))?;
+                        let call = Call {
+                            call: lhs_box,
+                            args,
+                        };
+
+                        Ok(Node::Call(call))
+                    }
+                    Rule::deref_operator => {
+                        let un_op = UnOp { lhs: lhs_box };
+                        Ok(Node::Deref(un_op))
+                    }
+                    _ => unreachable!(),
+                }
             })
             .parse(pairs)
     }
@@ -277,22 +313,34 @@ impl TaraParser {
         );
     }
 
+    fn ptr_var(input: ParseNode) -> ParseResult<()> {
+        Ok(())
+    }
+
     fn reference_ty(input: ParseNode) -> ParseResult<Node> {
         let node = match_nodes!(
             input.into_children();
-            [expr(expr)] => expr
+            [expr(expr)] => expr,
+            [ptr_var(_), expr(expr)] => expr,
         );
+        let un_op = UnOp {
+            lhs: Box::new(node),
+        };
 
-        return Ok(Node::ReferenceTy(Box::new(node)));
+        return Ok(Node::ReferenceTy(un_op));
     }
 
     fn pointer_ty(input: ParseNode) -> ParseResult<Node> {
         let node = match_nodes!(
             input.into_children();
-            [expr(expr)] => expr
+            [expr(expr)] => expr,
+            [ptr_var(var), expr(expr)] => expr,
         );
+        let un_op = UnOp {
+            lhs: Box::new(node),
+        };
 
-        return Ok(Node::PointerTy(Box::new(node)));
+        return Ok(Node::PointerTy(un_op));
     }
 
     fn expr(input: ParseNode) -> ParseResult<Node> {
@@ -305,6 +353,9 @@ impl TaraParser {
             [parened_expr(parened_expr)] => parened_expr,
             [identifier(identifier)] => Node::Identifier(identifier),
             [type_expr(type_expr)] => type_expr,
+            [return_expr(return_expr)] => return_expr,
+            [number(number)] => number,
+            [if_expr(if_expr)] => if_expr,
         );
 
         return Ok(node);
@@ -312,8 +363,94 @@ impl TaraParser {
 
     fn parened_expr(input: ParseNode) -> ParseResult<Node> {
         Ok(match_nodes!(
-                input.into_children();
-                [expr(expr)] => expr,
+            input.into_children();
+            [expr(expr)] => expr,
+        ))
+    }
+
+    fn return_expr(input: ParseNode) -> ParseResult<Node> {
+        Ok(match_nodes!(
+            input.into_children();
+            [expr(expr)] => {
+                let un_op = UnOp{lhs: Box::new(expr)};
+                Node::Return(un_op)
+            },
+        ))
+    }
+
+    fn if_expr(input: ParseNode) -> ParseResult<Node> {
+        Ok(match_nodes!(
+            input.into_children();
+            [expr(cond), expr(body), expr(else_body)] => {
+                let if_expr = IfExpr{
+                    cond: Box::new(cond),
+                    body: Box::new(body),
+                    else_body: Box::new(else_body),
+                };
+                Node::IfExpr(if_expr)
+            },
+        ))
+    }
+
+    fn number(input: ParseNode) -> ParseResult<Node> {
+        Ok(match_nodes!(
+            input.into_children();
+            [decimal_number(decimal)] => Node::NumberLiteral(decimal),
+            [binary_number(binary)] => Node::NumberLiteral(binary),
+            [hex_number(hex)] => Node::NumberLiteral(hex),
+            [bitwidth_binary_literal(binary)] => binary,
+            [bitwidth_hex_literal(hex)] => hex,
+        ))
+    }
+
+    fn nonzero_decimal_number(input: ParseNode) -> ParseResult<BigUint> {
+        Ok(BigUint::parse_bytes(input.as_str().as_bytes(), 10).unwrap())
+    }
+
+    fn decimal_number(input: ParseNode) -> ParseResult<BigUint> {
+        Ok(BigUint::parse_bytes(input.as_str().as_bytes(), 10).unwrap())
+    }
+
+    fn binary_number(input: ParseNode) -> ParseResult<BigUint> {
+        Ok(BigUint::parse_bytes(input.as_str().as_bytes(), 2).unwrap())
+    }
+
+    fn hex_number(input: ParseNode) -> ParseResult<BigUint> {
+        Ok(BigUint::parse_bytes(input.as_str().as_bytes(), 16).unwrap())
+    }
+
+    fn bitwidth_binary_literal(input: ParseNode) -> ParseResult<Node> {
+        Ok(match_nodes!(
+            input.into_children();
+            [nonzero_decimal_number(big_size), binary_number(literal)] => {
+                // TODO: do size checks here
+                let size = big_size.to_u32_digits()[0] as u16;
+                let sized_number_literal = SizedNumberLiteral{size,literal};
+                let node = Node::SizedNumberLiteral(sized_number_literal);
+
+                node
+            },
+        ))
+    }
+
+    fn bitwidth_hex_literal(input: ParseNode) -> ParseResult<Node> {
+        Ok(match_nodes!(
+            input.into_children();
+            [nonzero_decimal_number(big_size), hex_number(literal)] => {
+                // TODO: do size checks here
+                let size = big_size.to_u32_digits()[0] as u16;
+                let sized_number_literal = SizedNumberLiteral{size,literal};
+                let node = Node::SizedNumberLiteral(sized_number_literal);
+
+                node
+            },
+        ))
+    }
+
+    fn call_operator(input: ParseNode) -> ParseResult<Vec<Node>> {
+        Ok(match_nodes!(
+            input.into_children();
+            [expr(expr)..] => expr.collect(),
         ))
     }
 }

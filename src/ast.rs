@@ -1,5 +1,6 @@
 use crate::parser::TaraParser;
 use anyhow::Result;
+use num_bigint::BigUint;
 use std::{fmt::Display, marker::PhantomData};
 use symbol_table::GlobalSymbol;
 
@@ -22,9 +23,17 @@ pub enum Node<'a> {
     Sub(BinOp<'a>),
     Mul(BinOp<'a>),
     Div(BinOp<'a>),
+    Access(BinOp<'a>),
+    Call(Call<'a>),
+    Negate(UnOp<'a>),
+    Deref(UnOp<'a>),
+    Return(UnOp<'a>),
     Identifier(GlobalSymbol),
-    ReferenceTy(Box<Node<'a>>),
-    PointerTy(Box<Node<'a>>),
+    ReferenceTy(UnOp<'a>),
+    PointerTy(UnOp<'a>),
+    NumberLiteral(BigUint),
+    SizedNumberLiteral(SizedNumberLiteral),
+    IfExpr(IfExpr<'a>),
 }
 
 pub struct StructInner<'a> {
@@ -104,6 +113,26 @@ impl<'a> TypedName<'a> {
 pub struct BinOp<'a> {
     pub lhs: Box<Node<'a>>,
     pub rhs: Box<Node<'a>>,
+}
+
+pub struct UnOp<'a> {
+    pub lhs: Box<Node<'a>>,
+}
+
+pub struct Call<'a> {
+    pub call: Box<Node<'a>>,
+    pub args: Vec<Node<'a>>,
+}
+
+pub struct SizedNumberLiteral {
+    pub size: u16,
+    pub literal: BigUint,
+}
+
+pub struct IfExpr<'a> {
+    pub cond: Box<Node<'a>>,
+    pub body: Box<Node<'a>>,
+    pub else_body: Box<Node<'a>>,
 }
 
 pub struct Ast<'a> {
