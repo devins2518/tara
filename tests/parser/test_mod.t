@@ -1,3 +1,7 @@
+// RUN: @tara @file
+// CHECK: 0
+// CHECK: 1
+
 const Mod = module {
     const A = bool;
     const B = module {

@@ -1,7 +1,7 @@
 use crate::parser::TaraParser;
 use anyhow::Result;
 use num_bigint::BigUint;
-use std::{fmt::Display, marker::PhantomData};
+use std::marker::PhantomData;
 use symbol_table::GlobalSymbol;
 
 pub enum Node<'a> {
@@ -145,11 +145,5 @@ impl<'a> Ast<'a> {
         let root = TaraParser::parse_source(&source)?;
 
         return Ok(Self { source, root });
-    }
-}
-
-impl Display for Ast<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return Ok(());
     }
 }

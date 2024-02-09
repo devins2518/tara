@@ -1,3 +1,7 @@
+// RUN: @tara @file
+// CHECK: 0
+// CHECK: 19
+
 const A = u1;
 const B = a & b;
 const C = -a;

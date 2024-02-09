@@ -1,3 +1,7 @@
+// RUN: @tara @file
+// CHECK: 0
+// CHECK: 9
+
 const A = bool;
 const B = u1;
 const C = i1;
