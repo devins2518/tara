@@ -187,20 +187,14 @@ impl TaraParser {
         let node = match_nodes!(
             input.into_children();
             [publicity(publicity), identifier(ident), expr(init_expr)] => {
-                Node::VarDecl(VarDecl {
-                    publicity,
-                    ident,
-                    ty: None,
-                    expr: Box::new(init_expr),
-                })
+                Node::VarDecl(VarDecl::new (publicity,
+                        ident,
+                        None,
+                        init_expr,
+                ))
             },
             [publicity(publicity), identifier(ident), type_expr(type_expr), expr(init_expr)] => {
-                Node::VarDecl(VarDecl {
-                    publicity,
-                    ident,
-                    ty: Some(Box::new(type_expr)),
-                    expr: Box::new(init_expr),
-                })
+                Node::VarDecl(VarDecl::new( publicity, ident, Some(type_expr), init_expr))
             },
         );
 

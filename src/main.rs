@@ -1,3 +1,4 @@
+#[deny(unused_variables)]
 mod ast;
 mod parser;
 
@@ -18,8 +19,7 @@ fn main() -> Result<()> {
     let ast = Ast::parse(&contents)?;
 
     if &args[2] == "--dump-ast" {
-        println!("{}", ast.root.fields.len());
-        println!("{}", ast.root.members.len());
+        println!("{}", ast);
     }
 
     return Ok(());
