@@ -35,6 +35,7 @@ pub enum Node<'a> {
     NumberLiteral(BigUint),
     SizedNumberLiteral(SizedNumberLiteral),
     IfExpr(IfExpr<'a>),
+    SubroutineDecl(SubroutineDecl<'a>),
 }
 
 impl Display for Node<'_> {
@@ -75,8 +76,9 @@ impl Display for Node<'_> {
             Node::NumberLiteral(num) => f.write_fmt(format_args!("number({})", num))?,
             Node::SizedNumberLiteral(num) => f.write_fmt(format_args!("sized_number({})", num))?,
             Node::IfExpr(expr) => f.write_fmt(format_args!("if_expr({})", expr))?,
-
-            _ => unreachable!(),
+            Node::SubroutineDecl(subroutine) => {
+                f.write_fmt(format_args!("subroutine_decl({})", subroutine))?
+            }
         }
         Ok(())
     }
@@ -279,6 +281,47 @@ impl Display for IfExpr<'_> {
             "{}, {}, {}",
             *self.cond, *self.body, *self.else_body
         ))?;
+        Ok(())
+    }
+}
+
+pub struct SubroutineDecl<'a> {
+    publicity: Publicity,
+    name: GlobalSymbol,
+    params: Vec<TypedName<'a>>,
+    return_type: Box<Node<'a>>,
+    block: Vec<Node<'a>>,
+}
+
+impl<'a> SubroutineDecl<'a> {
+    pub fn new(
+        publicity: Publicity,
+        name: GlobalSymbol,
+        params: Vec<TypedName<'a>>,
+        return_type: Node<'a>,
+        block: Vec<Node<'a>>,
+    ) -> Self {
+        return Self {
+            publicity,
+            name,
+            params,
+            return_type: Box::new(return_type),
+            block,
+        };
+    }
+}
+
+impl Display for SubroutineDecl<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{} {}(", self.publicity, self.name,))?;
+        for param in &self.params {
+            f.write_fmt(format_args!("({}, {}), ", param.name, *param.ty))?;
+        }
+        f.write_fmt(format_args!(") {} (", *self.return_type))?;
+        for statement in &self.block {
+            f.write_fmt(format_args!("({}), ", statement))?;
+        }
+        f.write_str(")")?;
         Ok(())
     }
 }

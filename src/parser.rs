@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, Call, IfExpr, ModuleInner, Node, Publicity, SizedNumberLiteral, StructInner, TypedName,
-    UnOp, VarDecl,
+    BinOp, Call, IfExpr, ModuleInner, Node, Publicity, SizedNumberLiteral, StructInner,
+    SubroutineDecl, TypedName, UnOp, VarDecl,
 };
 use anyhow::Result as AResult;
 use num_bigint::BigUint;
@@ -178,8 +178,7 @@ impl TaraParser {
         match_nodes!(
             input.into_children();
             [decl(decl)] => return Ok(decl),
-            // TODO: parse functions
-            // [fn_decl(fn_decl)] => return Ok(fn_decl),
+            [fn_decl(fn_decl)] => return Ok(fn_decl),
         );
     }
 
@@ -196,6 +195,66 @@ impl TaraParser {
             [publicity(publicity), identifier(ident), type_expr(type_expr), expr(init_expr)] => {
                 Node::VarDecl(VarDecl::new( publicity, ident, Some(type_expr), init_expr))
             },
+        );
+
+        return Ok(node);
+    }
+
+    fn fn_decl(input: ParseNode) -> ParseResult<Node> {
+        let node = match_nodes!(
+            input.into_children();
+            [publicity(publicity), identifier(ident), param_list(params), type_expr(ret_type), block(body)] => {
+                Node::SubroutineDecl(SubroutineDecl::new(publicity, ident, params, ret_type, body))
+            }
+        );
+
+        return Ok(node);
+    }
+
+    fn param(input: ParseNode) -> ParseResult<TypedName> {
+        return Ok(match_nodes!(
+            input.into_children();
+            [identifier(ident), type_expr(ty)] => TypedName::new(ty, ident),
+        ));
+    }
+
+    fn param_list(input: ParseNode) -> ParseResult<Vec<TypedName>> {
+        return Ok(match_nodes!(
+            input.into_children();
+            [param(param)..] => param.collect()
+        ));
+    }
+
+    fn block(input: ParseNode) -> ParseResult<Vec<Node>> {
+        return Ok(match_nodes!(
+                input.into_children();
+                [statement(statements)..] => statements.collect()
+        ));
+    }
+
+    fn statement(input: ParseNode) -> ParseResult<Node> {
+        return Ok(match_nodes!(
+                input.into_children();
+                [decl_statement(decl_statement)] => decl_statement,
+                [expr(expr)] => expr,
+        ));
+    }
+
+    fn decl_statement(input: ParseNode) -> ParseResult<Node> {
+        let node = match_nodes!(
+            input.into_children();
+            [identifier(ident), expr(init_expr)] => Node::VarDecl(VarDecl::new(
+                Publicity::Private,
+                ident,
+                None,
+                init_expr,
+            )),
+            [identifier(ident), type_expr(type_expr), expr(init_expr)] => Node::VarDecl(VarDecl::new(
+                Publicity::Private,
+                ident,
+                Some(type_expr),
+                init_expr
+            )),
         );
 
         return Ok(node);
@@ -284,9 +343,19 @@ impl TaraParser {
         match_nodes!(
             input.into_children();
             [decl(decl)] => return Ok(decl),
-            // TODO: parse combs
-            // [comb_decl(comb_decl)] => return Ok(comb_decl),
+            [comb_decl(comb_decl)] => return Ok(comb_decl),
         );
+    }
+
+    fn comb_decl(input: ParseNode) -> ParseResult<Node> {
+        let node = match_nodes!(
+            input.into_children();
+            [publicity(publicity), identifier(ident), param_list(params), type_expr(ret_type), block(body)] => {
+                Node::SubroutineDecl(SubroutineDecl::new(publicity, ident, params, ret_type, body))
+            }
+        );
+
+        return Ok(node);
     }
 
     fn module_fields(input: ParseNode) -> ParseResult<Vec<TypedName>> {
