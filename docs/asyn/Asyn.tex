@@ -743,6 +743,20 @@ pub fn add(a: u8, b: u8) u8 {
 	\label{fig:function_example}
 \end{figure}
 
+% TODO: probably should have some struct of arguments for @reg and @memory
+% TODO: support arsw, srsw, etc ram blocks
+\subsection{Sequential Elements}
+Sequential elements are formed from two parts: a type and a reset value. For synthesis, this may
+map to either an array of flip flop or ram/sram blocks depending on the resources available for the
+target. A register can be created using the \verb|@reg| builtin function while a ram block can be
+created from the \verb|@memory| builtin function. The \verb|@reg| builtin produces a \verb|reg(T)|
+type which may be used normally as a rvalue where it produces the value currently stored in the
+register and its \verb|next| field may be used to set the \verb|d| port of the flip flop. It is
+illegal to use a \verb|reg(T)| as an lvalue. As registers respresent shared resources, they follow
+the rules for shared resources described in Section \ref{sec:shared_res}. For sequential elements,
+this is only relevent to the \verb|reg(T)| itself, not the inner type. The inner type of a register
+must be a scalar or aggregate type.
+
 \subsection{Integral Types}
 Integral types can be either signed or unsigned and can be an arbitrary bit-width up to 65535 bits
 (maximum 16-bit value). Signed integrals are of type \verb|iN|, and unsigned integrals are of type
@@ -923,8 +937,9 @@ planned builtin functions is shown in Table \ref{tab:builtin_table}.
 		                                                      & specified type with the specified                 \\
 		                                                      & reset value.                                      \\
 		\hline
-		\verb|@memory(blocks, size)|                          & Creates a RAM block of with \verb|blocks|         \\
-		                                                      & number of blocks each of size \verb|size|         \\
+		\verb|@memory(clock, reset, T, blocks, size)|         & Creates a RAM block of with \verb|blocks|         \\
+		                                                      & number of blocks each of size \verb|size|.        \\
+		                                                      & an array of type \verb|[block*size]T|.            \\
 		\hline
 		\verb|@clockInit()|                                   & Generates a clock which can be used to            \\
 		                                                      & clock sequential elements.                        \\
