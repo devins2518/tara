@@ -147,24 +147,6 @@ impl TaraParser {
         );
     }
 
-    fn container_fields(input: ParseNode) -> ParseResult<Vec<TypedName>> {
-        match_nodes!(
-            input.into_children();
-            [container_field(container_fields)..] => {
-                return Ok(container_fields.collect())
-            }
-        );
-    }
-
-    fn container_field(input: ParseNode) -> ParseResult<TypedName> {
-        match_nodes!(
-            input.into_children();
-            [identifier(ident), type_expr(ty)] => {
-                return Ok(TypedName::new(ty, ident));
-            }
-        );
-    }
-
     fn container_decls(input: ParseNode) -> ParseResult<Vec<Node>> {
         match_nodes!(
             input.into_children();
@@ -296,11 +278,11 @@ impl TaraParser {
     fn struct_inner(input: ParseNode) -> ParseResult<StructInner> {
         let (fields, members) = match_nodes!(
             input.into_children();
-            [container_decls(container_decls_pre), container_fields(container_fields), container_decls(container_decls_post)] => {
+            [container_decls(container_decls_pre), field_list(fields), container_decls(container_decls_post)] => {
                 let mut members = Vec::new();
                 members.extend(container_decls_pre) ;
                 members.extend(container_decls_post) ;
-                (container_fields, members)
+                (fields, members)
             }
         );
 
@@ -318,11 +300,11 @@ impl TaraParser {
     fn module_inner(input: ParseNode) -> ParseResult<ModuleInner> {
         let (fields, members) = match_nodes!(
             input.into_children();
-            [module_decls(container_decls_pre), module_fields(container_fields), module_decls(container_decls_post)] => {
+            [module_decls(module_decls_pre), field_list(fields), module_decls(module_decls_post)] => {
                 let mut members = Vec::new();
-                members.extend(container_decls_pre) ;
-                members.extend(container_decls_post) ;
-                (container_fields, members)
+                members.extend(module_decls_pre) ;
+                members.extend(module_decls_post) ;
+                (fields, members)
             }
         );
 
@@ -358,22 +340,18 @@ impl TaraParser {
         return Ok(node);
     }
 
-    fn module_fields(input: ParseNode) -> ParseResult<Vec<TypedName>> {
-        match_nodes!(
+    fn field_list(input: ParseNode) -> ParseResult<Vec<TypedName>> {
+        return Ok(match_nodes!(
             input.into_children();
-            [module_field(module_fields)..] => {
-                return Ok(module_fields.collect())
-            }
-        );
+            [field(fields)..] => fields.collect()
+        ));
     }
 
-    fn module_field(input: ParseNode) -> ParseResult<TypedName> {
-        match_nodes!(
+    fn field(input: ParseNode) -> ParseResult<TypedName> {
+        return Ok(match_nodes!(
             input.into_children();
-            [identifier(ident), type_expr(ty)] => {
-                return Ok(TypedName::new(ty, ident));
-            }
-        );
+            [identifier(ident), type_expr(ty)] => TypedName::new(ty, ident)
+        ));
     }
 
     fn ptr_var(input: ParseNode) -> ParseResult<()> {

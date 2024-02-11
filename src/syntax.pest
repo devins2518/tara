@@ -5,8 +5,6 @@ COMMENT = _{ ("//" ~ (!NEWLINE ~ ANY)* ~ (NEWLINE | EOI)) | " " }
 
 keyword = { "struct" | "const" | "pub" | "fn" | "or" | "and" | "module" | "comb" | "var" | "return" | "if" | "else" }
 
-container_field = { identifier ~ ":" ~ type_expr ~ ","? }
-
 container_decl = { fn_decl | decl }
 
 decl = { publicity ~ "const" ~ identifier ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
@@ -120,21 +118,17 @@ struct_decl = { "struct" ~ "{" ~ struct_inner ~ "}" }
 
 container_decls = { container_decl* }
 
-// TODO: this doesn't force comma between fields
-container_fields = { container_field* }
+field = { identifier ~ ":" ~ type_expr }
 
-struct_inner = { container_decls ~ container_fields ~ container_decls }
+field_list = { ((field ~ ",")* ~ (field ~ ","?)?)? }
+
+struct_inner = { container_decls ~ field_list ~ container_decls }
 
 module_decl = { "module" ~ "{" ~ module_inner ~ "}" }
 
 module_decls = { module_inner_decl* }
 
-module_field = { identifier ~ ":" ~ type_expr ~ ","? }
-
-// TODO: this doesn't force comma between fields
-module_fields = { module_field* }
-
-module_inner = { module_decls ~ module_fields ~ module_decls }
+module_inner = { module_decls ~ field_list ~ module_decls }
 
 module_inner_decl = { comb_decl | decl }
 
