@@ -30,8 +30,8 @@ pub enum Node<'a> {
     Deref(UnOp<'a>),
     Return(UnOp<'a>),
     Identifier(GlobalSymbol),
-    ReferenceTy(UnOp<'a>),
-    PointerTy(UnOp<'a>),
+    ReferenceTy(RefTy<'a>),
+    PointerTy(RefTy<'a>),
     NumberLiteral(BigUint),
     SizedNumberLiteral(SizedNumberLiteral),
     IfExpr(IfExpr<'a>),
@@ -265,6 +265,43 @@ pub struct SizedNumberLiteral {
 impl Display for SizedNumberLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}'d{}", self.size, self.literal))?;
+        Ok(())
+    }
+}
+
+pub enum Mutability {
+    Mutable,
+    Immutable,
+}
+
+impl Display for Mutability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Mutability::Mutable => "mut",
+            Mutability::Immutable => "const",
+        };
+        f.write_str(s)?;
+        Ok(())
+    }
+}
+
+pub struct RefTy<'a> {
+    mutability: Mutability,
+    ty: Box<Node<'a>>,
+}
+
+impl<'a> RefTy<'a> {
+    pub fn new(mutability: Mutability, ty: Node<'a>) -> Self {
+        return Self {
+            mutability,
+            ty: Box::new(ty),
+        };
+    }
+}
+
+impl Display for RefTy<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{} {}", self.mutability, *self.ty))?;
         Ok(())
     }
 }

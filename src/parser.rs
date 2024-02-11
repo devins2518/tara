@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, Call, IfExpr, ModuleInner, Node, Publicity, SizedNumberLiteral, StructInner,
-    SubroutineDecl, TypedName, UnOp, VarDecl,
+    BinOp, Call, IfExpr, ModuleInner, Mutability, Node, Publicity, RefTy, SizedNumberLiteral,
+    StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
 };
 use anyhow::Result as AResult;
 use num_bigint::BigUint;
@@ -13,26 +13,6 @@ type ParseNode<'i> = pest_consume::Node<'i, Rule, ()>;
 
 // Rebuild with grammar changes
 const _GRAMMAR_FILE: &str = include_str!("syntax.pest");
-
-#[derive(Debug)]
-pub enum ParseError {
-    ReadFailure(String),
-}
-
-impl std::fmt::Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("Error occurred during parsing")?;
-        Ok(())
-    }
-}
-
-impl ParseError {
-    pub fn read_failure(reason: String) -> ParseError {
-        return ParseError::ReadFailure(reason);
-    }
-}
-
-impl std::error::Error for ParseError {}
 
 lazy_static::lazy_static! {
     static ref PRATT: PrattParser<Rule> = PrattParser::new()
@@ -359,29 +339,23 @@ impl TaraParser {
     }
 
     fn reference_ty(input: ParseNode) -> ParseResult<Node> {
-        let node = match_nodes!(
+        let ref_ty = match_nodes!(
             input.into_children();
-            [expr(expr)] => expr,
-            [ptr_var(_), expr(expr)] => expr,
+            [expr(expr)] => RefTy::new(Mutability::Immutable, expr),
+            [ptr_var(_), expr(expr)] => RefTy::new(Mutability::Mutable, expr),
         );
-        let un_op = UnOp {
-            lhs: Box::new(node),
-        };
 
-        return Ok(Node::ReferenceTy(un_op));
+        return Ok(Node::ReferenceTy(ref_ty));
     }
 
     fn pointer_ty(input: ParseNode) -> ParseResult<Node> {
-        let node = match_nodes!(
+        let ref_ty = match_nodes!(
             input.into_children();
-            [expr(expr)] => expr,
-            [ptr_var(var), expr(expr)] => expr,
+            [expr(expr)] => RefTy::new(Mutability::Immutable, expr),
+            [ptr_var(_), expr(expr)] => RefTy::new(Mutability::Mutable, expr),
         );
-        let un_op = UnOp {
-            lhs: Box::new(node),
-        };
 
-        return Ok(Node::PointerTy(un_op));
+        return Ok(Node::PointerTy(ref_ty));
     }
 
     fn expr(input: ParseNode) -> ParseResult<Node> {
