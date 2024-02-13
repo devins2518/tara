@@ -13,6 +13,7 @@ pest_consume = "1.1.3"
 lazy_static = "1.4.0"
 symbol_table = { version = "0.3.0", features = ["global"] }
 num-bigint = "0.4.4"
+bincode = "1.3.3"
 
 [dev-dependencies]
 lit = "0.3.4"

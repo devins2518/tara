@@ -1,10 +1,13 @@
 #[deny(unused_variables)]
+mod arena;
 mod ast;
 mod parser;
+mod utir;
 
 use anyhow::Result;
 use ast::Ast;
 use std::path::PathBuf;
+use utir::Utir;
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
@@ -20,6 +23,13 @@ fn main() -> Result<()> {
 
     if &args[2] == "--dump-ast" {
         println!("{}", ast);
+        return Ok(());
+    }
+
+    let utir = Utir::gen(&ast);
+
+    if &args[2] == "--dump-utir" {
+        println!("{}", utir);
     }
 
     return Ok(());

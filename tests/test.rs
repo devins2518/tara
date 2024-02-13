@@ -23,9 +23,20 @@ mod tests {
     }
 
     #[test]
-    fn lit() {
+    fn parser_tests() {
         lit::run::tests(|config| {
             config.add_search_path("tests/parser/");
+            config.add_extension("t");
+
+            config.constants.insert("tara".to_owned(), tara_exe());
+        })
+        .expect("Lit tests failed");
+    }
+
+    #[test]
+    fn utir_tests() {
+        lit::run::tests(|config| {
+            config.add_search_path("tests/utir/");
             config.add_extension("t");
 
             config.constants.insert("tara".to_owned(), tara_exe());

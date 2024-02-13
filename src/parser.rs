@@ -37,14 +37,16 @@ lazy_static::lazy_static! {
 pub struct TaraParser;
 
 impl TaraParser {
-    pub fn parse_source<'a>(source: &'a str) -> AResult<StructInner<'a>> {
+    pub fn parse_source<'a>(source: &'a str) -> AResult<Node> {
         let inputs = TaraParser::parse(Rule::root, source)?;
 
         let root_node = inputs.single()?;
 
         let root = TaraParser::root(root_node)?;
 
-        return Ok(root);
+        let node = Node::StructDecl(root);
+
+        return Ok(node);
     }
 
     fn expr_helper(pairs: pest::iterators::Pairs<Rule>) -> ParseResult<Node> {

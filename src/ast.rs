@@ -85,8 +85,8 @@ impl Display for Node<'_> {
 }
 
 pub struct StructInner<'a> {
-    fields: Vec<TypedName<'a>>,
-    members: Vec<Node<'a>>,
+    pub fields: Vec<TypedName<'a>>,
+    pub members: Vec<Node<'a>>,
     _phantom: PhantomData<&'a Node<'a>>,
 }
 
@@ -365,7 +365,7 @@ impl Display for SubroutineDecl<'_> {
 
 pub struct Ast<'a> {
     source: &'a str,
-    root: StructInner<'a>,
+    pub root: Node<'a>,
 }
 
 impl<'a> Ast<'a> {
