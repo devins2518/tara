@@ -264,6 +264,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "indenter"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "337a4939ca808cd4b5ce69d80d4bd50747992bcf93a368ac87663aaf74a7b4fc"
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -617,6 +623,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "indenter",
  "lazy_static",
  "lit",
  "miette",

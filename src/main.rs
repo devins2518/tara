@@ -1,6 +1,7 @@
 #[deny(unused_variables)]
 mod arena;
 mod ast;
+mod auto_indenting_stream;
 mod parser;
 mod utir;
 

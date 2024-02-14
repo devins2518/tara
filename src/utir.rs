@@ -1,19 +1,25 @@
 mod builder;
+mod inst;
 
 use crate::{
-    arena::{ArenaRef, ExtraArenaContainable, Id},
+    arena::{Arena, ExtraArenaContainable, Id},
     ast::Node,
+    auto_indenting_stream::AutoIndentingStream,
+    utir::inst::*,
     Ast,
 };
 use builder::Builder;
-use std::fmt::Display;
+use std::{
+    fmt::{Display, Write},
+    num::NonZeroU32,
+};
 use symbol_table::GlobalSymbol;
 
 pub struct Utir<'a> {
     ast: &'a Ast<'a>,
-    instructions: ArenaRef<Inst<'a>>,
-    extra_data: ArenaRef<u32>,
-    nodes: ArenaRef<&'a Node<'a>>,
+    instructions: Arena<Inst<'a>>,
+    extra_data: Arena<u32>,
+    nodes: Arena<&'a Node<'a>>,
 }
 
 impl<'a> Utir<'a> {
@@ -22,147 +28,86 @@ impl<'a> Utir<'a> {
     }
 }
 
+struct UtirWriter<'a, 'b, 'c, 'd> {
+    utir: &'a Utir<'b>,
+    stream: AutoIndentingStream<'c, 'd>,
+}
+
+impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
+    pub fn new(utir: &'a Utir<'b>, stream: AutoIndentingStream<'c, 'd>) -> Self {
+        return Self { utir, stream };
+    }
+    fn indent(&mut self) {
+        let _ = write!(self, "indent+");
+    }
+    fn deindent(&mut self) {
+        let _ = write!(self, "indent-");
+    }
+
+    pub fn write_root(&mut self) -> std::fmt::Result {
+        self.write_struct_decl(InstIdx::from(0))?;
+        Ok(())
+    }
+
+    fn write_struct_decl(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let ed_idx = match self.utir.instructions.get(idx) {
+            Inst::StructDecl(payload) => payload.extra_idx.to_u32(),
+            _ => unreachable!(),
+        };
+        let struct_decl: ContainerDecl = self.utir.extra_data.get_extra(ed_idx);
+        write!(self, "%{} = struct_decl({{", u32::from(idx))?;
+
+        if struct_decl.fields + struct_decl.decls > 0 {
+            self.indent();
+            write!(self, "\n")?;
+
+            let field_base = u32::from(ed_idx) + 2;
+            for i in 0..struct_decl.fields {}
+
+            let decls_base = field_base + (struct_decl.fields * CONTAINER_FIELD_U32S as u32);
+            for i in 0..struct_decl.decls {
+                let decl_offset = decls_base + (i * CONTAINER_FIELD_U32S as u32);
+                let decl: ContainerMember = self.utir.extra_data.get_extra(decl_offset.into());
+                self.write_container_member(decl)?;
+                self.stream.write_char('\n')?;
+            }
+
+            self.deindent();
+        }
+
+        write!(self, "}})")?;
+        Ok(())
+    }
+
+    fn write_container_member(&mut self, member: ContainerMember<'b>) -> std::fmt::Result {
+        let name = member.name;
+        write!(self, "\"{}\" ", name.as_str())?;
+        self.write_expr(member.value)?;
+        Ok(())
+    }
+
+    fn write_expr(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let inst = self.utir.instructions.get(idx);
+        match inst {
+            Inst::StructDecl(_) => self.write_struct_decl(idx)?,
+            _ => unreachable!()
+        }
+        Ok(())
+    }
+}
+
+impl Write for UtirWriter<'_, '_, '_, '_> {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        write!(self.stream, "{}", s)?;
+        Ok(())
+    }
+}
+
 impl Display for Utir<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unimplemented!()
+        let stream = AutoIndentingStream::new(f);
+        let mut writer = UtirWriter::new(self, stream);
+        writer.write_root()?;
+        Ok(())
     }
-}
-
-#[derive(Copy, Clone)]
-pub enum Inst<'a> {
-    StructDecl(Payload<'a, ContainerDecl>),
-    ModuleDecl(Payload<'a, ContainerDecl>),
-    FunctionDecl(Payload<'a, SubroutineDecl<'a>>),
-    CombDecl(Payload<'a, SubroutineDecl<'a>>),
-    DeclVal(Str<'a>),
-    InlineBlock(Payload<'a, Block<'a>>),
-    InlineBlockBreak(Payload<'a, BinOp<'a>>),
-    As(Payload<'a, BinOp<'a>>),
-    // TODO: integers
-    Or(Payload<'a, BinOp<'a>>),
-    And(Payload<'a, BinOp<'a>>),
-    Lt(Payload<'a, BinOp<'a>>),
-    Gt(Payload<'a, BinOp<'a>>),
-    Lte(Payload<'a, BinOp<'a>>),
-    Gte(Payload<'a, BinOp<'a>>),
-    Eq(Payload<'a, BinOp<'a>>),
-    Neq(Payload<'a, BinOp<'a>>),
-    BitAnd(Payload<'a, BinOp<'a>>),
-    BitOr(Payload<'a, BinOp<'a>>),
-    BitXor(Payload<'a, BinOp<'a>>),
-    Add(Payload<'a, BinOp<'a>>),
-    Sub(Payload<'a, BinOp<'a>>),
-    Mul(Payload<'a, BinOp<'a>>),
-    Div(Payload<'a, BinOp<'a>>),
-    Return(UnOp<'a>),
-    RefTy(UnOp<'a>),
-    PtrTy(UnOp<'a>),
-}
-
-impl<'a> Inst<'a> {
-    pub fn struct_decl(extra_idx: ExtraIdx<ContainerDecl>, node_idx: NodeIdx<'a>) -> Self {
-        return Self::StructDecl(Payload::new(extra_idx, node_idx));
-    }
-}
-
-#[derive(Copy, Clone)]
-#[repr(C, packed)]
-pub struct Payload<'a, T> {
-    extra_idx: ExtraIdx<T>,
-    node_idx: NodeIdx<'a>,
-}
-
-impl<'a, T> Payload<'a, T> {
-    pub fn new(extra_idx: ExtraIdx<T>, node_idx: NodeIdx<'a>) -> Self {
-        return Payload {
-            extra_idx,
-            node_idx,
-        };
-    }
-}
-
-// Followed by a `fields` number of (name: `Str`, type: `InstIdx`) followed by a `decls` number of
-// InstIdx
-#[derive(Copy, Clone)]
-pub struct ContainerDecl {
-    fields: u32,
-    decls: u32,
-}
-
-impl ExtraArenaContainable<2> for ContainerDecl {}
-
-impl From<[u32; 2]> for ContainerDecl {
-    fn from(value: [u32; 2]) -> Self {
-        return Self {
-            fields: value[0],
-            decls: value[1],
-        };
-    }
-}
-
-impl From<ContainerDecl> for [u32; 2] {
-    fn from(value: ContainerDecl) -> Self {
-        return [value.fields, value.decls];
-    }
-}
-
-// Followed by `params` number of `Param`s, then `body_len` number of instructions which make up
-// the body of the subroutine
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct SubroutineDecl<'a> {
-    params: u32,
-    return_type: InstIdx<'a>,
-    body_len: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Block<'a>(InstSubList<'a>);
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct InstSubList<'a> {
-    start: InstIdx<'a>,
-    end: InstIdx<'a>,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Str<'a> {
-    string: GlobalSymbol,
-    node: NodeIdx<'a>,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct BinOp<'a> {
-    lhs: InstIdx<'a>,
-    rhs: InstIdx<'a>,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct UnOp<'a> {
-    lhs: InstIdx<'a>,
-    node: NodeIdx<'a>,
-}
-
-// An index into `instructions`
-type InstIdx<'a> = Id<Inst<'a>>;
-
-// An index into `nodes`
-type NodeIdx<'a> = Id<&'a Node<'a>>;
-
-// A type for an index into `extra_data` which contains a T
-type ExtraIdx<T> = Id<T>;
-
-#[test]
-fn size_enforcement() {
-    assert!(std::mem::size_of::<Payload<ContainerDecl>>() == 8);
-    assert!(std::mem::size_of::<Payload<SubroutineDecl>>() == 8);
-    assert!(std::mem::size_of::<Str>() == 8);
-    assert!(std::mem::size_of::<Payload<Block>>() == 8);
-    assert!(std::mem::size_of::<Payload<BinOp>>() == 8);
-    assert!(std::mem::size_of::<UnOp>() == 8);
 }

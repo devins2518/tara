@@ -87,16 +87,11 @@ impl Display for Node<'_> {
 pub struct StructInner<'a> {
     pub fields: Vec<TypedName<'a>>,
     pub members: Vec<Node<'a>>,
-    _phantom: PhantomData<&'a Node<'a>>,
 }
 
 impl<'a> StructInner<'a> {
     pub fn new(fields: Vec<TypedName<'a>>, members: Vec<Node<'a>>) -> Self {
-        return Self {
-            fields,
-            members,
-            _phantom: PhantomData,
-        };
+        return Self { fields, members };
     }
 }
 
@@ -161,10 +156,10 @@ impl Display for Publicity {
 }
 
 pub struct VarDecl<'a> {
-    publicity: Publicity,
-    ident: GlobalSymbol,
-    ty: Option<Box<Node<'a>>>,
-    expr: Box<Node<'a>>,
+    pub publicity: Publicity,
+    pub ident: GlobalSymbol,
+    pub ty: Option<Box<Node<'a>>>,
+    pub expr: Box<Node<'a>>,
 }
 
 impl<'a> VarDecl<'a> {
@@ -205,8 +200,8 @@ impl Display for VarDecl<'_> {
 }
 
 pub struct TypedName<'a> {
-    ty: Box<Node<'a>>,
-    name: GlobalSymbol,
+    pub ty: Box<Node<'a>>,
+    pub name: GlobalSymbol,
 }
 
 impl<'a> TypedName<'a> {
@@ -323,24 +318,24 @@ impl Display for IfExpr<'_> {
 }
 
 pub struct SubroutineDecl<'a> {
-    publicity: Publicity,
-    name: GlobalSymbol,
-    params: Vec<TypedName<'a>>,
-    return_type: Box<Node<'a>>,
-    block: Vec<Node<'a>>,
+    pub publicity: Publicity,
+    pub ident: GlobalSymbol,
+    pub params: Vec<TypedName<'a>>,
+    pub return_type: Box<Node<'a>>,
+    pub block: Vec<Node<'a>>,
 }
 
 impl<'a> SubroutineDecl<'a> {
     pub fn new(
         publicity: Publicity,
-        name: GlobalSymbol,
+        ident: GlobalSymbol,
         params: Vec<TypedName<'a>>,
         return_type: Node<'a>,
         block: Vec<Node<'a>>,
     ) -> Self {
         return Self {
             publicity,
-            name,
+            ident,
             params,
             return_type: Box::new(return_type),
             block,
@@ -350,7 +345,7 @@ impl<'a> SubroutineDecl<'a> {
 
 impl Display for SubroutineDecl<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{} {}(", self.publicity, self.name,))?;
+        f.write_fmt(format_args!("{} {}(", self.publicity, self.ident))?;
         for param in &self.params {
             f.write_fmt(format_args!("({}, {}), ", param.name, *param.ty))?;
         }

@@ -1,2 +1,2 @@
 // RUN: @tara @file --dump-utir
-// CHECK: struct_inner()
+// CHECK: %0 = struct_decl({})

@@ -50,12 +50,19 @@ impl<T> Arena<T> {
         let vec = self.get_inner();
         return vec.len();
     }
+
+    pub fn get(&self, id: Id<T>) -> T
+    where
+        T: Copy,
+    {
+        return self.get_inner()[u32::from(id) as usize];
+    }
 }
 
 pub trait ExtraArenaContainable<const N: usize>: From<[u32; N]> + Into<[u32; N]> {}
 
 impl Arena<u32> {
-    pub fn insert<const N: usize, T: ExtraArenaContainable<N>>(&self, val: T) -> Id<T> {
+    pub fn insert_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, val: T) -> Id<T> {
         let slice: [u32; N] = val.into();
         let ret = self.reserve();
         for b in &slice[1..] {
@@ -65,15 +72,15 @@ impl Arena<u32> {
         return ret.from_u32();
     }
 
-    pub fn get<const N: usize, T: ExtraArenaContainable<N>>(&self, id: Id<u32>) -> T {
+    pub fn get_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, id: Id<u32>) -> T {
         let idx: usize = u32::from(id) as usize;
-        let slice = (&self.get_inner()[idx..]).try_into().unwrap();
+        let slice = self.get_inner()[idx..(idx + N)].try_into().unwrap();
         return T::from(slice);
     }
 }
 
 pub struct ArenaRef<T: Copy> {
-    data: Box<[T]>,
+    pub(super) data: Box<[T]>,
 }
 
 impl<T: Copy> From<Arena<T>> for ArenaRef<T> {
@@ -90,6 +97,12 @@ pub struct Id<T> {
 
 impl Id<u32> {
     pub fn from_u32<U>(&self) -> Id<U> {
+        return Id::from(self.id);
+    }
+}
+
+impl<T> Id<T> {
+    pub fn to_u32(&self) -> Id<u32> {
         return Id::from(self.id);
     }
 }
