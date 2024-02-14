@@ -12,7 +12,7 @@ pub enum Inst<'a> {
     FunctionDecl(Payload<'a, SubroutineDecl<'a>>),
     CombDecl(Payload<'a, SubroutineDecl<'a>>),
     DeclVal(Str<'a>),
-    InlineBlock(Payload<'a, Block<'a>>),
+    InlineBlock(Payload<'a, Block>),
     InlineBlockBreak(BinOp<'a>),
     As(Payload<'a, BinOp<'a>>),
     // TODO: integers
@@ -31,6 +31,8 @@ pub enum Inst<'a> {
     Sub(Payload<'a, BinOp<'a>>),
     Mul(Payload<'a, BinOp<'a>>),
     Div(Payload<'a, BinOp<'a>>),
+    Negate(UnOp<'a>),
+    Deref(UnOp<'a>),
     Return(UnOp<'a>),
     RefTy(UnOp<'a>),
     PtrTy(UnOp<'a>),
@@ -47,6 +49,10 @@ impl<'a> Inst<'a> {
 
     pub fn decl_val(ident: GlobalSymbol, node_idx: NodeIdx<'a>) -> Self {
         return Self::DeclVal(Str::new(ident, node_idx));
+    }
+
+    pub fn inline_block(extra_idx: ExtraIdx<Block>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::InlineBlock(Payload::new(extra_idx, node_idx));
     }
 
     pub fn inline_block_break(lhs: InstIdx<'a>, rhs: InstIdx<'a>) -> Self {
@@ -159,9 +165,34 @@ pub struct SubroutineDecl<'a> {
     pub(super) body_len: u32,
 }
 
+// Followed by `Block.num_instrs` number of `InstIdx`s
+pub const BLOCK_U32S: usize = 1;
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct Block<'a>(InstSubList<'a>);
+pub struct Block {
+    pub(super) num_instrs: u32,
+}
+
+impl Block {
+    pub fn new(num_instrs: u32) -> Self {
+        return Self { num_instrs };
+    }
+}
+
+impl ExtraArenaContainable<BLOCK_U32S> for Block {}
+impl From<[u32; BLOCK_U32S]> for Block {
+    fn from(value: [u32; BLOCK_U32S]) -> Self {
+        return Self {
+            num_instrs: value[0],
+        };
+    }
+}
+
+impl From<Block> for [u32; BLOCK_U32S] {
+    fn from(value: Block) -> Self {
+        return [value.num_instrs];
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -218,6 +249,12 @@ impl From<BinOp<'_>> for [u32; BIN_OP_U32S] {
 pub struct UnOp<'a> {
     pub(super) lhs: InstIdx<'a>,
     pub(super) node: NodeIdx<'a>,
+}
+
+impl<'a> UnOp<'a> {
+    pub fn new(lhs: InstIdx<'a>, node: NodeIdx<'a>) -> Self {
+        return Self { lhs, node };
+    }
 }
 
 // An index into `instructions`

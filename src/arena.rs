@@ -90,9 +90,23 @@ impl<T: Copy> From<Arena<T>> for ArenaRef<T> {
     }
 }
 
+pub const ID_U32S: usize = 1;
 pub struct Id<T> {
     id: u32,
     _phantom: PhantomData<T>,
+}
+
+impl<T> ExtraArenaContainable<ID_U32S> for Id<T> {}
+impl<T> From<[u32; ID_U32S]> for Id<T> {
+    fn from(value: [u32; ID_U32S]) -> Self {
+        return Self::from(value[0]);
+    }
+}
+
+impl<T> From<Id<T>> for [u32; ID_U32S] {
+    fn from(value: Id<T>) -> Self {
+        return [u32::from(value)];
+    }
 }
 
 impl Id<u32> {
