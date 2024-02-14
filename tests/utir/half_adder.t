@@ -1,5 +1,5 @@
 // RUN: @tara @file --dump-utir
-// CHECK: 0
+// CHECK: test
 
 const HalfAdder = module {
     pub comb sum(a: &u1, b: &u1) u1 {

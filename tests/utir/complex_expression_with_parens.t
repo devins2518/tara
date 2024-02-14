@@ -1,4 +1,4 @@
 // RUN: @tara @file --dump-utir
-// CHECK: 0
+// CHECK: test
 
 const A = (a + b) * c - d / e;

@@ -40,12 +40,16 @@ impl<'ast> Builder<'ast> {
             _ => unreachable!(),
         };
         let struct_idx = self.instructions.reserve();
+
         let node_idx = self.add_node(node);
 
         let mut struct_env = env.derive();
 
         for field in &struct_inner.fields {
-            let field_ty = self.gen_type_expr(&mut struct_env, &*field.ty);
+            let name = field.name;
+            let ty = self.gen_type_expr(&mut struct_env, &*field.ty);
+            let container_field = ContainerField { name, ty };
+            struct_env.add_to_extra(container_field);
         }
 
         for member in &struct_inner.members {
@@ -73,7 +77,48 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_module_inner(&self, env: &mut Environment<'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
-        unimplemented!("module inner")
+        let module_inner = match node {
+            Node::ModuleDecl(inner) => inner,
+            _ => unreachable!(),
+        };
+        let module_idx = self.instructions.reserve();
+
+        let node_idx = self.add_node(node);
+
+        let mut module_env = env.derive();
+
+        for field in &module_inner.fields {
+            let name = field.name;
+            let ty = self.gen_type_expr(&mut module_env, &*field.ty);
+            let container_field = ContainerField { name, ty };
+            module_env.add_to_extra(container_field);
+        }
+
+        for member in &module_inner.members {
+            let (name, decl_idx) = match member {
+                Node::VarDecl(var_decl) => {
+                    (var_decl.ident, self.gen_var_decl(&mut module_env, member))
+                }
+                Node::SubroutineDecl(comb_decl) => {
+                    (comb_decl.ident, self.gen_comb_decl(&mut module_env, member))
+                }
+                _ => unreachable!(),
+            };
+            let container_member = ContainerMember::new(name, decl_idx);
+            module_env.add_to_extra(container_member);
+        }
+
+        let fields = module_inner.fields.len() as u32;
+        let decls = module_inner.members.len() as u32;
+
+        let extra_idx = self.add_extra(ContainerDecl { fields, decls });
+        for extra in ArenaRef::from(module_env.extra_data).data.iter() {
+            self.extra_data.alloc(*extra);
+        }
+
+        self.instructions
+            .set(module_idx, Inst::module_decl(extra_idx, node_idx));
+        return module_idx;
     }
 
     fn gen_var_decl(
@@ -97,8 +142,23 @@ impl<'ast> Builder<'ast> {
         return init_expr;
     }
 
+    fn gen_comb_decl(
+        &self,
+        env: &mut Environment<'ast, '_>,
+        node: &'ast Node<'ast>,
+    ) -> InstIdx<'ast> {
+        unimplemented!("gen comb decl")
+    }
+
     fn gen_type_expr(&self, env: &mut Environment<'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
-        unimplemented!("type expr")
+        match node {
+            Node::StructDecl(_) => self.gen_struct_inner(env, node),
+            Node::ModuleDecl(_) => unimplemented!("gen_type_expr module decl"),
+            Node::Identifier(_) => self.gen_identifier(env, node),
+            Node::ReferenceTy(_) => unimplemented!("gen_type_expr reference ty"),
+            Node::PointerTy(_) => unimplemented!("gen_type_expr pointer ty"),
+            _ => unreachable!(),
+        }
     }
 
     fn gen_expr(&self, env: &mut Environment<'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
@@ -130,7 +190,13 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_identifier(&self, env: &mut Environment<'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
-        unimplemented!("identifier")
+        let symbol = match node {
+            Node::Identifier(ident) => ident,
+            _ => unreachable!(),
+        };
+        let node_idx = self.nodes.alloc(node);
+        let idx = self.instructions.alloc(Inst::decl_val(*symbol, node_idx));
+        return idx;
     }
 
     fn gen_number_literal(
@@ -142,7 +208,103 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_inline_block(&self, env: &mut Environment<'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
-        unimplemented!("inline block")
+        let inline_block = self.instructions.reserve();
+
+        let mut inline_block_env = env.derive();
+
+        let return_value = match node {
+            Node::Or(_)
+            | Node::And(_)
+            | Node::Lt(_)
+            | Node::Gt(_)
+            | Node::Lte(_)
+            | Node::Gte(_)
+            | Node::Eq(_)
+            | Node::Neq(_)
+            | Node::BitAnd(_)
+            | Node::BitOr(_)
+            | Node::BitXor(_)
+            | Node::Add(_)
+            | Node::Sub(_)
+            | Node::Mul(_)
+            | Node::Div(_) => self.gen_bin_op(&mut inline_block_env, node),
+            Node::ReferenceTy(_) | Node::PointerTy(_) | Node::Return(_) => {
+                self.gen_un_op(&mut inline_block_env, node)
+            }
+            Node::StructDecl(_)
+            | Node::ModuleDecl(_)
+            | Node::VarDecl(_)
+            | Node::Identifier(_)
+            | Node::NumberLiteral(_)
+            | Node::SizedNumberLiteral(_)
+            | Node::SubroutineDecl(_) => unreachable!(),
+            Node::Access(_)
+            | Node::Call(_)
+            | Node::Negate(_)
+            | Node::Deref(_)
+            | Node::IfExpr(_) => {
+                unimplemented!("todo: more inline blocks")
+            }
+        };
+
+        self.instructions
+            .alloc(Inst::inline_block_break(inline_block, return_value));
+        unimplemented!()
+    }
+
+    fn gen_bin_op(&self, env: &mut Environment<'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+        let inner = match node {
+            Node::Or(inner)
+            | Node::And(inner)
+            | Node::Lt(inner)
+            | Node::Gt(inner)
+            | Node::Lte(inner)
+            | Node::Gte(inner)
+            | Node::Eq(inner)
+            | Node::Neq(inner)
+            | Node::BitAnd(inner)
+            | Node::BitOr(inner)
+            | Node::BitXor(inner)
+            | Node::Add(inner)
+            | Node::Sub(inner)
+            | Node::Mul(inner)
+            | Node::Div(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        let lhs_idx = self.gen_expr(env, &*inner.lhs);
+        let rhs_idx = self.gen_expr(env, &*inner.rhs);
+        let bin_op = BinOp::new(lhs_idx, rhs_idx);
+
+        let ed_idx = self.extra_data.insert_extra(bin_op);
+        let node_idx = self.nodes.alloc(node);
+
+        let payload = Payload::new(ed_idx, node_idx);
+
+        let inst = match node {
+            Node::Or(_) => Inst::Or(payload),
+            Node::And(_) => Inst::And(payload),
+            Node::Lt(_) => Inst::Lt(payload),
+            Node::Gt(_) => Inst::Gt(payload),
+            Node::Lte(_) => Inst::Lte(payload),
+            Node::Gte(_) => Inst::Gte(payload),
+            Node::Eq(_) => Inst::Eq(payload),
+            Node::Neq(_) => Inst::Neq(payload),
+            Node::BitAnd(_) => Inst::BitAnd(payload),
+            Node::BitOr(_) => Inst::BitOr(payload),
+            Node::BitXor(_) => Inst::BitXor(payload),
+            Node::Add(_) => Inst::Add(payload),
+            Node::Sub(_) => Inst::Sub(payload),
+            Node::Mul(_) => Inst::Mul(payload),
+            Node::Div(_) => Inst::Div(payload),
+            _ => unreachable!(),
+        };
+
+        return self.instructions.alloc(inst);
+    }
+
+    fn gen_un_op(&self, env: &mut Environment<'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+        unimplemented!()
     }
 
     fn add_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, val: T) -> ExtraIdx<T> {

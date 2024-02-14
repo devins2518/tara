@@ -13,7 +13,7 @@ pub enum Inst<'a> {
     CombDecl(Payload<'a, SubroutineDecl<'a>>),
     DeclVal(Str<'a>),
     InlineBlock(Payload<'a, Block<'a>>),
-    InlineBlockBreak(Payload<'a, BinOp<'a>>),
+    InlineBlockBreak(BinOp<'a>),
     As(Payload<'a, BinOp<'a>>),
     // TODO: integers
     Or(Payload<'a, BinOp<'a>>),
@@ -39,6 +39,18 @@ pub enum Inst<'a> {
 impl<'a> Inst<'a> {
     pub fn struct_decl(extra_idx: ExtraIdx<ContainerDecl>, node_idx: NodeIdx<'a>) -> Self {
         return Self::StructDecl(Payload::new(extra_idx, node_idx));
+    }
+
+    pub fn module_decl(extra_idx: ExtraIdx<ContainerDecl>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::ModuleDecl(Payload::new(extra_idx, node_idx));
+    }
+
+    pub fn decl_val(ident: GlobalSymbol, node_idx: NodeIdx<'a>) -> Self {
+        return Self::DeclVal(Str::new(ident, node_idx));
+    }
+
+    pub fn inline_block_break(lhs: InstIdx<'a>, rhs: InstIdx<'a>) -> Self {
+        return Self::InlineBlockBreak(BinOp::new(lhs, rhs));
     }
 }
 
@@ -86,8 +98,8 @@ impl From<ContainerDecl> for [u32; CONTAINER_DECL_U32S] {
 
 pub const CONTAINER_FIELD_U32S: usize = 2;
 pub struct ContainerField<'a> {
-    name: GlobalSymbol,
-    ty: InstIdx<'a>,
+    pub(super) name: GlobalSymbol,
+    pub(super) ty: InstIdx<'a>,
 }
 
 impl ExtraArenaContainable<CONTAINER_FIELD_U32S> for ContainerField<'_> {}
@@ -165,11 +177,40 @@ pub struct Str<'a> {
     pub(super) node: NodeIdx<'a>,
 }
 
+impl<'a> Str<'a> {
+    fn new(string: GlobalSymbol, node: NodeIdx<'a>) -> Self {
+        return Self { string, node };
+    }
+}
+
+pub const BIN_OP_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct BinOp<'a> {
     pub(super) lhs: InstIdx<'a>,
     pub(super) rhs: InstIdx<'a>,
+}
+
+impl<'a> BinOp<'a> {
+    pub fn new(lhs: InstIdx<'a>, rhs: InstIdx<'a>) -> Self {
+        return Self { lhs, rhs };
+    }
+}
+
+impl ExtraArenaContainable<BIN_OP_U32S> for BinOp<'_> {}
+impl From<[u32; BIN_OP_U32S]> for BinOp<'_> {
+    fn from(value: [u32; BIN_OP_U32S]) -> Self {
+        return Self {
+            lhs: InstIdx::from(value[0]),
+            rhs: InstIdx::from(value[1]),
+        };
+    }
+}
+
+impl From<BinOp<'_>> for [u32; BIN_OP_U32S] {
+    fn from(value: BinOp) -> Self {
+        return [u32::from(value.lhs), u32::from(value.rhs)];
+    }
 }
 
 #[repr(C)]

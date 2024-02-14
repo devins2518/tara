@@ -1,5 +1,5 @@
 // RUN: @tara @file --dump-utir
-// CHECK: 0
+// CHECK: test
 
 const A = u1;
 const B = a & b;

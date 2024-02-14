@@ -79,6 +79,36 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
+    fn write_module_decl(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let ed_idx = match self.utir.instructions.get(idx) {
+            Inst::ModuleDecl(payload) => payload.extra_idx.to_u32(),
+            _ => unreachable!(),
+        };
+        let module_decl: ContainerDecl = self.utir.extra_data.get_extra(ed_idx);
+        write!(self, "%{} = module_decl({{", u32::from(idx))?;
+
+        if module_decl.fields + module_decl.decls > 0 {
+            self.indent();
+            write!(self, "\n")?;
+
+            let field_base = u32::from(ed_idx) + 2;
+            for i in 0..module_decl.fields {}
+
+            let decls_base = field_base + (module_decl.fields * CONTAINER_FIELD_U32S as u32);
+            for i in 0..module_decl.decls {
+                let decl_offset = decls_base + (i * CONTAINER_FIELD_U32S as u32);
+                let decl: ContainerMember = self.utir.extra_data.get_extra(decl_offset.into());
+                self.write_container_member(decl)?;
+                self.stream.write_char('\n')?;
+            }
+
+            self.deindent();
+        }
+
+        write!(self, "}})")?;
+        Ok(())
+    }
+
     fn write_container_member(&mut self, member: ContainerMember<'b>) -> std::fmt::Result {
         let name = member.name;
         write!(self, "\"{}\" ", name.as_str())?;
@@ -90,8 +120,24 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         let inst = self.utir.instructions.get(idx);
         match inst {
             Inst::StructDecl(_) => self.write_struct_decl(idx)?,
-            _ => unreachable!()
+            Inst::ModuleDecl(_) => self.write_module_decl(idx)?,
+            Inst::DeclVal(_) => self.write_decl_val(idx)?,
+            _ => unimplemented!("writing expr"),
         }
+        Ok(())
+    }
+
+    fn write_decl_val(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let decl_val = match self.utir.instructions.get(idx) {
+            Inst::DeclVal(decl_val) => decl_val,
+            _ => unreachable!(),
+        };
+        write!(
+            self,
+            "%{} = decl_val(\"{}\")",
+            u32::from(idx),
+            decl_val.string.as_str()
+        )?;
         Ok(())
     }
 }
