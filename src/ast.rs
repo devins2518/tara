@@ -281,8 +281,8 @@ impl Display for Mutability {
 }
 
 pub struct RefTy<'a> {
-    mutability: Mutability,
-    ty: Box<Node<'a>>,
+    pub mutability: Mutability,
+    pub ty: Box<Node<'a>>,
 }
 
 impl<'a> RefTy<'a> {

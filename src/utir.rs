@@ -137,14 +137,14 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::Sub(_)
             | Inst::Mul(_)
             | Inst::Div(_)
-            | Inst::InlineBlockBreak(_) => self.write_bin_op(idx)?,
-            Inst::Negate(_)
-            | Inst::Deref(_)
-            | Inst::Return(_)
-            | Inst::RefTy(_)
-            | Inst::PtrTy(_) => self.write_un_op(idx)?,
+            | Inst::InlineBlockBreak(_)
+            | Inst::As(_)
+            | Inst::Access(_) => self.write_bin_op(idx)?,
+            Inst::Negate(_) | Inst::Deref(_) | Inst::Return(_) => self.write_un_op(idx)?,
             Inst::InlineBlock(_) => self.write_inline_block(idx)?,
-            _ => unimplemented!("writing expr"),
+            Inst::FunctionDecl(_) => self.write_subroutine_decl(idx)?,
+            Inst::CombDecl(_) => self.write_subroutine_decl(idx)?,
+            Inst::RefTy(_) | Inst::PtrTy(_) => self.write_ref_ty(idx)?,
         }
         Ok(())
     }
@@ -226,6 +226,18 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "div",
             ),
+            Inst::Access(payload) => (
+                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
+                "access",
+            ),
+            Inst::As(payload) => (
+                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
+                "as",
+            ),
+            Inst::Access(payload) => (
+                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
+                "access",
+            ),
             Inst::InlineBlockBreak(payload) => (payload, "inline_block_break"),
             Inst::StructDecl(_)
             | Inst::ModuleDecl(_)
@@ -257,8 +269,6 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             Inst::Negate(payload) => (payload, "negate"),
             Inst::Deref(payload) => (payload, "deref"),
             Inst::Return(payload) => (payload, "return"),
-            Inst::RefTy(payload) => (payload, "ret_ty"),
-            Inst::PtrTy(payload) => (payload, "ptr_ty"),
             Inst::StructDecl(_)
             | Inst::ModuleDecl(_)
             | Inst::FunctionDecl(_)
@@ -281,7 +291,10 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::Add(_)
             | Inst::Sub(_)
             | Inst::Mul(_)
-            | Inst::Div(_) => unreachable!(),
+            | Inst::Div(_)
+            | Inst::Access(_)
+            | Inst::RefTy(_)
+            | Inst::PtrTy(_) => unreachable!(),
         };
         write!(
             self,
@@ -319,6 +332,88 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
 
         write!(self, "}})")?;
         Ok(())
+    }
+
+    fn write_subroutine_decl(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let ed_idx = match self.utir.instructions.get(idx) {
+            Inst::FunctionDecl(payload) | Inst::CombDecl(payload) => payload.extra_idx.to_u32(),
+            _ => unreachable!(),
+        };
+        let subroutine_decl: SubroutineDecl = self.utir.extra_data.get_extra(ed_idx);
+
+        write!(self, "%{} = subroutine_decl(\n", u32::from(idx))?;
+        {
+            self.indent();
+
+            write!(self, "{{")?;
+            {
+                self.indent();
+
+                let param_base = u32::from(ed_idx) + SUBROUTINE_DECL_U32S as u32;
+                for param_num in 0..subroutine_decl.params {
+                    write!(self, "\n")?;
+
+                    let param_offset = param_base + (param_num * PARAM_U32S as u32);
+                    let param: Param = self.utir.extra_data.get_extra(param_offset.into());
+
+                    self.write_expr(param.ty)?;
+                    write!(
+                        self,
+                        "\n\"{}\" : %{}",
+                        param.name.as_str(),
+                        u32::from(param.ty)
+                    )?;
+                }
+                write!(self, "\n")?;
+
+                self.deindent();
+            }
+            write!(self, "}}\n")?;
+
+            self.write_expr(subroutine_decl.return_type)?;
+            write!(self, "\n")?;
+
+            let body_base = (u32::from(ed_idx) + SUBROUTINE_DECL_U32S as u32)
+                + (subroutine_decl.params * PARAM_U32S as u32);
+            for body_num in 0..subroutine_decl.body_len {
+                write!(self, "\n")?;
+
+                let body_offset = body_base + body_num;
+                let body_idx = self.utir.extra_data.get(body_offset.into());
+                self.write_expr(body_idx.into())?;
+                break;
+            }
+            write!(self, "\n")?;
+
+            self.deindent();
+        }
+        write!(self, "\n)")?;
+
+        return Ok(());
+    }
+
+    fn write_ref_ty(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let instr = self.utir.instructions.get(idx);
+        let (ref_ty, name): (RefTy, &'static str) = match instr {
+            Inst::RefTy(payload) => (
+                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
+                "ref_ty",
+            ),
+            Inst::PtrTy(payload) => (
+                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
+                "ptr_ty",
+            ),
+            _ => unreachable!(),
+        };
+        write!(
+            self,
+            "%{} = {}({} %{})",
+            u32::from(idx),
+            name,
+            ref_ty.mutability,
+            u32::from(ref_ty.ty)
+        )?;
+        return Ok(());
     }
 }
 

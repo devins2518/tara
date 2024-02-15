@@ -2,7 +2,7 @@ use crate::{
     arena::{ExtraArenaContainable, Id},
     ast::Node,
 };
-use std::num::NonZeroU32;
+use std::{fmt::Display, num::NonZeroU32};
 use symbol_table::GlobalSymbol;
 
 #[derive(Copy, Clone)]
@@ -31,11 +31,12 @@ pub enum Inst<'a> {
     Sub(Payload<'a, BinOp<'a>>),
     Mul(Payload<'a, BinOp<'a>>),
     Div(Payload<'a, BinOp<'a>>),
+    Access(Payload<'a, BinOp<'a>>),
     Negate(UnOp<'a>),
     Deref(UnOp<'a>),
     Return(UnOp<'a>),
-    RefTy(UnOp<'a>),
-    PtrTy(UnOp<'a>),
+    RefTy(Payload<'a, RefTy<'a>>),
+    PtrTy(Payload<'a, RefTy<'a>>),
 }
 
 impl<'a> Inst<'a> {
@@ -157,12 +158,55 @@ impl From<ContainerMember<'_>> for [u32; CONTAINER_MEMBER_U32S] {
 
 // Followed by `params` number of `Param`s, then `body_len` number of instructions which make up
 // the body of the subroutine
+pub const SUBROUTINE_DECL_U32S: usize = 3;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct SubroutineDecl<'a> {
     pub(super) params: u32,
     pub(super) return_type: InstIdx<'a>,
     pub(super) body_len: u32,
+}
+
+impl ExtraArenaContainable<SUBROUTINE_DECL_U32S> for SubroutineDecl<'_> {}
+impl From<[u32; SUBROUTINE_DECL_U32S]> for SubroutineDecl<'_> {
+    fn from(value: [u32; SUBROUTINE_DECL_U32S]) -> Self {
+        return Self {
+            params: value[0],
+            return_type: InstIdx::from(value[1]),
+            body_len: value[2],
+        };
+    }
+}
+
+impl From<SubroutineDecl<'_>> for [u32; SUBROUTINE_DECL_U32S] {
+    fn from(value: SubroutineDecl) -> Self {
+        return [value.params, value.return_type.into(), value.body_len];
+    }
+}
+
+pub const PARAM_U32S: usize = 2;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Param<'a> {
+    pub(super) name: GlobalSymbol,
+    pub(super) ty: InstIdx<'a>,
+}
+
+impl ExtraArenaContainable<PARAM_U32S> for Param<'_> {}
+impl From<[u32; PARAM_U32S]> for Param<'_> {
+    fn from(value: [u32; PARAM_U32S]) -> Self {
+        return Self {
+            name: GlobalSymbol::from(NonZeroU32::new(value[0]).unwrap()),
+            ty: InstIdx::from(value[1]),
+        };
+    }
+}
+
+impl From<Param<'_>> for [u32; PARAM_U32S] {
+    fn from(value: Param) -> Self {
+        let nonzero = NonZeroU32::from(value.name);
+        return [nonzero.into(), u32::from(value.ty)];
+    }
 }
 
 // Followed by `Block.num_instrs` number of `InstIdx`s
@@ -254,6 +298,61 @@ pub struct UnOp<'a> {
 impl<'a> UnOp<'a> {
     pub fn new(lhs: InstIdx<'a>, node: NodeIdx<'a>) -> Self {
         return Self { lhs, node };
+    }
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum Mutability {
+    Mutable,
+    Immutable,
+}
+
+impl Display for Mutability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mutability::Mutable => f.write_str("mut"),
+            Mutability::Immutable => f.write_str("const"),
+        }
+    }
+}
+
+pub const REF_TY_U32S: usize = 2;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct RefTy<'a> {
+    pub(super) mutability: Mutability,
+    pub(super) ty: InstIdx<'a>,
+}
+
+impl<'a> RefTy<'a> {
+    pub fn new(mutability: Mutability, ty: InstIdx<'a>) -> Self {
+        return Self { mutability, ty };
+    }
+}
+
+impl ExtraArenaContainable<REF_TY_U32S> for RefTy<'_> {}
+impl From<[u32; REF_TY_U32S]> for RefTy<'_> {
+    fn from(value: [u32; REF_TY_U32S]) -> Self {
+        let mutability = match value[0] {
+            0 => Mutability::Mutable,
+            1 => Mutability::Immutable,
+            _ => unreachable!(),
+        };
+        return Self {
+            mutability,
+            ty: InstIdx::from(value[1]),
+        };
+    }
+}
+
+impl From<RefTy<'_>> for [u32; REF_TY_U32S] {
+    fn from(value: RefTy) -> Self {
+        let mut_val = match value.mutability {
+            Mutability::Mutable => 0,
+            Mutability::Immutable => 1,
+        };
+        return [mut_val, u32::from(value.ty)];
     }
 }
 
