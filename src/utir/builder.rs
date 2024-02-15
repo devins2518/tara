@@ -74,9 +74,7 @@ impl<'ast> Builder<'ast> {
         let decls = struct_inner.members.len() as u32;
 
         let extra_idx = env.add_extra(ContainerDecl { fields, decls });
-        for extra in ArenaRef::from(struct_env.tmp_extra).data.iter() {
-            env.add_extra_u32(*extra);
-        }
+        struct_env.finish();
 
         env.set_instruction(struct_idx, Inst::struct_decl(extra_idx, node_idx));
         return struct_idx;
@@ -122,9 +120,7 @@ impl<'ast> Builder<'ast> {
         let decls = module_inner.members.len() as u32;
 
         let extra_idx = env.add_extra(ContainerDecl { fields, decls });
-        for extra in ArenaRef::from(module_env.tmp_extra).data.iter() {
-            env.add_extra_u32(*extra);
-        }
+        module_env.finish();
 
         env.set_instruction(module_idx, Inst::module_decl(extra_idx, node_idx));
         return module_idx;
@@ -186,9 +182,7 @@ impl<'ast> Builder<'ast> {
             return_type,
             body_len,
         });
-        for extra in ArenaRef::from(subroutine_env.tmp_extra).data.iter() {
-            env.add_extra_u32(*extra);
-        }
+        subroutine_env.finish();
 
         let node_idx = self.nodes.alloc(node);
 
@@ -233,9 +227,7 @@ impl<'ast> Builder<'ast> {
             return_type,
             body_len,
         });
-        for extra in ArenaRef::from(subroutine_env.tmp_extra).data.iter() {
-            env.add_extra_u32(*extra);
-        }
+        subroutine_env.finish();
 
         let node_idx = self.nodes.alloc(node);
 
@@ -369,11 +361,8 @@ impl<'ast> Builder<'ast> {
         inline_block_env.add_instruction(Inst::inline_block_break(inline_block, return_value));
 
         let num_instrs = inline_block_env.tmp_extra.len() as u32;
-        let block_extra = ArenaRef::from(inline_block_env.tmp_extra);
         let extra_idx = env.add_extra(Block::new(num_instrs));
-        for inst in block_extra.data.iter() {
-            env.add_extra_u32(*inst);
-        }
+        inline_block_env.finish();
 
         let node_idx = self.nodes.alloc(node);
 
@@ -520,6 +509,7 @@ struct Environment<'builder, 'inst, 'parent>
 where
     'inst: 'builder,
 {
+    parent: Option<&'parent Environment<'builder, 'inst, 'parent>>,
     // Current bindings of symbols to instructions
     scope: Scope<'inst, 'parent>,
     // List of arbitrary data which can be used to store temporary data before it is pushed to
@@ -534,6 +524,7 @@ where
 impl<'builder, 'inst, 'parent> Environment<'builder, 'inst, 'parent> {
     pub fn new(builder: &'builder Builder<'inst>) -> Self {
         return Self {
+            parent: None,
             scope: Scope::new(),
             tmp_extra: Arena::new(),
             instruction_scope: InstructionScope::Global,
@@ -543,6 +534,7 @@ impl<'builder, 'inst, 'parent> Environment<'builder, 'inst, 'parent> {
 
     pub fn derive(&'parent self) -> Self {
         return Self {
+            parent: Some(self),
             scope: self.scope.derive(),
             tmp_extra: Arena::new(),
             instruction_scope: self.instruction_scope,
@@ -595,6 +587,15 @@ impl<'builder, 'inst, 'parent> Environment<'builder, 'inst, 'parent> {
 
     pub fn is_block_scope(&self) -> bool {
         return self.instruction_scope == InstructionScope::Block;
+    }
+
+    pub fn finish(self) {
+        if let Some(parent) = self.parent {
+            let data = ArenaRef::from(self.tmp_extra);
+            for inst in data.data.iter() {
+                parent.add_extra_u32(*inst);
+            }
+        }
     }
 }
 
