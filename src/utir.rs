@@ -145,6 +145,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             Inst::FunctionDecl(_) => self.write_subroutine_decl(idx)?,
             Inst::CombDecl(_) => self.write_subroutine_decl(idx)?,
             Inst::RefTy(_) | Inst::PtrTy(_) => self.write_ref_ty(idx)?,
+            Inst::Call(_) => self.write_call(idx)?,
         }
         Ok(())
     }
@@ -234,10 +235,6 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "as",
             ),
-            Inst::Access(payload) => (
-                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
-                "access",
-            ),
             Inst::InlineBlockBreak(payload) => (payload, "inline_block_break"),
             Inst::StructDecl(_)
             | Inst::ModuleDecl(_)
@@ -250,7 +247,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::Return(_)
             | Inst::RefTy(_)
             | Inst::PtrTy(_)
-            | Inst::As(_) => unreachable!(),
+            | Inst::Call(_) => unreachable!(),
         };
         write!(
             self,
@@ -294,7 +291,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::Div(_)
             | Inst::Access(_)
             | Inst::RefTy(_)
-            | Inst::PtrTy(_) => unreachable!(),
+            | Inst::PtrTy(_)
+            | Inst::Call(_) => unreachable!(),
         };
         write!(
             self,
@@ -413,6 +411,34 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             ref_ty.mutability,
             u32::from(ref_ty.ty)
         )?;
+        return Ok(());
+    }
+
+    fn write_call(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let ed_idx = match self.utir.instructions.get(idx) {
+            Inst::Call(payload) => payload.extra_idx,
+            _ => unreachable!(),
+        };
+        let call: CallArgs<'a> = self.utir.extra_data.get_extra(ed_idx.to_u32());
+        write!(
+            self,
+            "%{} = call(%{}, {{\n",
+            u32::from(idx),
+            u32::from(call.lhs)
+        )?;
+        {
+            self.indent();
+
+            let arg_base = u32::from(ed_idx) + CALL_ARGS_U32S as u32;
+            for arg_num in 0..call.num_args {
+                let arg_ed_idx = arg_base + arg_num;
+                let arg_idx = self.utir.extra_data.get(Id::from(arg_ed_idx));
+                write!(self, "%{},\n", arg_idx)?;
+            }
+
+            self.deindent();
+        }
+        write!(self, "}})")?;
         return Ok(());
     }
 }

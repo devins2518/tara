@@ -278,9 +278,9 @@ impl<'ast> Builder<'ast> {
             | Node::Negate(_)
             | Node::Deref(_)
             | Node::ReferenceTy(_)
-            | Node::PointerTy(_) => self.gen_inline_block(env, node),
+            | Node::PointerTy(_)
+            | Node::Call(_) => self.gen_inline_block(env, node),
             Node::VarDecl(_) | Node::SubroutineDecl(_) => unreachable!(),
-            Node::Call(_) => unimplemented!("todo call"),
             Node::SizedNumberLiteral(_) => unimplemented!("todo sized number literal"),
             Node::IfExpr(_) => unimplemented!("todo if expr"),
         };
@@ -339,7 +339,6 @@ impl<'ast> Builder<'ast> {
             | Node::Sub(_)
             | Node::Mul(_)
             | Node::Div(_)
-            | Node::Call(_)
             | Node::Access(_) => self.gen_bin_op(&mut inline_block_env, node),
             Node::Return(_) | Node::Negate(_) | Node::Deref(_) => {
                 self.gen_un_op(&mut inline_block_env, node)
@@ -347,6 +346,7 @@ impl<'ast> Builder<'ast> {
             Node::ReferenceTy(_) | Node::PointerTy(_) => {
                 self.gen_ref_ty(&mut inline_block_env, node)
             }
+            Node::Call(_) => self.gen_call(&mut inline_block_env, node),
             Node::StructDecl(_)
             | Node::ModuleDecl(_)
             | Node::VarDecl(_)
@@ -429,6 +429,7 @@ impl<'ast> Builder<'ast> {
             Node::Sub(_) => Inst::Sub(payload),
             Node::Mul(_) => Inst::Mul(payload),
             Node::Div(_) => Inst::Div(payload),
+            Node::Access(_) => Inst::Access(payload),
             _ => unreachable!(),
         };
 
@@ -483,6 +484,35 @@ impl<'ast> Builder<'ast> {
 
         let idx = env.add_instruction(inst);
         return idx;
+    }
+
+    fn gen_call(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+        let call = match node {
+            Node::Call(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        let lhs = self.gen_expr(env, &*call.call);
+
+        let call_inst = env.reserve_instruction();
+
+        let mut call_env = env.derive();
+        call_env.set_instruction_scope(InstructionScope::Block);
+        for arg in &call.args {
+            self.gen_expr(&mut call_env, arg);
+        }
+        call_env.finish();
+
+        let call_args = CallArgs {
+            lhs,
+            num_args: call.args.len() as u32,
+        };
+
+        let extra_idx = env.add_extra(call_args);
+        let node_idx = self.nodes.alloc(node);
+        env.set_instruction(call_inst, Inst::call(extra_idx, node_idx));
+
+        return call_inst;
     }
 
     fn add_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, val: T) -> ExtraIdx<T> {

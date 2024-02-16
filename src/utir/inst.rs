@@ -31,12 +31,14 @@ pub enum Inst<'a> {
     Sub(Payload<'a, BinOp<'a>>),
     Mul(Payload<'a, BinOp<'a>>),
     Div(Payload<'a, BinOp<'a>>),
+    // TODO: lhs should be instruction, rhs should be ident
     Access(Payload<'a, BinOp<'a>>),
     Negate(UnOp<'a>),
     Deref(UnOp<'a>),
     Return(UnOp<'a>),
     RefTy(Payload<'a, RefTy<'a>>),
     PtrTy(Payload<'a, RefTy<'a>>),
+    Call(Payload<'a, CallArgs<'a>>),
 }
 
 impl<'a> Inst<'a> {
@@ -58,6 +60,10 @@ impl<'a> Inst<'a> {
 
     pub fn inline_block_break(lhs: InstIdx<'a>, rhs: InstIdx<'a>) -> Self {
         return Self::InlineBlockBreak(BinOp::new(lhs, rhs));
+    }
+
+    pub fn call(extra_idx: ExtraIdx<CallArgs<'a>>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::Call(Payload::new(extra_idx, node_idx));
     }
 }
 
@@ -353,6 +359,31 @@ impl From<RefTy<'_>> for [u32; REF_TY_U32S] {
             Mutability::Immutable => 1,
         };
         return [mut_val, u32::from(value.ty)];
+    }
+}
+
+// Followed by `CallArgs.num_args` number of `InstIdx`s
+pub const CALL_ARGS_U32S: usize = 2;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct CallArgs<'a> {
+    pub(super) lhs: InstIdx<'a>,
+    pub(super) num_args: u32,
+}
+
+impl ExtraArenaContainable<CALL_ARGS_U32S> for CallArgs<'_> {}
+impl From<[u32; CALL_ARGS_U32S]> for CallArgs<'_> {
+    fn from(value: [u32; CALL_ARGS_U32S]) -> Self {
+        return Self {
+            lhs: InstIdx::from(value[0]),
+            num_args: value[1],
+        };
+    }
+}
+
+impl From<CallArgs<'_>> for [u32; CALL_ARGS_U32S] {
+    fn from(value: CallArgs) -> Self {
+        return [value.lhs.into(), value.num_args];
     }
 }
 
