@@ -61,15 +61,20 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.indent();
             write!(self, "\n")?;
 
-            let field_base = u32::from(ed_idx) + 2;
-            for i in 0..struct_decl.fields {}
+            let field_base = u32::from(ed_idx) + CONTAINER_DECL_U32S as u32;
+            for i in 0..struct_decl.fields {
+                let field_offset = field_base + (i * CONTAINER_FIELD_U32S as u32);
+                let field: ContainerField = self.utir.extra_data.get_extra(field_offset.into());
+                self.write_container_field(field)?;
+                write!(self, "\n")?;
+            }
 
             let decls_base = field_base + (struct_decl.fields * CONTAINER_FIELD_U32S as u32);
             for i in 0..struct_decl.decls {
                 let decl_offset = decls_base + (i * CONTAINER_FIELD_U32S as u32);
                 let decl: ContainerMember = self.utir.extra_data.get_extra(decl_offset.into());
                 self.write_container_member(decl)?;
-                self.stream.write_char('\n')?;
+                write!(self, "\n")?;
             }
 
             self.deindent();
@@ -92,7 +97,12 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             write!(self, "\n")?;
 
             let field_base = u32::from(ed_idx) + 2;
-            for i in 0..module_decl.fields {}
+            for i in 0..module_decl.fields {
+                let field_offset = field_base + (i * CONTAINER_FIELD_U32S as u32);
+                let field: ContainerField = self.utir.extra_data.get_extra(field_offset.into());
+                self.write_container_field(field)?;
+                write!(self, "\n")?;
+            }
 
             let decls_base = field_base + (module_decl.fields * CONTAINER_FIELD_U32S as u32);
             for i in 0..module_decl.decls {
@@ -113,6 +123,13 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         let name = member.name;
         write!(self, "\"{}\" ", name.as_str())?;
         self.write_expr(member.value)?;
+        Ok(())
+    }
+
+    fn write_container_field(&mut self, field: ContainerField<'b>) -> std::fmt::Result {
+        let name = field.name;
+        write!(self, "\"{}\": ", name.as_str())?;
+        self.write_expr(field.ty)?;
         Ok(())
     }
 
