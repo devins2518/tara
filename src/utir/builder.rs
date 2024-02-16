@@ -186,7 +186,7 @@ impl<'ast> Builder<'ast> {
 
         let node_idx = self.nodes.alloc(node);
 
-        let subroutine_decl = Payload::new(extra_idx, node_idx);
+        let subroutine_decl = ExtraPayload::new(extra_idx, node_idx);
 
         env.set_instruction(subroutine_idx, Inst::FunctionDecl(subroutine_decl));
         return subroutine_idx;
@@ -231,7 +231,7 @@ impl<'ast> Builder<'ast> {
 
         let node_idx = self.nodes.alloc(node);
 
-        let subroutine_decl = Payload::new(extra_idx, node_idx);
+        let subroutine_decl = ExtraPayload::new(extra_idx, node_idx);
 
         env.set_instruction(subroutine_idx, Inst::CombDecl(subroutine_decl));
         return subroutine_idx;
@@ -411,7 +411,7 @@ impl<'ast> Builder<'ast> {
         let ed_idx = env.add_extra(bin_op);
         let node_idx = self.nodes.alloc(node);
 
-        let payload = Payload::new(ed_idx, node_idx);
+        let payload = ExtraPayload::new(ed_idx, node_idx);
 
         let inst = match node {
             Node::Or(_) => Inst::Or(payload),
@@ -474,7 +474,7 @@ impl<'ast> Builder<'ast> {
 
         let node_idx = self.nodes.alloc(node);
 
-        let payload = Payload::new(extra_idx, node_idx);
+        let payload = ExtraPayload::new(extra_idx, node_idx);
 
         let inst = match node {
             Node::ReferenceTy(_) => Inst::RefTy(payload),

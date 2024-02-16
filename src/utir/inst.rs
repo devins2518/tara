@@ -7,47 +7,47 @@ use symbol_table::GlobalSymbol;
 
 #[derive(Copy, Clone)]
 pub enum Inst<'a> {
-    StructDecl(Payload<'a, ContainerDecl>),
-    ModuleDecl(Payload<'a, ContainerDecl>),
-    FunctionDecl(Payload<'a, SubroutineDecl<'a>>),
-    CombDecl(Payload<'a, SubroutineDecl<'a>>),
+    StructDecl(ExtraPayload<'a, ContainerDecl>),
+    ModuleDecl(ExtraPayload<'a, ContainerDecl>),
+    FunctionDecl(ExtraPayload<'a, SubroutineDecl<'a>>),
+    CombDecl(ExtraPayload<'a, SubroutineDecl<'a>>),
     DeclVal(Str<'a>),
-    InlineBlock(Payload<'a, Block>),
+    InlineBlock(ExtraPayload<'a, Block>),
     InlineBlockBreak(BinOp<'a>),
-    As(Payload<'a, BinOp<'a>>),
+    As(ExtraPayload<'a, BinOp<'a>>),
     // TODO: integers
-    Or(Payload<'a, BinOp<'a>>),
-    And(Payload<'a, BinOp<'a>>),
-    Lt(Payload<'a, BinOp<'a>>),
-    Gt(Payload<'a, BinOp<'a>>),
-    Lte(Payload<'a, BinOp<'a>>),
-    Gte(Payload<'a, BinOp<'a>>),
-    Eq(Payload<'a, BinOp<'a>>),
-    Neq(Payload<'a, BinOp<'a>>),
-    BitAnd(Payload<'a, BinOp<'a>>),
-    BitOr(Payload<'a, BinOp<'a>>),
-    BitXor(Payload<'a, BinOp<'a>>),
-    Add(Payload<'a, BinOp<'a>>),
-    Sub(Payload<'a, BinOp<'a>>),
-    Mul(Payload<'a, BinOp<'a>>),
-    Div(Payload<'a, BinOp<'a>>),
+    Or(ExtraPayload<'a, BinOp<'a>>),
+    And(ExtraPayload<'a, BinOp<'a>>),
+    Lt(ExtraPayload<'a, BinOp<'a>>),
+    Gt(ExtraPayload<'a, BinOp<'a>>),
+    Lte(ExtraPayload<'a, BinOp<'a>>),
+    Gte(ExtraPayload<'a, BinOp<'a>>),
+    Eq(ExtraPayload<'a, BinOp<'a>>),
+    Neq(ExtraPayload<'a, BinOp<'a>>),
+    BitAnd(ExtraPayload<'a, BinOp<'a>>),
+    BitOr(ExtraPayload<'a, BinOp<'a>>),
+    BitXor(ExtraPayload<'a, BinOp<'a>>),
+    Add(ExtraPayload<'a, BinOp<'a>>),
+    Sub(ExtraPayload<'a, BinOp<'a>>),
+    Mul(ExtraPayload<'a, BinOp<'a>>),
+    Div(ExtraPayload<'a, BinOp<'a>>),
     // TODO: lhs should be instruction, rhs should be ident
-    Access(Payload<'a, BinOp<'a>>),
+    Access(ExtraPayload<'a, BinOp<'a>>),
     Negate(UnOp<'a>),
     Deref(UnOp<'a>),
     Return(UnOp<'a>),
-    RefTy(Payload<'a, RefTy<'a>>),
-    PtrTy(Payload<'a, RefTy<'a>>),
-    Call(Payload<'a, CallArgs<'a>>),
+    RefTy(ExtraPayload<'a, RefTy<'a>>),
+    PtrTy(ExtraPayload<'a, RefTy<'a>>),
+    Call(ExtraPayload<'a, CallArgs<'a>>),
 }
 
 impl<'a> Inst<'a> {
     pub fn struct_decl(extra_idx: ExtraIdx<ContainerDecl>, node_idx: NodeIdx<'a>) -> Self {
-        return Self::StructDecl(Payload::new(extra_idx, node_idx));
+        return Self::StructDecl(ExtraPayload::new(extra_idx, node_idx));
     }
 
     pub fn module_decl(extra_idx: ExtraIdx<ContainerDecl>, node_idx: NodeIdx<'a>) -> Self {
-        return Self::ModuleDecl(Payload::new(extra_idx, node_idx));
+        return Self::ModuleDecl(ExtraPayload::new(extra_idx, node_idx));
     }
 
     pub fn decl_val(ident: GlobalSymbol, node_idx: NodeIdx<'a>) -> Self {
@@ -55,7 +55,7 @@ impl<'a> Inst<'a> {
     }
 
     pub fn inline_block(extra_idx: ExtraIdx<Block>, node_idx: NodeIdx<'a>) -> Self {
-        return Self::InlineBlock(Payload::new(extra_idx, node_idx));
+        return Self::InlineBlock(ExtraPayload::new(extra_idx, node_idx));
     }
 
     pub fn inline_block_break(lhs: InstIdx<'a>, rhs: InstIdx<'a>) -> Self {
@@ -63,20 +63,20 @@ impl<'a> Inst<'a> {
     }
 
     pub fn call(extra_idx: ExtraIdx<CallArgs<'a>>, node_idx: NodeIdx<'a>) -> Self {
-        return Self::Call(Payload::new(extra_idx, node_idx));
+        return Self::Call(ExtraPayload::new(extra_idx, node_idx));
     }
 }
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct Payload<'a, T> {
+pub struct ExtraPayload<'a, T> {
     pub(super) extra_idx: ExtraIdx<T>,
     pub(super) node_idx: NodeIdx<'a>,
 }
 
-impl<'a, T> Payload<'a, T> {
+impl<'a, T> ExtraPayload<'a, T> {
     pub fn new(extra_idx: ExtraIdx<T>, node_idx: NodeIdx<'a>) -> Self {
-        return Payload {
+        return ExtraPayload {
             extra_idx,
             node_idx,
         };
@@ -398,10 +398,10 @@ pub type ExtraIdx<T> = Id<T>;
 
 #[test]
 fn size_enforcement() {
-    assert!(std::mem::size_of::<Payload<ContainerDecl>>() == 8);
-    assert!(std::mem::size_of::<Payload<SubroutineDecl>>() == 8);
+    assert!(std::mem::size_of::<ExtraPayload<ContainerDecl>>() == 8);
+    assert!(std::mem::size_of::<ExtraPayload<SubroutineDecl>>() == 8);
     assert!(std::mem::size_of::<Str>() == 8);
-    assert!(std::mem::size_of::<Payload<Block>>() == 8);
-    assert!(std::mem::size_of::<Payload<BinOp>>() == 8);
+    assert!(std::mem::size_of::<ExtraPayload<Block>>() == 8);
+    assert!(std::mem::size_of::<ExtraPayload<BinOp>>() == 8);
     assert!(std::mem::size_of::<UnOp>() == 8);
 }
