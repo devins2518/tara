@@ -432,8 +432,13 @@ pub type ExtraIdx<T> = Id<T>;
 fn size_enforcement() {
     assert!(std::mem::size_of::<ExtraPayload<ContainerDecl>>() == 8);
     assert!(std::mem::size_of::<ExtraPayload<SubroutineDecl>>() == 8);
-    assert!(std::mem::size_of::<Str>() == 8);
     assert!(std::mem::size_of::<ExtraPayload<Block>>() == 8);
     assert!(std::mem::size_of::<ExtraPayload<BinOp>>() == 8);
+    assert!(std::mem::size_of::<BinOp>() == 8);
     assert!(std::mem::size_of::<UnOp>() == 8);
+    assert!(std::mem::size_of::<ExtraPayload<RefTy>>() == 8);
+    assert!(std::mem::size_of::<ExtraPayload<CallArgs>>() == 8);
+    assert!(std::mem::size_of::<u64>() == 8);
+    assert!(std::mem::size_of::<IntType>() == 8);
+    assert!(std::mem::size_of::<ExtraPayload<Branch>>() == 8);
 }
