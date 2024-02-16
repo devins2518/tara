@@ -3,7 +3,7 @@ use crate::{
     ast::Node,
     builtin::{Mutability, Signedness},
 };
-use std::{fmt::Display, num::NonZeroU32};
+use std::num::NonZeroU32;
 use symbol_table::GlobalSymbol;
 
 #[derive(Copy, Clone)]

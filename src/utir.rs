@@ -2,18 +2,14 @@ mod builder;
 mod inst;
 
 use crate::{
-    arena::{Arena, ExtraArenaContainable, Id},
+    arena::{Arena, Id},
     ast::Node,
     auto_indenting_stream::AutoIndentingStream,
     utir::inst::*,
     Ast,
 };
 use builder::Builder;
-use std::{
-    fmt::{Display, Write},
-    num::NonZeroU32,
-};
-use symbol_table::GlobalSymbol;
+use std::fmt::{Display, Write};
 
 pub struct Utir<'a> {
     ast: &'a Ast<'a>,
