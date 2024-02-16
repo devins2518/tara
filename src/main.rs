@@ -2,6 +2,7 @@
 mod arena;
 mod ast;
 mod auto_indenting_stream;
+mod builtin;
 mod parser;
 mod utir;
 

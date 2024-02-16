@@ -1,4 +1,4 @@
-use crate::parser::TaraParser;
+use crate::{builtin::Mutability, parser::TaraParser};
 use anyhow::Result;
 use num_bigint::BigUint;
 use std::fmt::Display;
@@ -260,22 +260,6 @@ pub struct SizedNumberLiteral {
 impl Display for SizedNumberLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}'d{}", self.size, self.literal))?;
-        Ok(())
-    }
-}
-
-pub enum Mutability {
-    Mutable,
-    Immutable,
-}
-
-impl Display for Mutability {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Mutability::Mutable => "mut",
-            Mutability::Immutable => "const",
-        };
-        f.write_str(s)?;
         Ok(())
     }
 }

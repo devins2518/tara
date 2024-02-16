@@ -1,6 +1,7 @@
 use crate::{
     arena::{ExtraArenaContainable, Id},
     ast::Node,
+    builtin::Mutability,
 };
 use std::{fmt::Display, num::NonZeroU32};
 use symbol_table::GlobalSymbol;
@@ -297,22 +298,6 @@ impl From<BinOp<'_>> for [u32; BIN_OP_U32S] {
 }
 
 pub type UnOp<'a> = NodePayload<'a, InstIdx<'a>>;
-
-#[repr(u32)]
-#[derive(Copy, Clone)]
-pub enum Mutability {
-    Mutable,
-    Immutable,
-}
-
-impl Display for Mutability {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Mutability::Mutable => f.write_str("mut"),
-            Mutability::Immutable => f.write_str("const"),
-        }
-    }
-}
 
 pub const REF_TY_U32S: usize = 2;
 #[repr(C)]

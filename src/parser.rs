@@ -1,6 +1,9 @@
-use crate::ast::{
-    BinOp, Call, IfExpr, ModuleInner, Mutability, Node, Publicity, RefTy, SizedNumberLiteral,
-    StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
+use crate::{
+    ast::{
+        BinOp, Call, IfExpr, ModuleInner, Node, Publicity, RefTy, SizedNumberLiteral, StructInner,
+        SubroutineDecl, TypedName, UnOp, VarDecl,
+    },
+    builtin::Mutability,
 };
 use anyhow::Result as AResult;
 use num_bigint::BigUint;

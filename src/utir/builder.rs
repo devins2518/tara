@@ -1,6 +1,7 @@
 use crate::{
     arena::{Arena, ArenaRef, ExtraArenaContainable},
     ast::{Ast, Node},
+    builtin::Mutability,
     utir::{inst::*, Utir},
 };
 use std::{collections::HashMap, mem::MaybeUninit};
@@ -463,8 +464,8 @@ impl<'ast> Builder<'ast> {
             _ => unreachable!(),
         };
         let mutability = match inner.mutability {
-            crate::ast::Mutability::Mutable => Mutability::Mutable,
-            crate::ast::Mutability::Immutable => Mutability::Immutable,
+            Mutability::Mutable => Mutability::Mutable,
+            Mutability::Immutable => Mutability::Immutable,
         };
 
         let type_expr = self.gen_type_expr(env, &*inner.ty);
