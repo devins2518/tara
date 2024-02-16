@@ -148,6 +148,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             Inst::Call(_) => self.write_call(idx)?,
             Inst::IntLiteral(_) => self.write_int_literal(idx)?,
             Inst::IntType(_) => self.write_int_type(idx)?,
+            Inst::Branch(_) => self.write_branch(idx)?,
         }
         Ok(())
     }
@@ -251,7 +252,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::PtrTy(_)
             | Inst::Call(_)
             | Inst::IntLiteral(_)
-            | Inst::IntType(_) => unreachable!(),
+            | Inst::IntType(_)
+            | Inst::Branch(_) => unreachable!(),
         };
         write!(
             self,
@@ -298,7 +300,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::PtrTy(_)
             | Inst::Call(_)
             | Inst::IntLiteral(_)
-            | Inst::IntType(_) => unreachable!(),
+            | Inst::IntType(_)
+            | Inst::Branch(_) => unreachable!(),
         };
         write!(
             self,
@@ -428,12 +431,13 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         let call: CallArgs<'a> = self.utir.extra_data.get_extra(ed_idx.to_u32());
         write!(
             self,
-            "%{} = call(%{}, {{\n",
+            "%{} = call(%{}, {{",
             u32::from(idx),
             u32::from(call.lhs)
         )?;
-        {
+        if call.num_args > 0 {
             self.indent();
+            write!(self, "\n")?;
 
             let arg_base = u32::from(ed_idx) + CALL_ARGS_U32S as u32;
             for arg_num in 0..call.num_args {
@@ -469,6 +473,51 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             int_type.signedness,
             int_type.size
         )?;
+        return Ok(());
+    }
+
+    fn write_branch(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let extra_idx = match self.utir.instructions.get(idx) {
+            Inst::Branch(payload) => payload.extra_idx.to_u32(),
+            _ => unreachable!(),
+        };
+        let branch: Branch = self.utir.extra_data.get_extra(extra_idx);
+
+        write!(
+            self,
+            "%{} = branch(%{}, {{\n",
+            u32::from(idx),
+            u32::from(branch.cond),
+        )?;
+        {
+            self.indent();
+
+            let true_body_base = u32::from(extra_idx) + BRANCH_U32S as u32;
+            for i in 0..branch.true_body_len {
+                let inst_extra_idx = true_body_base + i;
+                let inst_idx = self.utir.extra_data.get_extra(Id::from(inst_extra_idx));
+                self.write_expr(inst_idx)?;
+                write!(self, "\n")?;
+            }
+
+            self.deindent();
+        }
+        write!(self, "}}, {{\n")?;
+        {
+            self.indent();
+
+            let false_body_base = u32::from(extra_idx) + BRANCH_U32S as u32 + branch.true_body_len;
+            for i in 0..branch.false_body_len {
+                let inst_extra_idx = false_body_base + i;
+                let inst_idx = self.utir.extra_data.get_extra(Id::from(inst_extra_idx));
+                self.write_expr(inst_idx)?;
+                write!(self, "\n")?;
+            }
+
+            self.deindent();
+        }
+        write!(self, "}})")?;
+
         return Ok(());
     }
 }

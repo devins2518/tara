@@ -42,6 +42,7 @@ pub enum Inst<'a> {
     Call(ExtraPayload<'a, CallArgs<'a>>),
     IntLiteral(u64),
     IntType(IntType<'a>),
+    Branch(ExtraPayload<'a, Branch<'a>>),
 }
 
 impl<'a> Inst<'a> {
@@ -79,6 +80,10 @@ impl<'a> Inst<'a> {
 
     pub fn as_instr(extra_idx: ExtraIdx<BinOp<'a>>, node_idx: NodeIdx<'a>) -> Self {
         return Self::As(ExtraPayload::new(extra_idx, node_idx));
+    }
+
+    pub fn branch(extra_idx: ExtraIdx<Branch<'a>>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::Branch(ExtraPayload::new(extra_idx, node_idx));
     }
 }
 
@@ -385,6 +390,34 @@ pub struct IntInfo {
 }
 
 pub type IntType<'a> = NodePayload<'a, IntInfo>;
+
+// Followed by `Branch.true_body_len` number of `InstIdx`s followed by `Branch.false_body_len`
+// number of `InstIdx`s
+pub const BRANCH_U32S: usize = 3;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Branch<'a> {
+    pub(super) cond: InstIdx<'a>,
+    pub(super) true_body_len: u32,
+    pub(super) false_body_len: u32,
+}
+
+impl ExtraArenaContainable<BRANCH_U32S> for Branch<'_> {}
+impl From<[u32; BRANCH_U32S]> for Branch<'_> {
+    fn from(value: [u32; BRANCH_U32S]) -> Self {
+        return Self {
+            cond: InstIdx::from(value[0]),
+            true_body_len: value[1],
+            false_body_len: value[1],
+        };
+    }
+}
+
+impl From<Branch<'_>> for [u32; BRANCH_U32S] {
+    fn from(value: Branch) -> Self {
+        return [value.cond.into(), value.true_body_len, value.false_body_len];
+    }
+}
 
 // An index into `instructions`
 pub type InstIdx<'a> = Id<Inst<'a>>;

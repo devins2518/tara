@@ -283,10 +283,10 @@ impl<'ast> Builder<'ast> {
             | Node::Deref(_)
             | Node::ReferenceTy(_)
             | Node::PointerTy(_)
-            | Node::Call(_) => self.gen_inline_block(env, node),
+            | Node::Call(_)
+            | Node::SizedNumberLiteral(_)
+            | Node::IfExpr(_) => self.gen_inline_block(env, node),
             Node::VarDecl(_) | Node::SubroutineDecl(_) => unreachable!(),
-            Node::SizedNumberLiteral(_) => self.gen_inline_block(env, node),
-            Node::IfExpr(_) => unimplemented!("todo if expr"),
         };
     }
 
@@ -394,15 +394,13 @@ impl<'ast> Builder<'ast> {
             Node::SizedNumberLiteral(_) => {
                 self.gen_sized_number_literal(&mut inline_block_env, node)
             }
+            Node::IfExpr(_) => self.gen_branch(&mut inline_block_env, node),
             Node::StructDecl(_)
             | Node::ModuleDecl(_)
             | Node::VarDecl(_)
             | Node::Identifier(_)
             | Node::NumberLiteral(_)
             | Node::SubroutineDecl(_) => unreachable!(),
-            Node::IfExpr(_) => {
-                unimplemented!("todo: more inline blocks")
-            }
         };
         inline_block_env.add_instruction(Inst::inline_block_break(inline_block, return_value));
 
@@ -559,6 +557,38 @@ impl<'ast> Builder<'ast> {
         env.set_instruction(call_inst, Inst::call(extra_idx, node_idx));
 
         return call_inst;
+    }
+
+    fn gen_branch(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+        let if_expr = match node {
+            Node::IfExpr(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        let cond = self.gen_expr(env, &*if_expr.cond);
+
+        let branch_instr = env.reserve_instruction();
+
+        let mut branch_env = env.derive();
+        branch_env.set_instruction_scope(InstructionScope::Block);
+
+        _ = self.gen_expr(&mut branch_env, &*if_expr.body);
+        let true_body_len = branch_env.tmp_extra.len() as u32;
+
+        _ = self.gen_expr(&mut branch_env, &*if_expr.else_body);
+        let false_body_len = branch_env.tmp_extra.len() as u32 - true_body_len;
+
+        let extra_idx = env.add_extra(Branch {
+            cond,
+            true_body_len,
+            false_body_len,
+        });
+        branch_env.finish();
+
+        let node_idx = self.add_node(node);
+
+        env.set_instruction(branch_instr, Inst::branch(extra_idx, node_idx));
+        return branch_instr;
     }
 
     fn add_node(&self, node: &'ast Node) -> NodeIdx<'ast> {
