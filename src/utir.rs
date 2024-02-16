@@ -146,6 +146,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             Inst::CombDecl(_) => self.write_subroutine_decl(idx)?,
             Inst::RefTy(_) | Inst::PtrTy(_) => self.write_ref_ty(idx)?,
             Inst::Call(_) => self.write_call(idx)?,
+            Inst::IntLiteral(_) => self.write_int_literal(idx)?,
+            Inst::IntType(_) => self.write_int_type(idx)?,
         }
         Ok(())
     }
@@ -247,7 +249,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::Return(_)
             | Inst::RefTy(_)
             | Inst::PtrTy(_)
-            | Inst::Call(_) => unreachable!(),
+            | Inst::Call(_)
+            | Inst::IntLiteral(_)
+            | Inst::IntType(_) => unreachable!(),
         };
         write!(
             self,
@@ -292,7 +296,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::Access(_)
             | Inst::RefTy(_)
             | Inst::PtrTy(_)
-            | Inst::Call(_) => unreachable!(),
+            | Inst::Call(_)
+            | Inst::IntLiteral(_)
+            | Inst::IntType(_) => unreachable!(),
         };
         write!(
             self,
@@ -439,6 +445,30 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.deindent();
         }
         write!(self, "}})")?;
+        return Ok(());
+    }
+
+    fn write_int_literal(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let number = match self.utir.instructions.get(idx) {
+            Inst::IntLiteral(num) => num,
+            _ => unreachable!(),
+        };
+        write!(self, "%{} = int_literal({})", u32::from(idx), number)?;
+        return Ok(());
+    }
+
+    fn write_int_type(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let int_type = match self.utir.instructions.get(idx) {
+            Inst::IntType(num) => num.val,
+            _ => unreachable!(),
+        };
+        write!(
+            self,
+            "%{} = int_type({}, {})",
+            u32::from(idx),
+            int_type.signedness,
+            int_type.size
+        )?;
         return Ok(());
     }
 }

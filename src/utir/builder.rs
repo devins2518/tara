@@ -1,9 +1,10 @@
 use crate::{
     arena::{Arena, ArenaRef, ExtraArenaContainable},
     ast::{Ast, Node},
-    builtin::Mutability,
+    builtin::{Mutability, Signedness},
     utir::{inst::*, Utir},
 };
+use num_traits::cast::ToPrimitive;
 use std::{collections::HashMap, mem::MaybeUninit};
 use symbol_table::GlobalSymbol;
 
@@ -13,6 +14,7 @@ pub struct Builder<'ast> {
     instructions: Arena<Inst<'ast>>,
     extra_data: Arena<u32>,
     nodes: Arena<&'ast Node<'ast>>,
+    failure: Failure<'ast>,
 }
 
 impl<'ast> Builder<'ast> {
@@ -22,6 +24,7 @@ impl<'ast> Builder<'ast> {
             instructions: Arena::new(),
             extra_data: Arena::new(),
             nodes: Arena::new(),
+            failure: Failure::new(),
         };
     }
 
@@ -282,7 +285,7 @@ impl<'ast> Builder<'ast> {
             | Node::PointerTy(_)
             | Node::Call(_) => self.gen_inline_block(env, node),
             Node::VarDecl(_) | Node::SubroutineDecl(_) => unreachable!(),
-            Node::SizedNumberLiteral(_) => unimplemented!("todo sized number literal"),
+            Node::SizedNumberLiteral(_) => self.gen_inline_block(env, node),
             Node::IfExpr(_) => unimplemented!("todo if expr"),
         };
     }
@@ -308,7 +311,47 @@ impl<'ast> Builder<'ast> {
         env: &mut Environment<'_, 'ast, '_>,
         node: &'ast Node,
     ) -> InstIdx<'ast> {
-        unimplemented!("number literal")
+        let int = match node {
+            Node::NumberLiteral(inner) => inner,
+            _ => unreachable!(),
+        };
+        if let Some(number) = int.to_u64() {
+            let inst = Inst::int_literal(number);
+            return env.add_instruction(inst);
+        } else {
+            unimplemented!("large number literal")
+        }
+    }
+
+    fn gen_sized_number_literal(
+        &self,
+        env: &mut Environment<'_, 'ast, '_>,
+        node: &'ast Node,
+    ) -> InstIdx<'ast> {
+        let sized_number_literal = match node {
+            Node::SizedNumberLiteral(inner) => inner,
+            _ => unreachable!(),
+        };
+        if let Some(int) = sized_number_literal.literal.to_u64() {
+            let node_idx = self.add_node(node);
+
+            let int_inst = env.add_instruction(Inst::int_literal(int));
+            let type_inst = env.add_instruction(Inst::int_type(
+                Signedness::Unsigned,
+                sized_number_literal.size,
+                node_idx,
+            ));
+
+            let bin_op = BinOp::new(type_inst, int_inst);
+            let extra_idx = env.add_extra(bin_op);
+
+            let node_idx = self.add_node(node);
+
+            let as_instr = env.add_instruction(Inst::as_instr(extra_idx, node_idx));
+            return as_instr;
+        } else {
+            unimplemented!("large sized number literal")
+        }
     }
 
     fn gen_inline_block(
@@ -348,12 +391,14 @@ impl<'ast> Builder<'ast> {
                 self.gen_ref_ty(&mut inline_block_env, node)
             }
             Node::Call(_) => self.gen_call(&mut inline_block_env, node),
+            Node::SizedNumberLiteral(_) => {
+                self.gen_sized_number_literal(&mut inline_block_env, node)
+            }
             Node::StructDecl(_)
             | Node::ModuleDecl(_)
             | Node::VarDecl(_)
             | Node::Identifier(_)
             | Node::NumberLiteral(_)
-            | Node::SizedNumberLiteral(_)
             | Node::SubroutineDecl(_) => unreachable!(),
             Node::IfExpr(_) => {
                 unimplemented!("todo: more inline blocks")
@@ -665,5 +710,30 @@ impl<'inst, 'parent> Scope<'inst, 'parent> {
         } else {
             self.bindings.insert(ident, inst);
         }
+    }
+}
+
+struct Failure<'ast> {
+    fail_node: Option<&'ast Node<'ast>>,
+    reason: String,
+    notes: Vec<String>,
+}
+
+impl<'ast> Failure<'ast> {
+    pub fn new() -> Self {
+        return Self {
+            fail_node: None,
+            reason: String::new(),
+            notes: Vec::new(),
+        };
+    }
+
+    pub fn fail_with(&mut self, node: &'ast Node<'ast>, reason: &str) {
+        self.fail_node = Some(node);
+        self.reason = reason.to_owned();
+    }
+
+    pub fn add_node(&mut self, note: &str) {
+        self.notes.push(note.to_owned());
     }
 }

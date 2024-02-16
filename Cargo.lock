@@ -628,6 +628,7 @@ dependencies = [
  "lit",
  "miette",
  "num-bigint",
+ "num-traits",
  "pest",
  "pest_consume",
  "symbol_table",

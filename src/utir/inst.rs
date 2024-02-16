@@ -1,7 +1,7 @@
 use crate::{
     arena::{ExtraArenaContainable, Id},
     ast::Node,
-    builtin::Mutability,
+    builtin::{Mutability, Signedness},
 };
 use std::{fmt::Display, num::NonZeroU32};
 use symbol_table::GlobalSymbol;
@@ -40,6 +40,8 @@ pub enum Inst<'a> {
     RefTy(ExtraPayload<'a, RefTy<'a>>),
     PtrTy(ExtraPayload<'a, RefTy<'a>>),
     Call(ExtraPayload<'a, CallArgs<'a>>),
+    IntLiteral(u64),
+    IntType(IntType<'a>),
 }
 
 impl<'a> Inst<'a> {
@@ -65,6 +67,18 @@ impl<'a> Inst<'a> {
 
     pub fn call(extra_idx: ExtraIdx<CallArgs<'a>>, node_idx: NodeIdx<'a>) -> Self {
         return Self::Call(ExtraPayload::new(extra_idx, node_idx));
+    }
+
+    pub fn int_literal(int: u64) -> Self {
+        return Self::IntLiteral(int);
+    }
+
+    pub fn int_type(signedness: Signedness, size: u16, node: NodeIdx<'a>) -> Self {
+        return Self::IntType(NodePayload::new(IntInfo { signedness, size }, node));
+    }
+
+    pub fn as_instr(extra_idx: ExtraIdx<BinOp<'a>>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::As(ExtraPayload::new(extra_idx, node_idx));
     }
 }
 
@@ -362,6 +376,15 @@ impl From<CallArgs<'_>> for [u32; CALL_ARGS_U32S] {
         return [value.lhs.into(), value.num_args];
     }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct IntInfo {
+    pub(super) signedness: Signedness,
+    pub(super) size: u16,
+}
+
+pub type IntType<'a> = NodePayload<'a, IntInfo>;
 
 // An index into `instructions`
 pub type InstIdx<'a> = Id<Inst<'a>>;
