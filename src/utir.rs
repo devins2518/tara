@@ -159,7 +159,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self,
             "%{} = decl_val(\"{}\")",
             u32::from(idx),
-            decl_val.string.as_str()
+            decl_val.val.as_str()
         )?;
         Ok(())
     }
@@ -299,7 +299,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             "%{} = {}(%{})",
             u32::from(idx),
             name,
-            u32::from(payload.lhs)
+            u32::from(payload.val)
         )?;
         Ok(())
     }

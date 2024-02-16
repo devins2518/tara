@@ -83,6 +83,19 @@ impl<'a, T> ExtraPayload<'a, T> {
     }
 }
 
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct NodePayload<'a, T> {
+    pub(super) val: T,
+    pub(super) node_idx: NodeIdx<'a>,
+}
+
+impl<'a, T> NodePayload<'a, T> {
+    pub fn new(val: T, node_idx: NodeIdx<'a>) -> Self {
+        return NodePayload { val, node_idx };
+    }
+}
+
 pub const CONTAINER_DECL_U32S: usize = 2;
 // Followed by a `fields` number of `ContainerField` followed by a `decls` number of
 // `ContainerVarDecl`
@@ -251,18 +264,7 @@ pub struct InstSubList<'a> {
     pub(super) end: InstIdx<'a>,
 }
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Str<'a> {
-    pub(super) string: GlobalSymbol,
-    pub(super) node: NodeIdx<'a>,
-}
-
-impl<'a> Str<'a> {
-    fn new(string: GlobalSymbol, node: NodeIdx<'a>) -> Self {
-        return Self { string, node };
-    }
-}
+pub type Str<'a> = NodePayload<'a, GlobalSymbol>;
 
 pub const BIN_OP_U32S: usize = 2;
 #[repr(C)]
@@ -294,18 +296,7 @@ impl From<BinOp<'_>> for [u32; BIN_OP_U32S] {
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct UnOp<'a> {
-    pub(super) lhs: InstIdx<'a>,
-    pub(super) node: NodeIdx<'a>,
-}
-
-impl<'a> UnOp<'a> {
-    pub fn new(lhs: InstIdx<'a>, node: NodeIdx<'a>) -> Self {
-        return Self { lhs, node };
-    }
-}
+pub type UnOp<'a> = NodePayload<'a, InstIdx<'a>>;
 
 #[repr(u32)]
 #[derive(Copy, Clone)]

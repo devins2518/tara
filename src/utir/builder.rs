@@ -184,7 +184,7 @@ impl<'ast> Builder<'ast> {
         });
         subroutine_env.finish();
 
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
 
         let subroutine_decl = ExtraPayload::new(extra_idx, node_idx);
 
@@ -229,7 +229,7 @@ impl<'ast> Builder<'ast> {
         });
         subroutine_env.finish();
 
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
 
         let subroutine_decl = ExtraPayload::new(extra_idx, node_idx);
 
@@ -297,7 +297,7 @@ impl<'ast> Builder<'ast> {
             Node::Identifier(ident) => ident,
             _ => unreachable!(),
         };
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
         let idx = env.add_instruction(Inst::decl_val(*symbol, node_idx));
         return idx;
     }
@@ -364,7 +364,7 @@ impl<'ast> Builder<'ast> {
         let extra_idx = env.add_extra(Block::new(num_instrs));
         inline_block_env.finish();
 
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
 
         env.set_instruction(inline_block, Inst::inline_block(extra_idx, node_idx));
         return inline_block;
@@ -409,7 +409,7 @@ impl<'ast> Builder<'ast> {
         let bin_op = BinOp::new(lhs_idx, rhs_idx);
 
         let ed_idx = env.add_extra(bin_op);
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
 
         let payload = ExtraPayload::new(ed_idx, node_idx);
 
@@ -443,7 +443,7 @@ impl<'ast> Builder<'ast> {
         };
 
         let lhs_idx = self.gen_expr(env, &*inner.lhs);
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
 
         let un_op = UnOp::new(lhs_idx, node_idx);
 
@@ -472,7 +472,7 @@ impl<'ast> Builder<'ast> {
         let ref_ty = RefTy::new(mutability, type_expr);
         let extra_idx = env.add_extra(ref_ty);
 
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
 
         let payload = ExtraPayload::new(extra_idx, node_idx);
 
@@ -509,14 +509,10 @@ impl<'ast> Builder<'ast> {
         };
 
         let extra_idx = env.add_extra(call_args);
-        let node_idx = self.nodes.alloc(node);
+        let node_idx = self.add_node(node);
         env.set_instruction(call_inst, Inst::call(extra_idx, node_idx));
 
         return call_inst;
-    }
-
-    fn add_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, val: T) -> ExtraIdx<T> {
-        return self.extra_data.insert_extra(val);
     }
 
     fn add_node(&self, node: &'ast Node) -> NodeIdx<'ast> {
