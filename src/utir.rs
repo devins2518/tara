@@ -115,53 +115,57 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_container_member(&mut self, member: ContainerMember<'b>) -> std::fmt::Result {
+    fn write_container_member(&mut self, member: ContainerMember) -> std::fmt::Result {
         let name = member.name;
         write!(self, "\"{}\" ", name.as_str())?;
         self.write_expr(member.value)?;
         Ok(())
     }
 
-    fn write_container_field(&mut self, field: ContainerField<'b>) -> std::fmt::Result {
+    fn write_container_field(&mut self, field: ContainerField) -> std::fmt::Result {
         let name = field.name;
         write!(self, "\"{}\": ", name.as_str())?;
         self.write_expr(field.ty)?;
         Ok(())
     }
 
-    fn write_expr(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
-        let inst = self.utir.instructions.get(idx);
-        match inst {
-            Inst::StructDecl(_) => self.write_struct_decl(idx)?,
-            Inst::ModuleDecl(_) => self.write_module_decl(idx)?,
-            Inst::DeclVal(_) => self.write_decl_val(idx)?,
-            Inst::Or(_)
-            | Inst::And(_)
-            | Inst::Lt(_)
-            | Inst::Gt(_)
-            | Inst::Lte(_)
-            | Inst::Gte(_)
-            | Inst::Eq(_)
-            | Inst::Neq(_)
-            | Inst::BitAnd(_)
-            | Inst::BitOr(_)
-            | Inst::BitXor(_)
-            | Inst::Add(_)
-            | Inst::Sub(_)
-            | Inst::Mul(_)
-            | Inst::Div(_)
-            | Inst::InlineBlockBreak(_)
-            | Inst::As(_)
-            | Inst::Access(_) => self.write_bin_op(idx)?,
-            Inst::Negate(_) | Inst::Deref(_) | Inst::Return(_) => self.write_un_op(idx)?,
-            Inst::InlineBlock(_) => self.write_inline_block(idx)?,
-            Inst::FunctionDecl(_) => self.write_subroutine_decl(idx)?,
-            Inst::CombDecl(_) => self.write_subroutine_decl(idx)?,
-            Inst::RefTy(_) | Inst::PtrTy(_) => self.write_ref_ty(idx)?,
-            Inst::Call(_) => self.write_call(idx)?,
-            Inst::IntLiteral(_) => self.write_int_literal(idx)?,
-            Inst::IntType(_) => self.write_int_type(idx)?,
-            Inst::Branch(_) => self.write_branch(idx)?,
+    fn write_expr(&mut self, inst_ref: InstRef) -> std::fmt::Result {
+        if let Some(inst_idx) = inst_ref.into() {
+            let inst = self.utir.instructions.get(inst_idx);
+            match inst {
+                Inst::StructDecl(_) => self.write_struct_decl(inst_idx)?,
+                Inst::ModuleDecl(_) => self.write_module_decl(inst_idx)?,
+                Inst::DeclVal(_) => self.write_decl_val(inst_idx)?,
+                Inst::Or(_)
+                | Inst::And(_)
+                | Inst::Lt(_)
+                | Inst::Gt(_)
+                | Inst::Lte(_)
+                | Inst::Gte(_)
+                | Inst::Eq(_)
+                | Inst::Neq(_)
+                | Inst::BitAnd(_)
+                | Inst::BitOr(_)
+                | Inst::BitXor(_)
+                | Inst::Add(_)
+                | Inst::Sub(_)
+                | Inst::Mul(_)
+                | Inst::Div(_)
+                | Inst::InlineBlockBreak(_)
+                | Inst::As(_)
+                | Inst::Access(_) => self.write_bin_op(inst_idx)?,
+                Inst::Negate(_) | Inst::Deref(_) | Inst::Return(_) => self.write_un_op(inst_idx)?,
+                Inst::InlineBlock(_) => self.write_inline_block(inst_idx)?,
+                Inst::FunctionDecl(_) => self.write_subroutine_decl(inst_idx)?,
+                Inst::CombDecl(_) => self.write_subroutine_decl(inst_idx)?,
+                Inst::RefTy(_) | Inst::PtrTy(_) => self.write_ref_ty(inst_idx)?,
+                Inst::Call(_) => self.write_call(inst_idx)?,
+                Inst::IntLiteral(_) => self.write_int_literal(inst_idx)?,
+                Inst::IntType(_) => self.write_int_type(inst_idx)?,
+                Inst::Branch(_) => self.write_branch(inst_idx)?,
+            }
+        } else {
+            self.write_ref(inst_ref)?;
         }
         Ok(())
     }
@@ -270,11 +274,11 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         };
         write!(
             self,
-            "%{} = {}(%{}, %{})",
+            "%{} = {}({}, {})",
             u32::from(idx),
             name,
-            u32::from(payload.lhs),
-            u32::from(payload.rhs),
+            payload.lhs,
+            payload.rhs,
         )?;
         Ok(())
     }
@@ -316,13 +320,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::IntType(_)
             | Inst::Branch(_) => unreachable!(),
         };
-        write!(
-            self,
-            "%{} = {}(%{})",
-            u32::from(idx),
-            name,
-            u32::from(payload.val)
-        )?;
+        write!(self, "%{} = {}({})", u32::from(idx), name, payload.val)?;
         Ok(())
     }
 
@@ -338,11 +336,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.indent();
 
             for instr in 0..block.num_instrs {
-                let instr: InstIdx = self
-                    .utir
-                    .extra_data
-                    .get(ExtraIdx::from(u32::from(ed_idx) + instr + 1))
-                    .into();
+                let inst_idx = u32::from(ed_idx) + instr + 1;
+                let instr: InstRef = self.utir.extra_data.get_extra(inst_idx.into());
                 self.write_expr(instr)?;
                 write!(self, "\n")?;
             }
@@ -377,12 +372,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                     let param: Param = self.utir.extra_data.get_extra(param_offset.into());
 
                     self.write_expr(param.ty)?;
-                    write!(
-                        self,
-                        "\n\"{}\" : %{}",
-                        param.name.as_str(),
-                        u32::from(param.ty)
-                    )?;
+                    write!(self, "\n\"{}\" : {}", param.name.as_str(), param.ty)?;
                 }
                 write!(self, "\n")?;
 
@@ -390,8 +380,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             }
             write!(self, "}}\n")?;
 
-            self.write_expr(subroutine_decl.return_type)?;
-            write!(self, "\n")?;
+            self.write_expr(subroutine_decl.return_type.into())?;
 
             let body_base = (u32::from(ed_idx) + SUBROUTINE_DECL_U32S as u32)
                 + (subroutine_decl.params * PARAM_U32S as u32);
@@ -399,8 +388,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 write!(self, "\n")?;
 
                 let body_offset = body_base + body_num;
-                let body_idx = self.utir.extra_data.get(body_offset.into());
-                self.write_expr(body_idx.into())?;
+                let body_idx: InstRef = self.utir.extra_data.get_extra(body_offset.into());
+                self.write_expr(body_idx)?;
                 break;
             }
             write!(self, "\n")?;
@@ -427,11 +416,11 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         };
         write!(
             self,
-            "%{} = {}({} %{})",
+            "%{} = {}({} {})",
             u32::from(idx),
             name,
             ref_ty.mutability,
-            u32::from(ref_ty.ty)
+            ref_ty.ty
         )?;
         return Ok(());
     }
@@ -441,22 +430,25 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             Inst::Call(payload) => payload.extra_idx,
             _ => unreachable!(),
         };
-        let call: CallArgs<'a> = self.utir.extra_data.get_extra(ed_idx.to_u32());
-        write!(
-            self,
-            "%{} = call(%{}, {{",
-            u32::from(idx),
-            u32::from(call.lhs)
-        )?;
+        let call: CallArgs = self.utir.extra_data.get_extra(ed_idx.to_u32());
+
+        let arg_base = u32::from(ed_idx) + CALL_ARGS_U32S as u32;
+        for arg_num in 0..call.num_args {
+            let arg_ed_idx = arg_base + arg_num;
+            let arg_ref: InstRef = self.utir.extra_data.get_extra(Id::from(arg_ed_idx));
+            self.write_expr(arg_ref)?;
+            write!(self, "\n")?;
+        }
+
+        write!(self, "%{} = call({}, {{", u32::from(idx), call.lhs)?;
         if call.num_args > 0 {
             self.indent();
             write!(self, "\n")?;
 
-            let arg_base = u32::from(ed_idx) + CALL_ARGS_U32S as u32;
             for arg_num in 0..call.num_args {
                 let arg_ed_idx = arg_base + arg_num;
-                let arg_idx = self.utir.extra_data.get(Id::from(arg_ed_idx));
-                write!(self, "%{},\n", arg_idx)?;
+                let arg_idx: InstRef = self.utir.extra_data.get_extra(Id::from(arg_ed_idx));
+                write!(self, "{},\n", arg_idx)?;
             }
 
             self.deindent();
@@ -496,20 +488,15 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         };
         let branch: Branch = self.utir.extra_data.get_extra(extra_idx);
 
-        write!(
-            self,
-            "%{} = branch(%{}, {{\n",
-            u32::from(idx),
-            u32::from(branch.cond),
-        )?;
+        write!(self, "%{} = branch({}, {{\n", u32::from(idx), branch.cond)?;
         {
             self.indent();
 
             let true_body_base = u32::from(extra_idx) + BRANCH_U32S as u32;
             for i in 0..branch.true_body_len {
                 let inst_extra_idx = true_body_base + i;
-                let inst_idx = self.utir.extra_data.get_extra(Id::from(inst_extra_idx));
-                self.write_expr(inst_idx)?;
+                let inst_ref: InstRef = self.utir.extra_data.get_extra(Id::from(inst_extra_idx));
+                self.write_expr(inst_ref)?;
                 write!(self, "\n")?;
             }
 
@@ -522,8 +509,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             let false_body_base = u32::from(extra_idx) + BRANCH_U32S as u32 + branch.true_body_len;
             for i in 0..branch.false_body_len {
                 let inst_extra_idx = false_body_base + i;
-                let inst_idx = self.utir.extra_data.get_extra(Id::from(inst_extra_idx));
-                self.write_expr(inst_idx)?;
+                let inst_ref: InstRef = self.utir.extra_data.get_extra(Id::from(inst_extra_idx));
+                self.write_expr(inst_ref)?;
                 write!(self, "\n")?;
             }
 
@@ -531,6 +518,11 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         }
         write!(self, "}})")?;
 
+        return Ok(());
+    }
+
+    fn write_ref(&mut self, inst_ref: InstRef) -> std::fmt::Result {
+        write!(self, "{}", inst_ref)?;
         return Ok(());
     }
 }

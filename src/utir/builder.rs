@@ -38,11 +38,7 @@ impl<'ast> Builder<'ast> {
         let _ = self.gen_struct_inner(&mut env, &self.ast.root);
     }
 
-    fn gen_struct_inner(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node,
-    ) -> InstIdx<'ast> {
+    fn gen_struct_inner(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let struct_inner = match node {
             Node::StructDecl(inner) => inner,
             _ => unreachable!(),
@@ -65,9 +61,10 @@ impl<'ast> Builder<'ast> {
                 Node::VarDecl(var_decl) => {
                     (var_decl.ident, self.gen_var_decl(&mut struct_env, member))
                 }
-                Node::SubroutineDecl(fn_decl) => {
-                    (fn_decl.ident, self.gen_fn_decl(&mut struct_env, member))
-                }
+                Node::SubroutineDecl(fn_decl) => (
+                    fn_decl.ident,
+                    self.gen_fn_decl(&mut struct_env, member).into(),
+                ),
                 _ => unreachable!(),
             };
             let container_member = ContainerMember::new(name, decl_idx);
@@ -84,11 +81,7 @@ impl<'ast> Builder<'ast> {
         return struct_idx;
     }
 
-    fn gen_module_inner(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node,
-    ) -> InstIdx<'ast> {
+    fn gen_module_inner(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let module_inner = match node {
             Node::ModuleDecl(inner) => inner,
             _ => unreachable!(),
@@ -111,9 +104,10 @@ impl<'ast> Builder<'ast> {
                 Node::VarDecl(var_decl) => {
                     (var_decl.ident, self.gen_var_decl(&mut module_env, member))
                 }
-                Node::SubroutineDecl(comb_decl) => {
-                    (comb_decl.ident, self.gen_comb_decl(&mut module_env, member))
-                }
+                Node::SubroutineDecl(comb_decl) => (
+                    comb_decl.ident,
+                    self.gen_comb_decl(&mut module_env, member).into(),
+                ),
                 _ => unreachable!(),
             };
             let container_member = ContainerMember::new(name, decl_idx);
@@ -130,11 +124,7 @@ impl<'ast> Builder<'ast> {
         return module_idx;
     }
 
-    fn gen_var_decl(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node<'ast>,
-    ) -> InstIdx<'ast> {
+    fn gen_var_decl(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node<'ast>) -> InstRef {
         let var_decl = match node {
             Node::VarDecl(inner) => inner,
             _ => unreachable!(),
@@ -151,11 +141,7 @@ impl<'ast> Builder<'ast> {
         return init_expr;
     }
 
-    fn gen_fn_decl(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node<'ast>,
-    ) -> InstIdx<'ast> {
+    fn gen_fn_decl(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node<'ast>) -> InstRef {
         let subroutine_decl = match node {
             Node::SubroutineDecl(inner) => inner,
             _ => unreachable!(),
@@ -200,7 +186,7 @@ impl<'ast> Builder<'ast> {
         &self,
         env: &mut Environment<'_, 'ast, '_>,
         node: &'ast Node<'ast>,
-    ) -> InstIdx<'ast> {
+    ) -> InstRef {
         let subroutine_decl = match node {
             Node::SubroutineDecl(inner) => inner,
             _ => unreachable!(),
@@ -241,27 +227,23 @@ impl<'ast> Builder<'ast> {
         return subroutine_idx;
     }
 
-    fn gen_type_expr(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node,
-    ) -> InstIdx<'ast> {
+    fn gen_type_expr(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         match node {
-            Node::StructDecl(_) => self.gen_struct_inner(env, node),
-            Node::ModuleDecl(_) => self.gen_module_inner(env, node),
-            Node::Identifier(_) => self.gen_identifier(env, node),
-            Node::ReferenceTy(_) => self.gen_inline_block(env, node),
-            Node::PointerTy(_) => self.gen_inline_block(env, node),
+            Node::StructDecl(_) => self.gen_struct_inner(env, node).into(),
+            Node::ModuleDecl(_) => self.gen_module_inner(env, node).into(),
+            Node::Identifier(_) => self.gen_identifier(env, node).into(),
+            Node::ReferenceTy(_) => self.gen_inline_block(env, node).into(),
+            Node::PointerTy(_) => self.gen_inline_block(env, node).into(),
             _ => unreachable!(),
         }
     }
 
-    fn gen_expr(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+    fn gen_expr(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         return match node {
-            Node::StructDecl(_) => self.gen_struct_inner(env, node),
-            Node::ModuleDecl(_) => self.gen_module_inner(env, node),
-            Node::Identifier(_) => self.gen_identifier(env, node),
-            Node::NumberLiteral(_) => self.gen_number_literal(env, node),
+            Node::StructDecl(_) => self.gen_struct_inner(env, node).into(),
+            Node::ModuleDecl(_) => self.gen_module_inner(env, node).into(),
+            Node::Identifier(_) => self.gen_identifier(env, node).into(),
+            Node::NumberLiteral(_) => self.gen_number_literal(env, node).into(),
             Node::Or(_)
             | Node::And(_)
             | Node::Lt(_)
@@ -285,16 +267,12 @@ impl<'ast> Builder<'ast> {
             | Node::PointerTy(_)
             | Node::Call(_)
             | Node::SizedNumberLiteral(_)
-            | Node::IfExpr(_) => self.gen_inline_block(env, node),
+            | Node::IfExpr(_) => self.gen_inline_block(env, node).into(),
             Node::VarDecl(_) | Node::SubroutineDecl(_) => unreachable!(),
         };
     }
 
-    fn gen_identifier(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node,
-    ) -> InstIdx<'ast> {
+    fn gen_identifier(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         // TODO: do namespace resolving. This requires that parameters become their own
         // instructions so that they can be added to the scopes in functions
         let symbol = match node {
@@ -306,11 +284,7 @@ impl<'ast> Builder<'ast> {
         return idx;
     }
 
-    fn gen_number_literal(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node,
-    ) -> InstIdx<'ast> {
+    fn gen_number_literal(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let int = match node {
             Node::NumberLiteral(inner) => inner,
             _ => unreachable!(),
@@ -327,7 +301,7 @@ impl<'ast> Builder<'ast> {
         &self,
         env: &mut Environment<'_, 'ast, '_>,
         node: &'ast Node,
-    ) -> InstIdx<'ast> {
+    ) -> InstRef {
         let sized_number_literal = match node {
             Node::SizedNumberLiteral(inner) => inner,
             _ => unreachable!(),
@@ -342,7 +316,7 @@ impl<'ast> Builder<'ast> {
                 node_idx,
             ));
 
-            let bin_op = BinOp::new(type_inst, int_inst);
+            let bin_op = BinOp::new(type_inst.into(), int_inst.into());
             let extra_idx = env.add_extra(bin_op);
 
             let node_idx = self.add_node(node);
@@ -354,11 +328,7 @@ impl<'ast> Builder<'ast> {
         }
     }
 
-    fn gen_inline_block(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node,
-    ) -> InstIdx<'ast> {
+    fn gen_inline_block(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let inline_block = env.reserve_instruction();
 
         // TODO: extraneous inline_blocks are created here, we can skip creating one if we detect
@@ -402,7 +372,9 @@ impl<'ast> Builder<'ast> {
             | Node::NumberLiteral(_)
             | Node::SubroutineDecl(_) => unreachable!(),
         };
-        inline_block_env.add_instruction(Inst::inline_block_break(inline_block, return_value));
+        inline_block_env.add_instruction(
+            Inst::inline_block_break(inline_block.into(), return_value.into()).into(),
+        );
 
         let num_instrs = inline_block_env.tmp_extra.len() as u32;
         let extra_idx = env.add_extra(Block::new(num_instrs));
@@ -414,7 +386,7 @@ impl<'ast> Builder<'ast> {
         return inline_block;
     }
 
-    fn gen_bin_op(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+    fn gen_bin_op(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let inner = match node {
             Node::Or(inner)
             | Node::And(inner)
@@ -480,7 +452,7 @@ impl<'ast> Builder<'ast> {
         return env.add_instruction(inst);
     }
 
-    fn gen_un_op(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+    fn gen_un_op(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let inner = match node {
             Node::Negate(inner) | Node::Deref(inner) | Node::Return(inner) => inner,
             _ => unreachable!(),
@@ -501,7 +473,7 @@ impl<'ast> Builder<'ast> {
         return env.add_instruction(inst);
     }
 
-    fn gen_ref_ty(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+    fn gen_ref_ty(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let inner = match node {
             Node::ReferenceTy(inner) | Node::PointerTy(inner) => inner,
             _ => unreachable!(),
@@ -530,7 +502,7 @@ impl<'ast> Builder<'ast> {
         return idx;
     }
 
-    fn gen_call(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+    fn gen_call(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let call = match node {
             Node::Call(inner) => inner,
             _ => unreachable!(),
@@ -545,7 +517,6 @@ impl<'ast> Builder<'ast> {
         for arg in &call.args {
             self.gen_expr(&mut call_env, arg);
         }
-        call_env.finish();
 
         let call_args = CallArgs {
             lhs,
@@ -553,13 +524,15 @@ impl<'ast> Builder<'ast> {
         };
 
         let extra_idx = env.add_extra(call_args);
+        call_env.finish();
+
         let node_idx = self.add_node(node);
         env.set_instruction(call_inst, Inst::call(extra_idx, node_idx));
 
         return call_inst;
     }
 
-    fn gen_branch(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstIdx<'ast> {
+    fn gen_branch(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         let if_expr = match node {
             Node::IfExpr(inner) => inner,
             _ => unreachable!(),
@@ -660,35 +633,32 @@ impl<'builder, 'inst, 'parent> Environment<'builder, 'inst, 'parent> {
         self.tmp_extra.alloc(val);
     }
 
-    pub fn add_binding(&mut self, ident: GlobalSymbol, inst: InstIdx<'inst>) {
+    pub fn add_binding(&mut self, ident: GlobalSymbol, inst: InstRef) {
         self.scope.add_binding(ident, inst);
     }
 
-    pub fn add_instruction(&self, inst: Inst<'inst>) -> InstIdx<'inst> {
+    pub fn add_instruction(&self, inst: Inst<'inst>) -> InstRef {
         let inst_idx = self.builder.instructions.alloc(inst);
+        let inst_ref = InstRef::from(inst_idx);
         match self.instruction_scope {
             InstructionScope::Global => {}
-            InstructionScope::Block => self.add_tmp_extra(inst_idx),
+            InstructionScope::Block => self.add_tmp_extra(inst_ref),
         }
-        return inst_idx;
+        return inst_ref;
     }
 
-    pub fn reserve_instruction(&self) -> InstIdx<'inst> {
+    pub fn reserve_instruction(&self) -> InstRef {
         let uninit = MaybeUninit::uninit();
         let id = self.add_instruction(unsafe { uninit.assume_init() });
         return id;
     }
 
-    pub fn set_instruction(&self, inst: InstIdx<'inst>, val: Inst<'inst>) {
-        self.builder.instructions.set(inst, val);
+    pub fn set_instruction(&self, inst: InstRef, val: Inst<'inst>) {
+        self.builder.instructions.set(inst.to_inst().unwrap(), val);
     }
 
     pub fn set_instruction_scope(&mut self, scope: InstructionScope) {
         self.instruction_scope = scope;
-    }
-
-    pub fn is_block_scope(&self) -> bool {
-        return self.instruction_scope == InstructionScope::Block;
     }
 
     pub fn finish(self) {
@@ -712,7 +682,7 @@ enum InstructionScope {
 struct Scope<'inst, 'parent> {
     parent: Option<&'parent Scope<'inst, 'parent>>,
     // Current bindings of symbols to instruction indexes
-    bindings: HashMap<GlobalSymbol, InstIdx<'inst>>,
+    bindings: HashMap<GlobalSymbol, InstRef>,
     // Instructions generated during the current scope that couldn't be immediately found
     fix_ups: Vec<InstIdx<'inst>>,
 }
@@ -734,7 +704,7 @@ impl<'inst, 'parent> Scope<'inst, 'parent> {
         };
     }
 
-    pub fn add_binding(&mut self, ident: GlobalSymbol, inst: InstIdx<'inst>) {
+    pub fn add_binding(&mut self, ident: GlobalSymbol, inst: InstRef) {
         if let Some(prev_inst) = self.bindings.get(&ident) {
             todo!("Error reporting for shadowing")
         } else {

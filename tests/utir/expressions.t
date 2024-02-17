@@ -29,9 +29,11 @@
 // CHECK:             %23 = access(%21, %22)
 // CHECK:             %24 = inline_block_break(%20, %23)
 // CHECK:         })
+// CHECK:         %26 = decl_val("c")
+// CHECK:         %27 = decl_val("d")
 // CHECK:         %25 = call(%20, {
-// CHECK:             %3,
-// CHECK:             %20,
+// CHECK:             %26,
+// CHECK:             %27,
 // CHECK:         })
 // CHECK:         %28 = inline_block_break(%19, %25)
 // CHECK:     })
