@@ -279,6 +279,9 @@ impl<'ast> Builder<'ast> {
             Node::Identifier(ident) => ident,
             _ => unreachable!(),
         };
+        if let Some(inst_ref) = InstRef::from_str(symbol.as_str()) {
+            return inst_ref;
+        }
         let node_idx = self.add_node(node);
         let idx = env.add_instruction(Inst::decl_val(*symbol, node_idx));
         return idx;

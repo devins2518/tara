@@ -54,41 +54,41 @@
 // CHECK:         %41 = inline_block_break(%38, %40)
 // CHECK:     })
 // CHECK:     "I" %42 = decl_val("undefined")
-// CHECK:     "J" %43 = decl_val("true")
-// CHECK:     "K" %44 = decl_val("false")
-// CHECK:     "L" %45 = inline_block({
-// CHECK:         %46 = decl_val("a")
-// CHECK:         %47 = deref(%46)
-// CHECK:         %48 = inline_block_break(%45, %47)
+// CHECK:     "J" @bool_true
+// CHECK:     "K" @bool_false
+// CHECK:     "L" %43 = inline_block({
+// CHECK:         %44 = decl_val("a")
+// CHECK:         %45 = deref(%44)
+// CHECK:         %46 = inline_block_break(%43, %45)
 // CHECK:     })
-// CHECK:     "M" %49 = inline_block({
-// CHECK:         %50 = decl_val("a")
-// CHECK:         %51 = return(%50)
-// CHECK:         %52 = inline_block_break(%49, %51)
+// CHECK:     "M" %47 = inline_block({
+// CHECK:         %48 = decl_val("a")
+// CHECK:         %49 = return(%48)
+// CHECK:         %50 = inline_block_break(%47, %49)
 // CHECK:     })
-// CHECK:     "N" %53 = int_literal(0)
-// CHECK:     "O" %54 = int_literal(0)
-// CHECK:     "P" %55 = int_literal(15)
-// CHECK:     "Q" %56 = inline_block({
-// CHECK:         %57 = int_literal(7)
-// CHECK:         %58 = int_type(u, 3)
-// CHECK:         %59 = as(%58, %57)
-// CHECK:         %60 = inline_block_break(%56, %59)
+// CHECK:     "N" %51 = int_literal(0)
+// CHECK:     "O" %52 = int_literal(0)
+// CHECK:     "P" %53 = int_literal(15)
+// CHECK:     "Q" %54 = inline_block({
+// CHECK:         %55 = int_literal(7)
+// CHECK:         %56 = int_type(u, 3)
+// CHECK:         %57 = as(%56, %55)
+// CHECK:         %58 = inline_block_break(%54, %57)
 // CHECK:     })
-// CHECK:     "R" %61 = inline_block({
-// CHECK:         %62 = int_literal(4294967295)
-// CHECK:         %63 = int_type(u, 32)
-// CHECK:         %64 = as(%63, %62)
-// CHECK:         %65 = inline_block_break(%61, %64)
+// CHECK:     "R" %59 = inline_block({
+// CHECK:         %60 = int_literal(4294967295)
+// CHECK:         %61 = int_type(u, 32)
+// CHECK:         %62 = as(%61, %60)
+// CHECK:         %63 = inline_block_break(%59, %62)
 // CHECK:     })
-// CHECK:     "S" %66 = inline_block({
-// CHECK:         %67 = decl_val("a")
-// CHECK:         %68 = branch(%67, {
-// CHECK:             %69 = int_literal(32)
+// CHECK:     "S" %64 = inline_block({
+// CHECK:         %65 = decl_val("a")
+// CHECK:         %66 = branch(%65, {
+// CHECK:             %67 = int_literal(32)
 // CHECK:         }, {
-// CHECK:             %70 = int_literal(16)
+// CHECK:             %68 = int_literal(16)
 // CHECK:         })
-// CHECK:         %71 = inline_block_break(%66, %68)
+// CHECK:         %69 = inline_block_break(%64, %66)
 // CHECK:     })
 // CHECK: })
 

@@ -6,9 +6,9 @@
 // CHECK:             %4 = ref_ty(const %3)
 // CHECK:             %5 = inline_block_break(%2, %4)
 // CHECK:         })
-// CHECK:         "A" %6 = decl_val("bool")
-// CHECK:         "B" %7 = module_decl({
-// CHECK:             "C" %8 = decl_val("u1")
+// CHECK:         "A" @bool_type
+// CHECK:         "B" %6 = module_decl({
+// CHECK:             "C" %7 = decl_val("u1")
 // CHECK:         })
 // CHECK:     })
 // CHECK: })

@@ -441,13 +441,38 @@ pub enum InstRef {
     ClockType = 14,
     ResetType = 15,
 
+    TypeType = 16,
+
     // Used to indicate end of known values
-    None = 16,
+    None = 17,
 }
 
 impl InstRef {
     pub fn to_inst<'a>(&self) -> Option<InstIdx<'a>> {
         return (*self).into();
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "u8" => Some(Self::IntTypeU8),
+            "u16" => Some(Self::IntTypeU16),
+            "u32" => Some(Self::IntTypeU32),
+            "u64" => Some(Self::IntTypeU64),
+            "i8" => Some(Self::IntTypeI8),
+            "i16" => Some(Self::IntTypeI16),
+            "i32" => Some(Self::IntTypeI32),
+            "i64" => Some(Self::IntTypeI64),
+            "0" => Some(Self::NumLiteral0),
+            "1" => Some(Self::NumLiteral1),
+            "void" => Some(Self::VoidType),
+            "bool" => Some(Self::BoolType),
+            "true" => Some(Self::BoolValTrue),
+            "false" => Some(Self::BoolValFalse),
+            "clock" => Some(Self::ClockType),
+            "reset" => Some(Self::ResetType),
+            "type" => Some(Self::TypeType),
+            _ => None,
+        }
     }
 }
 
@@ -515,6 +540,7 @@ impl Display for InstRef {
                 Self::BoolValFalse => "@bool_false",
                 Self::ClockType => "@clock_type",
                 Self::ResetType => "@reset_type",
+                Self::TypeType => "@type_type",
                 _ => unreachable!(),
             };
             f.write_str(s)?;

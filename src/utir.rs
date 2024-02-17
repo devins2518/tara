@@ -392,7 +392,6 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 self.write_expr(body_idx)?;
                 break;
             }
-            write!(self, "\n")?;
 
             self.deindent();
         }
