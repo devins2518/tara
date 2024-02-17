@@ -422,6 +422,59 @@ impl From<Branch<'_>> for [u32; BRANCH_U32S] {
 // An index into `instructions`
 pub type InstIdx<'a> = Id<Inst<'a>>;
 
+// Refs include well known and well typed commonly used values
+#[repr(u32)]
+#[non_exhaustive]
+#[derive(Copy, Clone)]
+pub enum InstRef {
+    IntTypeU8,
+    IntTypeU16,
+    IntTypeU32,
+    IntTypeU64,
+    IntTypeI8,
+    IntTypeI16,
+    IntTypeI32,
+    IntTypeI64,
+
+    NumLiteral0,
+    NumLiteral1,
+
+    VoidType,
+
+    BoolType,
+    BoolValTrue,
+    BoolValFalse,
+
+    ClockType,
+    ResetType,
+
+    // Used to indicate end of known values
+    None,
+}
+
+impl From<InstRef> for u32 {
+    fn from(value: InstRef) -> Self {
+        return unsafe { std::mem::transmute(value) };
+    }
+}
+
+impl From<InstIdx<'_>> for InstRef {
+    fn from(value: InstIdx) -> Self {
+        return unsafe { std::mem::transmute(u32::from(value) + u32::from(Self::None) + 1) };
+    }
+}
+
+impl From<InstRef> for Option<InstIdx<'_>> {
+    fn from(value: InstRef) -> Self {
+        let u32_val = u32::from(value);
+        if u32_val > u32::from(InstRef::None) {
+            return Some(InstIdx::from(u32_val - u32::from(InstRef::None) - 1));
+        } else {
+            return None;
+        }
+    }
+}
+
 // An index into `nodes`
 pub type NodeIdx<'a> = Id<&'a Node<'a>>;
 
