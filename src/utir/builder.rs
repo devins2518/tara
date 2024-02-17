@@ -52,7 +52,7 @@ impl<'ast> Builder<'ast> {
         for field in &struct_inner.fields {
             let name = field.name;
             let ty = self.gen_type_expr(&mut struct_env, &*field.ty);
-            let container_field = ContainerField { name, ty };
+            let container_field = ContainerField::new(name, ty);
             struct_env.add_tmp_extra(container_field);
         }
 
@@ -95,7 +95,7 @@ impl<'ast> Builder<'ast> {
         for field in &module_inner.fields {
             let name = field.name;
             let ty = self.gen_type_expr(&mut module_env, &*field.ty);
-            let container_field = ContainerField { name, ty };
+            let container_field = ContainerField::new(name, ty);
             module_env.add_tmp_extra(container_field);
         }
 
@@ -153,10 +153,7 @@ impl<'ast> Builder<'ast> {
         for param in &subroutine_decl.params {
             let param_name = param.name;
             let param_type = self.gen_type_expr(&mut subroutine_env, &*param.ty);
-            subroutine_env.add_tmp_extra(Param {
-                name: param_name,
-                ty: param_type,
-            });
+            subroutine_env.add_tmp_extra(Param::new(param_name, param_type));
         }
 
         let return_type = self.gen_type_expr(&mut subroutine_env, &*subroutine_decl.return_type);
@@ -198,10 +195,7 @@ impl<'ast> Builder<'ast> {
         for param in &subroutine_decl.params {
             let param_name = param.name;
             let param_type = self.gen_type_expr(&mut subroutine_env, &*param.ty);
-            subroutine_env.add_tmp_extra(Param {
-                name: param_name,
-                ty: param_type,
-            });
+            subroutine_env.add_tmp_extra(Param::new(param_name, param_type));
         }
 
         let return_type = self.gen_type_expr(&mut subroutine_env, &*subroutine_decl.return_type);

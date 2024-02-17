@@ -142,55 +142,38 @@ impl From<ContainerDecl> for [u32; CONTAINER_DECL_U32S] {
     }
 }
 
-pub const CONTAINER_FIELD_U32S: usize = 2;
-pub struct ContainerField {
+pub const CONTAINER_FIELD_U32S: usize = NAMED_REF_U32S;
+pub type ContainerField = NamedRef;
+
+pub const CONTAINER_MEMBER_U32S: usize = NAMED_REF_U32S;
+pub type ContainerMember = NamedRef;
+
+pub const NAMED_REF_U32S: usize = 2;
+pub struct NamedRef {
     pub(super) name: GlobalSymbol,
-    pub(super) ty: InstRef,
+    pub(super) inst_ref: InstRef,
 }
 
-impl ExtraArenaContainable<CONTAINER_FIELD_U32S> for ContainerField {}
-impl From<[u32; CONTAINER_FIELD_U32S]> for ContainerField {
-    fn from(value: [u32; CONTAINER_FIELD_U32S]) -> Self {
+impl NamedRef {
+    pub fn new(name: GlobalSymbol, inst_ref: InstRef) -> Self {
+        return Self { name, inst_ref };
+    }
+}
+
+impl ExtraArenaContainable<NAMED_REF_U32S> for NamedRef {}
+impl From<[u32; NAMED_REF_U32S]> for NamedRef {
+    fn from(value: [u32; NAMED_REF_U32S]) -> Self {
         return Self {
             name: GlobalSymbol::from(NonZeroU32::new(value[0]).unwrap()),
-            ty: value[1].into(),
+            inst_ref: value[1].into(),
         };
     }
 }
 
-impl From<ContainerField> for [u32; CONTAINER_FIELD_U32S] {
-    fn from(value: ContainerField) -> Self {
+impl From<NamedRef> for [u32; NAMED_REF_U32S] {
+    fn from(value: NamedRef) -> Self {
         let nonzero = NonZeroU32::from(value.name);
-        return [nonzero.into(), value.ty.into()];
-    }
-}
-
-pub const CONTAINER_MEMBER_U32S: usize = 2;
-pub struct ContainerMember {
-    pub(super) name: GlobalSymbol,
-    pub(super) value: InstRef,
-}
-
-impl ContainerMember {
-    pub fn new(name: GlobalSymbol, value: InstRef) -> Self {
-        return Self { name, value };
-    }
-}
-
-impl ExtraArenaContainable<CONTAINER_MEMBER_U32S> for ContainerMember {}
-impl From<[u32; CONTAINER_MEMBER_U32S]> for ContainerMember {
-    fn from(value: [u32; CONTAINER_MEMBER_U32S]) -> Self {
-        return Self {
-            name: GlobalSymbol::from(NonZeroU32::new(value[0]).unwrap()),
-            value: InstRef::from(value[1]),
-        };
-    }
-}
-
-impl From<ContainerMember> for [u32; CONTAINER_MEMBER_U32S] {
-    fn from(value: ContainerMember) -> Self {
-        let nonzero = NonZeroU32::from(value.name);
-        return [nonzero.into(), u32::from(value.value)];
+        return [nonzero.into(), value.inst_ref.into()];
     }
 }
 
@@ -223,29 +206,7 @@ impl From<SubroutineDecl> for [u32; SUBROUTINE_DECL_U32S] {
 }
 
 pub const PARAM_U32S: usize = 2;
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Param {
-    pub(super) name: GlobalSymbol,
-    pub(super) ty: InstRef,
-}
-
-impl ExtraArenaContainable<PARAM_U32S> for Param {}
-impl From<[u32; PARAM_U32S]> for Param {
-    fn from(value: [u32; PARAM_U32S]) -> Self {
-        return Self {
-            name: GlobalSymbol::from(NonZeroU32::new(value[0]).unwrap()),
-            ty: InstRef::from(value[1]),
-        };
-    }
-}
-
-impl From<Param> for [u32; PARAM_U32S] {
-    fn from(value: Param) -> Self {
-        let nonzero = NonZeroU32::from(value.name);
-        return [nonzero.into(), u32::from(value.ty)];
-    }
-}
+pub type Param = NamedRef;
 
 // Followed by `Block.num_instrs` number of `InstRef`s
 pub const BLOCK_U32S: usize = 1;

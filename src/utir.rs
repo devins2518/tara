@@ -118,14 +118,14 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
     fn write_container_member(&mut self, member: ContainerMember) -> std::fmt::Result {
         let name = member.name;
         write!(self, "\"{}\" ", name.as_str())?;
-        self.write_expr(member.value)?;
+        self.write_expr(member.inst_ref)?;
         Ok(())
     }
 
     fn write_container_field(&mut self, field: ContainerField) -> std::fmt::Result {
         let name = field.name;
         write!(self, "\"{}\": ", name.as_str())?;
-        self.write_expr(field.ty)?;
+        self.write_expr(field.inst_ref)?;
         Ok(())
     }
 
@@ -371,8 +371,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                     let param_offset = param_base + (param_num * PARAM_U32S as u32);
                     let param: Param = self.utir.extra_data.get_extra(param_offset.into());
 
-                    self.write_expr(param.ty)?;
-                    write!(self, "\n\"{}\" : {}", param.name.as_str(), param.ty)?;
+                    self.write_expr(param.inst_ref)?;
+                    write!(self, "\n\"{}\" : {}", param.name.as_str(), param.inst_ref)?;
                 }
                 write!(self, "\n")?;
 
