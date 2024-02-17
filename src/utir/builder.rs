@@ -1,6 +1,6 @@
 use crate::{
     arena::{Arena, ArenaRef, ExtraArenaContainable},
-    ast::{Ast, Node},
+    ast::{Ast, Node, TypedName},
     builtin::{Mutability, Signedness},
     utir::{inst::*, Utir},
 };
@@ -151,9 +151,8 @@ impl<'ast> Builder<'ast> {
         let mut subroutine_env = env.derive();
 
         for param in &subroutine_decl.params {
-            let param_name = param.name;
-            let param_type = self.gen_type_expr(&mut subroutine_env, &*param.ty);
-            subroutine_env.add_tmp_extra(Param::new(param_name, param_type));
+            let param_inst = self.gen_param(&mut subroutine_env, param);
+            subroutine_env.add_tmp_extra(param_inst);
         }
 
         let return_type = self.gen_type_expr(&mut subroutine_env, &*subroutine_decl.return_type);
@@ -193,9 +192,8 @@ impl<'ast> Builder<'ast> {
         let mut subroutine_env = env.derive();
 
         for param in &subroutine_decl.params {
-            let param_name = param.name;
-            let param_type = self.gen_type_expr(&mut subroutine_env, &*param.ty);
-            subroutine_env.add_tmp_extra(Param::new(param_name, param_type));
+            let param_inst = self.gen_param(&mut subroutine_env, param);
+            subroutine_env.add_tmp_extra(param_inst);
         }
 
         let return_type = self.gen_type_expr(&mut subroutine_env, &*subroutine_decl.return_type);
@@ -219,6 +217,17 @@ impl<'ast> Builder<'ast> {
 
         env.set_instruction(subroutine_idx, Inst::CombDecl(subroutine_decl));
         return subroutine_idx;
+    }
+
+    fn gen_param(&self, env: &mut Environment<'_, 'ast, '_>, param: &'ast TypedName) -> InstRef {
+        let type_expr = self.gen_type_expr(env, &*param.ty);
+
+        let node_idx = self.add_node(&*param.ty);
+
+        let inst_ref = env.add_instruction(Inst::param(type_expr, node_idx));
+        env.add_binding(param.name, inst_ref);
+
+        return inst_ref;
     }
 
     fn gen_type_expr(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {

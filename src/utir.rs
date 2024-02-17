@@ -163,6 +163,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 Inst::IntLiteral(_) => self.write_int_literal(inst_idx)?,
                 Inst::IntType(_) => self.write_int_type(inst_idx)?,
                 Inst::Branch(_) => self.write_branch(inst_idx)?,
+                Inst::Param(_) => self.write_param(inst_idx)?,
             }
         } else {
             self.write_ref(inst_ref)?;
@@ -182,6 +183,17 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             decl_val.val.as_str()
         )?;
         Ok(())
+    }
+
+    fn write_param(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let param = match self.utir.instructions.get(idx) {
+            Inst::Param(inner) => inner.val,
+            _ => unreachable!(),
+        };
+        self.write_expr(param)?;
+        write!(self, "\n");
+        write!(self, "%{}: {}", u32::from(idx), param)?;
+        return Ok(());
     }
 
     fn write_bin_op(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
@@ -260,6 +272,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::ModuleDecl(_)
             | Inst::FunctionDecl(_)
             | Inst::CombDecl(_)
+            | Inst::Param(_)
             | Inst::DeclVal(_)
             | Inst::InlineBlock(_)
             | Inst::Negate(_)
@@ -293,6 +306,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::ModuleDecl(_)
             | Inst::FunctionDecl(_)
             | Inst::CombDecl(_)
+            | Inst::Param(_)
             | Inst::DeclVal(_)
             | Inst::InlineBlock(_)
             | Inst::InlineBlockBreak(_)
@@ -368,11 +382,10 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 for param_num in 0..subroutine_decl.params {
                     write!(self, "\n")?;
 
-                    let param_offset = param_base + (param_num * PARAM_U32S as u32);
-                    let param: Param = self.utir.extra_data.get_extra(param_offset.into());
+                    let param_offset = param_base + (param_num * INST_REF_U32S as u32);
+                    let param_idx: InstRef = self.utir.extra_data.get_extra(param_offset.into());
 
-                    self.write_expr(param.inst_ref)?;
-                    write!(self, "\n\"{}\" : {}", param.name.as_str(), param.inst_ref)?;
+                    self.write_expr(param_idx)?;
                 }
                 write!(self, "\n")?;
 
@@ -383,7 +396,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.write_expr(subroutine_decl.return_type.into())?;
 
             let body_base = (u32::from(ed_idx) + SUBROUTINE_DECL_U32S as u32)
-                + (subroutine_decl.params * PARAM_U32S as u32);
+                + (subroutine_decl.params * INST_REF_U32S as u32);
             for body_num in 0..subroutine_decl.body_len {
                 write!(self, "\n")?;
 

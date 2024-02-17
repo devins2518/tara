@@ -6,20 +6,20 @@
 // CHECK:         "a" %2 = subroutine_decl(
 // CHECK:             {
 // CHECK:                 %3 = decl_val("B")
-// CHECK:                 "b" : %3
-// CHECK:                 %4 = decl_val("C")
-// CHECK:                 "c" : %4
+// CHECK:                 %4: %3
+// CHECK:                 %5 = decl_val("C")
+// CHECK:                 %6: %5
 // CHECK:             }
 // CHECK:             @bool_type
-// CHECK:             %5 = inline_block({
-// CHECK:                 %6 = inline_block({
-// CHECK:                     %7 = decl_val("b")
-// CHECK:                     %8 = decl_val("c")
-// CHECK:                     %9 = and(%7, %8)
-// CHECK:                     %10 = inline_block_break(%6, %9)
+// CHECK:             %7 = inline_block({
+// CHECK:                 %8 = inline_block({
+// CHECK:                     %9 = decl_val("b")
+// CHECK:                     %10 = decl_val("c")
+// CHECK:                     %11 = and(%9, %10)
+// CHECK:                     %12 = inline_block_break(%8, %11)
 // CHECK:                 })
-// CHECK:                 %11 = return(%6)
-// CHECK:                 %12 = inline_block_break(%5, %11)
+// CHECK:                 %13 = return(%8)
+// CHECK:                 %14 = inline_block_break(%7, %13)
 // CHECK:             })
 // CHECK:         )
 // CHECK:     })

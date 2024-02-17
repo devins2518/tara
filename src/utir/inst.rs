@@ -12,6 +12,7 @@ pub enum Inst<'a> {
     ModuleDecl(ExtraPayload<'a, ContainerDecl>),
     FunctionDecl(ExtraPayload<'a, SubroutineDecl>),
     CombDecl(ExtraPayload<'a, SubroutineDecl>),
+    Param(NodePayload<'a, InstRef>),
     DeclVal(Str<'a>),
     InlineBlock(ExtraPayload<'a, Block>),
     InlineBlockBreak(BinOp),
@@ -52,6 +53,10 @@ impl<'a> Inst<'a> {
 
     pub fn module_decl(extra_idx: ExtraIdx<ContainerDecl>, node_idx: NodeIdx<'a>) -> Self {
         return Self::ModuleDecl(ExtraPayload::new(extra_idx, node_idx));
+    }
+
+    pub fn param(inst_ref: InstRef, node_idx: NodeIdx<'a>) -> Self {
+        return Self::Param(NodePayload::new(inst_ref, node_idx));
     }
 
     pub fn decl_val(ident: GlobalSymbol, node_idx: NodeIdx<'a>) -> Self {
@@ -149,6 +154,7 @@ pub const CONTAINER_MEMBER_U32S: usize = NAMED_REF_U32S;
 pub type ContainerMember = NamedRef;
 
 pub const NAMED_REF_U32S: usize = 2;
+#[derive(Copy, Clone)]
 pub struct NamedRef {
     pub(super) name: GlobalSymbol,
     pub(super) inst_ref: InstRef,
@@ -177,7 +183,7 @@ impl From<NamedRef> for [u32; NAMED_REF_U32S] {
     }
 }
 
-// Followed by `params` number of `Param`s, then `body_len` number of instructions which make up
+// Followed by `params` number of `InstRef`s which are indexes of `Param`s, then `body_len` number of instructions which make up
 // the body of the subroutine
 pub const SUBROUTINE_DECL_U32S: usize = 3;
 #[repr(C)]
@@ -204,9 +210,6 @@ impl From<SubroutineDecl> for [u32; SUBROUTINE_DECL_U32S] {
         return [value.params, value.return_type.into(), value.body_len];
     }
 }
-
-pub const PARAM_U32S: usize = 2;
-pub type Param = NamedRef;
 
 // Followed by `Block.num_instrs` number of `InstRef`s
 pub const BLOCK_U32S: usize = 1;

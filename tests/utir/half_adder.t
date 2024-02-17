@@ -8,51 +8,51 @@
 // CHECK:                     %5 = ref_ty(const %4)
 // CHECK:                     %6 = inline_block_break(%3, %5)
 // CHECK:                 })
-// CHECK:                 "a" : %3
-// CHECK:                 %7 = inline_block({
-// CHECK:                     %8 = decl_val("u1")
-// CHECK:                     %9 = ref_ty(const %8)
-// CHECK:                     %10 = inline_block_break(%7, %9)
+// CHECK:                 %7: %3
+// CHECK:                 %8 = inline_block({
+// CHECK:                     %9 = decl_val("u1")
+// CHECK:                     %10 = ref_ty(const %9)
+// CHECK:                     %11 = inline_block_break(%8, %10)
 // CHECK:                 })
-// CHECK:                 "b" : %7
+// CHECK:                 %12: %8
 // CHECK:             }
-// CHECK:             %11 = decl_val("u1")
-// CHECK:             %12 = inline_block({
-// CHECK:                 %13 = inline_block({
-// CHECK:                     %14 = decl_val("a")
-// CHECK:                     %15 = decl_val("b")
-// CHECK:                     %16 = bit_xor(%14, %15)
-// CHECK:                     %17 = inline_block_break(%13, %16)
+// CHECK:             %13 = decl_val("u1")
+// CHECK:             %14 = inline_block({
+// CHECK:                 %15 = inline_block({
+// CHECK:                     %16 = decl_val("a")
+// CHECK:                     %17 = decl_val("b")
+// CHECK:                     %18 = bit_xor(%16, %17)
+// CHECK:                     %19 = inline_block_break(%15, %18)
 // CHECK:                 })
-// CHECK:                 %18 = return(%13)
-// CHECK:                 %19 = inline_block_break(%12, %18)
+// CHECK:                 %20 = return(%15)
+// CHECK:                 %21 = inline_block_break(%14, %20)
 // CHECK:             })
 // CHECK:         )
-// CHECK:         "carry" %20 = subroutine_decl(
+// CHECK:         "carry" %22 = subroutine_decl(
 // CHECK:             {
-// CHECK:                 %21 = inline_block({
-// CHECK:                     %22 = decl_val("u1")
-// CHECK:                     %23 = ref_ty(const %22)
-// CHECK:                     %24 = inline_block_break(%21, %23)
+// CHECK:                 %23 = inline_block({
+// CHECK:                     %24 = decl_val("u1")
+// CHECK:                     %25 = ref_ty(const %24)
+// CHECK:                     %26 = inline_block_break(%23, %25)
 // CHECK:                 })
-// CHECK:                 "a" : %21
-// CHECK:                 %25 = inline_block({
-// CHECK:                     %26 = decl_val("u1")
-// CHECK:                     %27 = ref_ty(const %26)
-// CHECK:                     %28 = inline_block_break(%25, %27)
+// CHECK:                 %27: %23
+// CHECK:                 %28 = inline_block({
+// CHECK:                     %29 = decl_val("u1")
+// CHECK:                     %30 = ref_ty(const %29)
+// CHECK:                     %31 = inline_block_break(%28, %30)
 // CHECK:                 })
-// CHECK:                 "b" : %25
+// CHECK:                 %32: %28
 // CHECK:             }
-// CHECK:             %29 = decl_val("u1")
-// CHECK:             %30 = inline_block({
-// CHECK:                 %31 = inline_block({
-// CHECK:                     %32 = decl_val("a")
-// CHECK:                     %33 = decl_val("b")
-// CHECK:                     %34 = bit_and(%32, %33)
-// CHECK:                     %35 = inline_block_break(%31, %34)
+// CHECK:             %33 = decl_val("u1")
+// CHECK:             %34 = inline_block({
+// CHECK:                 %35 = inline_block({
+// CHECK:                     %36 = decl_val("a")
+// CHECK:                     %37 = decl_val("b")
+// CHECK:                     %38 = bit_and(%36, %37)
+// CHECK:                     %39 = inline_block_break(%35, %38)
 // CHECK:                 })
-// CHECK:                 %36 = return(%31)
-// CHECK:                 %37 = inline_block_break(%30, %36)
+// CHECK:                 %40 = return(%35)
+// CHECK:                 %41 = inline_block_break(%34, %40)
 // CHECK:             })
 // CHECK:         )
 // CHECK:     })
