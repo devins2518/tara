@@ -1,13 +1,16 @@
 use crate::{
     ast::{
-        BinOp, Call, IfExpr, ModuleInner, Node, Publicity, RefTy, SizedNumberLiteral, StructInner,
-        SubroutineDecl, TypedName, UnOp, VarDecl,
+        BinOp, Call, IfExpr, ModuleInner, Node, NodeKind, Publicity, RefTy, SizedNumberLiteral,
+        StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
     },
     builtin::Mutability,
 };
 use anyhow::Result as AResult;
 use num_bigint::BigUint;
-use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::{
+    pratt_parser::{Assoc, Op, PrattParser},
+    Span,
+};
 use pest_consume::{match_nodes, Error, Parser};
 use symbol_table::GlobalSymbol;
 
@@ -47,7 +50,7 @@ impl TaraParser {
 
         let root = TaraParser::root(root_node)?;
 
-        let node = Node::StructDecl(root);
+        let node = Node::new(NodeKind::StructDecl(root), Span::new(source, 0, 0).unwrap());
 
         return Ok(node);
     }
@@ -63,40 +66,41 @@ impl TaraParser {
                     rhs: rhs_box,
                 };
                 let node = match op.as_rule() {
-                    Rule::or_operator => Node::Or(bin_op),
-                    Rule::and_operator => Node::And(bin_op),
-                    Rule::lt_operator => Node::Lt(bin_op),
-                    Rule::lte_operator => Node::Lte(bin_op),
-                    Rule::gt_operator => Node::Gt(bin_op),
-                    Rule::gte_operator => Node::Gte(bin_op),
-                    Rule::eq_operator => Node::Eq(bin_op),
-                    Rule::neq_operator => Node::Neq(bin_op),
-                    Rule::bitwise_and_operator => Node::BitAnd(bin_op),
-                    Rule::bitwise_or_operator => Node::BitOr(bin_op),
-                    Rule::bitwise_xor_operator => Node::BitXor(bin_op),
-                    Rule::add_operator => Node::Add(bin_op),
-                    Rule::sub_operator => Node::Sub(bin_op),
-                    Rule::mul_operator => Node::Mul(bin_op),
-                    Rule::div_operator => Node::Div(bin_op),
-                    Rule::access_operator => Node::Access(bin_op),
+                    Rule::or_operator => NodeKind::Or(bin_op),
+                    Rule::and_operator => NodeKind::And(bin_op),
+                    Rule::lt_operator => NodeKind::Lt(bin_op),
+                    Rule::lte_operator => NodeKind::Lte(bin_op),
+                    Rule::gt_operator => NodeKind::Gt(bin_op),
+                    Rule::gte_operator => NodeKind::Gte(bin_op),
+                    Rule::eq_operator => NodeKind::Eq(bin_op),
+                    Rule::neq_operator => NodeKind::Neq(bin_op),
+                    Rule::bitwise_and_operator => NodeKind::BitAnd(bin_op),
+                    Rule::bitwise_or_operator => NodeKind::BitOr(bin_op),
+                    Rule::bitwise_xor_operator => NodeKind::BitXor(bin_op),
+                    Rule::add_operator => NodeKind::Add(bin_op),
+                    Rule::sub_operator => NodeKind::Sub(bin_op),
+                    Rule::mul_operator => NodeKind::Mul(bin_op),
+                    Rule::div_operator => NodeKind::Div(bin_op),
+                    Rule::access_operator => NodeKind::Access(bin_op),
                     _ => unreachable!(),
                 };
 
-                Ok(node)
+                Ok(Node::new(node, op.as_span()))
             })
             .map_prefix(|op, rhs| {
                 let rhs_box = Box::new(rhs?);
                 let un_op = UnOp { lhs: rhs_box };
                 let node = match op.as_rule() {
-                    Rule::neg_operator => Node::Negate(un_op),
+                    Rule::neg_operator => NodeKind::Negate(un_op),
                     _ => unreachable!(),
                 };
 
-                Ok(node)
+                Ok(Node::new(node, op.as_span()))
             })
             .map_postfix(|lhs, op| {
+                let span = op.as_span();
                 let lhs_box = Box::new(lhs?);
-                match op.as_rule() {
+                let node = match op.as_rule() {
                     Rule::call_operator => {
                         let args = TaraParser::call_operator(ParseNode::new(op))?;
                         let call = Call {
@@ -104,14 +108,15 @@ impl TaraParser {
                             args,
                         };
 
-                        Ok(Node::Call(call))
+                        NodeKind::Call(call)
                     }
                     Rule::deref_operator => {
                         let un_op = UnOp { lhs: lhs_box };
-                        Ok(Node::Deref(un_op))
+                        NodeKind::Deref(un_op)
                     }
                     _ => unreachable!(),
-                }
+                };
+                Ok(Node::new(node, span))
             })
             .parse(pairs)
     }
@@ -150,32 +155,34 @@ impl TaraParser {
     }
 
     fn decl(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let node = match_nodes!(
             input.into_children();
             [publicity(publicity), identifier(ident), expr(init_expr)] => {
-                Node::VarDecl(VarDecl::new (publicity,
+                NodeKind::VarDecl(VarDecl::new (publicity,
                         ident,
                         None,
                         init_expr,
                 ))
             },
             [publicity(publicity), identifier(ident), type_expr(type_expr), expr(init_expr)] => {
-                Node::VarDecl(VarDecl::new( publicity, ident, Some(type_expr), init_expr))
+                NodeKind::VarDecl(VarDecl::new( publicity, ident, Some(type_expr), init_expr))
             },
         );
 
-        return Ok(node);
+        return Ok(Node::new(node, span));
     }
 
     fn fn_decl(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let node = match_nodes!(
             input.into_children();
             [publicity(publicity), identifier(ident), param_list(params), type_expr(ret_type), block(body)] => {
-                Node::SubroutineDecl(SubroutineDecl::new(publicity, ident, params, ret_type, body))
+                NodeKind::SubroutineDecl(SubroutineDecl::new(publicity, ident, params, ret_type, body))
             }
         );
 
-        return Ok(node);
+        return Ok(Node::new(node, span));
     }
 
     fn param(input: ParseNode) -> ParseResult<TypedName> {
@@ -208,15 +215,16 @@ impl TaraParser {
     }
 
     fn decl_statement(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let node = match_nodes!(
             input.into_children();
-            [identifier(ident), expr(init_expr)] => Node::VarDecl(VarDecl::new(
+            [identifier(ident), expr(init_expr)] => NodeKind::VarDecl(VarDecl::new(
                 Publicity::Private,
                 ident,
                 None,
                 init_expr,
             )),
-            [identifier(ident), type_expr(type_expr), expr(init_expr)] => Node::VarDecl(VarDecl::new(
+            [identifier(ident), type_expr(type_expr), expr(init_expr)] => NodeKind::VarDecl(VarDecl::new(
                 Publicity::Private,
                 ident,
                 Some(type_expr),
@@ -224,7 +232,7 @@ impl TaraParser {
             )),
         );
 
-        return Ok(node);
+        return Ok(Node::new(node, span));
     }
 
     fn publicity(input: ParseNode) -> ParseResult<Publicity> {
@@ -241,11 +249,12 @@ impl TaraParser {
     }
 
     fn type_expr(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let node = match_nodes!(
             input.into_children();
             [struct_decl(struct_decl)] => struct_decl,
             [module_decl(module_decl)] => module_decl,
-            [identifier(identifier)] => Node::Identifier(identifier),
+            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
             [reference_ty(reference_ty)] => reference_ty,
             [pointer_ty(pointer_ty)] => pointer_ty,
         );
@@ -254,10 +263,11 @@ impl TaraParser {
     }
 
     fn struct_decl(input: ParseNode) -> ParseResult<Node> {
-        match_nodes!(
-            input.into_children();
-            [struct_inner(struct_inner)] => Ok(Node::StructDecl(struct_inner)),
-        )
+        let span = input.as_span();
+        Ok(match_nodes!(
+                input.into_children();
+                [struct_inner(struct_inner)] => Node::new(NodeKind::StructDecl(struct_inner), span),
+        ))
     }
 
     fn struct_inner(input: ParseNode) -> ParseResult<StructInner> {
@@ -276,10 +286,11 @@ impl TaraParser {
     }
 
     fn module_decl(input: ParseNode) -> ParseResult<Node> {
-        match_nodes!(
-            input.into_children();
-            [module_inner(module_inner)] => Ok(Node::ModuleDecl(module_inner)),
-        )
+        let span = input.as_span();
+        Ok(match_nodes!(
+                input.into_children();
+                [module_inner(module_inner)] => Node::new(NodeKind::ModuleDecl(module_inner), span),
+        ))
     }
 
     fn module_inner(input: ParseNode) -> ParseResult<ModuleInner> {
@@ -315,14 +326,15 @@ impl TaraParser {
     }
 
     fn comb_decl(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let node = match_nodes!(
             input.into_children();
             [publicity(publicity), identifier(ident), param_list(params), type_expr(ret_type), block(body)] => {
-                Node::SubroutineDecl(SubroutineDecl::new(publicity, ident, params, ret_type, body))
+                NodeKind::SubroutineDecl(SubroutineDecl::new(publicity, ident, params, ret_type, body))
             }
         );
 
-        return Ok(node);
+        return Ok(Node::new(node, span));
     }
 
     fn field_list(input: ParseNode) -> ParseResult<Vec<TypedName>> {
@@ -344,23 +356,25 @@ impl TaraParser {
     }
 
     fn reference_ty(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let ref_ty = match_nodes!(
             input.into_children();
             [expr(expr)] => RefTy::new(Mutability::Immutable, expr),
             [ptr_var(_), expr(expr)] => RefTy::new(Mutability::Mutable, expr),
         );
 
-        return Ok(Node::ReferenceTy(ref_ty));
+        return Ok(Node::new(NodeKind::ReferenceTy(ref_ty), span));
     }
 
     fn pointer_ty(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let ref_ty = match_nodes!(
             input.into_children();
             [expr(expr)] => RefTy::new(Mutability::Immutable, expr),
             [ptr_var(_), expr(expr)] => RefTy::new(Mutability::Mutable, expr),
         );
 
-        return Ok(Node::PointerTy(ref_ty));
+        return Ok(Node::new(NodeKind::PointerTy(ref_ty), span));
     }
 
     fn expr(input: ParseNode) -> ParseResult<Node> {
@@ -368,10 +382,11 @@ impl TaraParser {
     }
 
     fn primary_expr(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         let node = match_nodes!(
             input.into_children();
             [parened_expr(parened_expr)] => parened_expr,
-            [identifier(identifier)] => Node::Identifier(identifier),
+            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
             [type_expr(type_expr)] => type_expr,
             [return_expr(return_expr)] => return_expr,
             [number(number)] => number,
@@ -389,16 +404,18 @@ impl TaraParser {
     }
 
     fn return_expr(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         Ok(match_nodes!(
             input.into_children();
             [expr(expr)] => {
                 let un_op = UnOp{lhs: Box::new(expr)};
-                Node::Return(un_op)
+                Node::new(NodeKind::Return(un_op), span)
             },
         ))
     }
 
     fn if_expr(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         Ok(match_nodes!(
             input.into_children();
             [expr(cond), expr(body), expr(else_body)] => {
@@ -407,17 +424,18 @@ impl TaraParser {
                     body: Box::new(body),
                     else_body: Box::new(else_body),
                 };
-                Node::IfExpr(if_expr)
+                Node::new(NodeKind::IfExpr(if_expr), span)
             },
         ))
     }
 
     fn number(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         Ok(match_nodes!(
             input.into_children();
-            [decimal_number(decimal)] => Node::NumberLiteral(decimal),
-            [binary_number(binary)] => Node::NumberLiteral(binary),
-            [hex_number(hex)] => Node::NumberLiteral(hex),
+            [decimal_number(decimal)] => Node::new(NodeKind::NumberLiteral(decimal), span),
+            [binary_number(binary)] => Node::new(NodeKind::NumberLiteral(binary), span),
+            [hex_number(hex)] => Node::new(NodeKind::NumberLiteral(hex), span),
             [bitwidth_binary_literal(binary)] => binary,
             [bitwidth_hex_literal(hex)] => hex,
         ))
@@ -440,29 +458,31 @@ impl TaraParser {
     }
 
     fn bitwidth_binary_literal(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         Ok(match_nodes!(
             input.into_children();
             [nonzero_decimal_number(big_size), binary_number(literal)] => {
                 // TODO: do size checks here
                 let size = big_size.to_u32_digits()[0] as u16;
                 let sized_number_literal = SizedNumberLiteral{size,literal};
-                let node = Node::SizedNumberLiteral(sized_number_literal);
+                let node = NodeKind::SizedNumberLiteral(sized_number_literal);
 
-                node
+                Node::new(node, span)
             },
         ))
     }
 
     fn bitwidth_hex_literal(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
         Ok(match_nodes!(
             input.into_children();
             [nonzero_decimal_number(big_size), hex_number(literal)] => {
                 // TODO: do size checks here
                 let size = big_size.to_u32_digits()[0] as u16;
                 let sized_number_literal = SizedNumberLiteral{size,literal};
-                let node = Node::SizedNumberLiteral(sized_number_literal);
+                let node = NodeKind::SizedNumberLiteral(sized_number_literal);
 
-                node
+                Node::new(node, span)
             },
         ))
     }

@@ -1,11 +1,33 @@
 use crate::{builtin::Mutability, parser::TaraParser};
 use anyhow::Result;
+use miette::SourceSpan;
 use num_bigint::BigUint;
 use std::fmt::Display;
 use std::marker::PhantomData;
 use symbol_table::GlobalSymbol;
 
-pub enum Node<'a> {
+pub struct Node<'a> {
+    pub span: SourceSpan,
+    pub kind: NodeKind<'a>,
+}
+
+impl<'a> Node<'a> {
+    pub fn new(kind: NodeKind<'a>, span: pest::Span) -> Self {
+        return Self {
+            span: SourceSpan::new(span.start().into(), (span.end() - span.start()).into()),
+            kind,
+        };
+    }
+}
+
+impl Display for Node<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.kind)?;
+        return Ok(());
+    }
+}
+
+pub enum NodeKind<'a> {
     StructDecl(StructInner<'a>),
     VarDecl(VarDecl<'a>),
     ModuleDecl(ModuleInner<'a>),
@@ -38,45 +60,47 @@ pub enum Node<'a> {
     SubroutineDecl(SubroutineDecl<'a>),
 }
 
-impl Display for Node<'_> {
+impl Display for NodeKind<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Node::StructDecl(struct_inner) => {
+            NodeKind::StructDecl(struct_inner) => {
                 f.write_fmt(format_args!("struct_decl({})", struct_inner))?
             }
-            Node::VarDecl(var_decl) => f.write_fmt(format_args!("var_decl({})", var_decl))?,
-            Node::ModuleDecl(mod_inner) => {
+            NodeKind::VarDecl(var_decl) => f.write_fmt(format_args!("var_decl({})", var_decl))?,
+            NodeKind::ModuleDecl(mod_inner) => {
                 f.write_fmt(format_args!("module_decl({})", mod_inner))?
             }
-            Node::Or(expr) => f.write_fmt(format_args!("or({})", expr))?,
-            Node::And(expr) => f.write_fmt(format_args!("and({})", expr))?,
-            Node::Lt(expr) => f.write_fmt(format_args!("lt({})", expr))?,
-            Node::Gt(expr) => f.write_fmt(format_args!("gt({})", expr))?,
-            Node::Lte(expr) => f.write_fmt(format_args!("lte({})", expr))?,
-            Node::Gte(expr) => f.write_fmt(format_args!("gte({})", expr))?,
-            Node::Eq(expr) => f.write_fmt(format_args!("eq({})", expr))?,
-            Node::Neq(expr) => f.write_fmt(format_args!("neq({})", expr))?,
-            Node::BitAnd(expr) => f.write_fmt(format_args!("bit_and({})", expr))?,
-            Node::BitOr(expr) => f.write_fmt(format_args!("bit_or({})", expr))?,
-            Node::BitXor(expr) => f.write_fmt(format_args!("bit_xor({})", expr))?,
-            Node::Add(expr) => f.write_fmt(format_args!("add({})", expr))?,
-            Node::Sub(expr) => f.write_fmt(format_args!("sub({})", expr))?,
-            Node::Mul(expr) => f.write_fmt(format_args!("mul({})", expr))?,
-            Node::Div(expr) => f.write_fmt(format_args!("div({})", expr))?,
-            Node::Access(expr) => f.write_fmt(format_args!("access({})", expr))?,
-            Node::Call(expr) => f.write_fmt(format_args!("call({})", expr))?,
-            Node::Identifier(ident) => {
+            NodeKind::Or(expr) => f.write_fmt(format_args!("or({})", expr))?,
+            NodeKind::And(expr) => f.write_fmt(format_args!("and({})", expr))?,
+            NodeKind::Lt(expr) => f.write_fmt(format_args!("lt({})", expr))?,
+            NodeKind::Gt(expr) => f.write_fmt(format_args!("gt({})", expr))?,
+            NodeKind::Lte(expr) => f.write_fmt(format_args!("lte({})", expr))?,
+            NodeKind::Gte(expr) => f.write_fmt(format_args!("gte({})", expr))?,
+            NodeKind::Eq(expr) => f.write_fmt(format_args!("eq({})", expr))?,
+            NodeKind::Neq(expr) => f.write_fmt(format_args!("neq({})", expr))?,
+            NodeKind::BitAnd(expr) => f.write_fmt(format_args!("bit_and({})", expr))?,
+            NodeKind::BitOr(expr) => f.write_fmt(format_args!("bit_or({})", expr))?,
+            NodeKind::BitXor(expr) => f.write_fmt(format_args!("bit_xor({})", expr))?,
+            NodeKind::Add(expr) => f.write_fmt(format_args!("add({})", expr))?,
+            NodeKind::Sub(expr) => f.write_fmt(format_args!("sub({})", expr))?,
+            NodeKind::Mul(expr) => f.write_fmt(format_args!("mul({})", expr))?,
+            NodeKind::Div(expr) => f.write_fmt(format_args!("div({})", expr))?,
+            NodeKind::Access(expr) => f.write_fmt(format_args!("access({})", expr))?,
+            NodeKind::Call(expr) => f.write_fmt(format_args!("call({})", expr))?,
+            NodeKind::Identifier(ident) => {
                 f.write_fmt(format_args!("identifier(\"{}\")", ident.as_str()))?
             }
-            Node::Negate(expr) => f.write_fmt(format_args!("neg({})", expr))?,
-            Node::Deref(expr) => f.write_fmt(format_args!("deref({})", expr))?,
-            Node::Return(expr) => f.write_fmt(format_args!("return({})", expr))?,
-            Node::ReferenceTy(expr) => f.write_fmt(format_args!("reference_ty({})", expr))?,
-            Node::PointerTy(expr) => f.write_fmt(format_args!("pointer_ty({})", expr))?,
-            Node::NumberLiteral(num) => f.write_fmt(format_args!("number({})", num))?,
-            Node::SizedNumberLiteral(num) => f.write_fmt(format_args!("sized_number({})", num))?,
-            Node::IfExpr(expr) => f.write_fmt(format_args!("if_expr({})", expr))?,
-            Node::SubroutineDecl(subroutine) => {
+            NodeKind::Negate(expr) => f.write_fmt(format_args!("neg({})", expr))?,
+            NodeKind::Deref(expr) => f.write_fmt(format_args!("deref({})", expr))?,
+            NodeKind::Return(expr) => f.write_fmt(format_args!("return({})", expr))?,
+            NodeKind::ReferenceTy(expr) => f.write_fmt(format_args!("reference_ty({})", expr))?,
+            NodeKind::PointerTy(expr) => f.write_fmt(format_args!("pointer_ty({})", expr))?,
+            NodeKind::NumberLiteral(num) => f.write_fmt(format_args!("number({})", num))?,
+            NodeKind::SizedNumberLiteral(num) => {
+                f.write_fmt(format_args!("sized_number({})", num))?
+            }
+            NodeKind::IfExpr(expr) => f.write_fmt(format_args!("if_expr({})", expr))?,
+            NodeKind::SubroutineDecl(subroutine) => {
                 f.write_fmt(format_args!("subroutine_decl({})", subroutine))?
             }
         }

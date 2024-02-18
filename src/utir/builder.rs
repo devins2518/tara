@@ -1,6 +1,6 @@
 use crate::{
     arena::{Arena, ArenaRef, ExtraArenaContainable},
-    ast::{Ast, Node, TypedName},
+    ast::{Ast, Node, NodeKind, TypedName},
     builtin::{Mutability, Signedness},
     utir::{inst::*, Utir},
 };
@@ -39,8 +39,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_struct_inner(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let struct_inner = match node {
-            Node::StructDecl(inner) => inner,
+        let struct_inner = match &node.kind {
+            NodeKind::StructDecl(inner) => inner,
             _ => unreachable!(),
         };
         let struct_idx = env.reserve_instruction();
@@ -57,11 +57,11 @@ impl<'ast> Builder<'ast> {
         }
 
         for member in &struct_inner.members {
-            let (name, decl_idx) = match member {
-                Node::VarDecl(var_decl) => {
+            let (name, decl_idx) = match &member.kind {
+                NodeKind::VarDecl(var_decl) => {
                     (var_decl.ident, self.gen_var_decl(&mut struct_env, member))
                 }
-                Node::SubroutineDecl(fn_decl) => (
+                NodeKind::SubroutineDecl(fn_decl) => (
                     fn_decl.ident,
                     self.gen_fn_decl(&mut struct_env, member).into(),
                 ),
@@ -82,8 +82,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_module_inner(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let module_inner = match node {
-            Node::ModuleDecl(inner) => inner,
+        let module_inner = match &node.kind {
+            NodeKind::ModuleDecl(inner) => inner,
             _ => unreachable!(),
         };
         let module_idx = env.reserve_instruction();
@@ -100,11 +100,11 @@ impl<'ast> Builder<'ast> {
         }
 
         for member in &module_inner.members {
-            let (name, decl_idx) = match member {
-                Node::VarDecl(var_decl) => {
+            let (name, decl_idx) = match &member.kind {
+                NodeKind::VarDecl(var_decl) => {
                     (var_decl.ident, self.gen_var_decl(&mut module_env, member))
                 }
-                Node::SubroutineDecl(comb_decl) => (
+                NodeKind::SubroutineDecl(comb_decl) => (
                     comb_decl.ident,
                     self.gen_comb_decl(&mut module_env, member).into(),
                 ),
@@ -125,8 +125,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_var_decl(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node<'ast>) -> InstRef {
-        let var_decl = match node {
-            Node::VarDecl(inner) => inner,
+        let var_decl = match &node.kind {
+            NodeKind::VarDecl(inner) => inner,
             _ => unreachable!(),
         };
 
@@ -142,8 +142,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_fn_decl(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node<'ast>) -> InstRef {
-        let subroutine_decl = match node {
-            Node::SubroutineDecl(inner) => inner,
+        let subroutine_decl = match &node.kind {
+            NodeKind::SubroutineDecl(inner) => inner,
             _ => unreachable!(),
         };
         let subroutine_idx = env.reserve_instruction();
@@ -183,8 +183,8 @@ impl<'ast> Builder<'ast> {
         env: &mut Environment<'_, 'ast, '_>,
         node: &'ast Node<'ast>,
     ) -> InstRef {
-        let subroutine_decl = match node {
-            Node::SubroutineDecl(inner) => inner,
+        let subroutine_decl = match &node.kind {
+            NodeKind::SubroutineDecl(inner) => inner,
             _ => unreachable!(),
         };
         let subroutine_idx = env.reserve_instruction();
@@ -231,68 +231,68 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_type_expr(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        match node {
-            Node::StructDecl(_) => self.gen_struct_inner(env, node).into(),
-            Node::ModuleDecl(_) => self.gen_module_inner(env, node).into(),
-            Node::Identifier(_) => self.gen_identifier(env, node).into(),
-            Node::ReferenceTy(_) => self.gen_inline_block(env, node).into(),
-            Node::PointerTy(_) => self.gen_inline_block(env, node).into(),
+        match node.kind {
+            NodeKind::StructDecl(_) => self.gen_struct_inner(env, node).into(),
+            NodeKind::ModuleDecl(_) => self.gen_module_inner(env, node).into(),
+            NodeKind::Identifier(_) => self.gen_identifier(env, node).into(),
+            NodeKind::ReferenceTy(_) => self.gen_inline_block(env, node).into(),
+            NodeKind::PointerTy(_) => self.gen_inline_block(env, node).into(),
             _ => unreachable!(),
         }
     }
 
     fn gen_expr(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        return match node {
-            Node::StructDecl(_) => self.gen_struct_inner(env, node).into(),
-            Node::ModuleDecl(_) => self.gen_module_inner(env, node).into(),
-            Node::Identifier(_) => self.gen_identifier(env, node).into(),
-            Node::NumberLiteral(_) => self.gen_number_literal(env, node).into(),
-            Node::Or(_)
-            | Node::And(_)
-            | Node::Lt(_)
-            | Node::Gt(_)
-            | Node::Lte(_)
-            | Node::Gte(_)
-            | Node::Eq(_)
-            | Node::Neq(_)
-            | Node::BitAnd(_)
-            | Node::BitOr(_)
-            | Node::BitXor(_)
-            | Node::Add(_)
-            | Node::Sub(_)
-            | Node::Mul(_)
-            | Node::Div(_)
-            | Node::Access(_)
-            | Node::Return(_)
-            | Node::Negate(_)
-            | Node::Deref(_)
-            | Node::ReferenceTy(_)
-            | Node::PointerTy(_)
-            | Node::Call(_)
-            | Node::SizedNumberLiteral(_)
-            | Node::IfExpr(_) => self.gen_inline_block(env, node).into(),
-            Node::VarDecl(_) | Node::SubroutineDecl(_) => unreachable!(),
+        return match node.kind {
+            NodeKind::StructDecl(_) => self.gen_struct_inner(env, node).into(),
+            NodeKind::ModuleDecl(_) => self.gen_module_inner(env, node).into(),
+            NodeKind::Identifier(_) => self.gen_identifier(env, node).into(),
+            NodeKind::NumberLiteral(_) => self.gen_number_literal(env, node).into(),
+            NodeKind::Or(_)
+            | NodeKind::And(_)
+            | NodeKind::Lt(_)
+            | NodeKind::Gt(_)
+            | NodeKind::Lte(_)
+            | NodeKind::Gte(_)
+            | NodeKind::Eq(_)
+            | NodeKind::Neq(_)
+            | NodeKind::BitAnd(_)
+            | NodeKind::BitOr(_)
+            | NodeKind::BitXor(_)
+            | NodeKind::Add(_)
+            | NodeKind::Sub(_)
+            | NodeKind::Mul(_)
+            | NodeKind::Div(_)
+            | NodeKind::Access(_)
+            | NodeKind::Return(_)
+            | NodeKind::Negate(_)
+            | NodeKind::Deref(_)
+            | NodeKind::ReferenceTy(_)
+            | NodeKind::PointerTy(_)
+            | NodeKind::Call(_)
+            | NodeKind::SizedNumberLiteral(_)
+            | NodeKind::IfExpr(_) => self.gen_inline_block(env, node).into(),
+            NodeKind::VarDecl(_) | NodeKind::SubroutineDecl(_) => unreachable!(),
         };
     }
 
     fn gen_identifier(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
         // TODO: do namespace resolving. This requires that parameters become their own
         // instructions so that they can be added to the scopes in functions
-        let symbol = match node {
-            Node::Identifier(ident) => ident,
+        let symbol = match node.kind {
+            NodeKind::Identifier(ident) => ident,
             _ => unreachable!(),
         };
         if let Some(inst_ref) = InstRef::from_str(symbol.as_str()) {
             return inst_ref;
         }
         let node_idx = self.add_node(node);
-        let idx = env.add_instruction(Inst::decl_val(*symbol, node_idx));
+        let idx = env.add_instruction(Inst::decl_val(symbol, node_idx));
         return idx;
     }
 
     fn gen_number_literal(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let int = match node {
-            Node::NumberLiteral(inner) => inner,
+        let int = match &node.kind {
+            NodeKind::NumberLiteral(inner) => inner,
             _ => unreachable!(),
         };
         if let Some(number) = int.to_u64() {
@@ -308,8 +308,8 @@ impl<'ast> Builder<'ast> {
         env: &mut Environment<'_, 'ast, '_>,
         node: &'ast Node,
     ) -> InstRef {
-        let sized_number_literal = match node {
-            Node::SizedNumberLiteral(inner) => inner,
+        let sized_number_literal = match &node.kind {
+            NodeKind::SizedNumberLiteral(inner) => inner,
             _ => unreachable!(),
         };
         if let Some(int) = sized_number_literal.literal.to_u64() {
@@ -343,40 +343,40 @@ impl<'ast> Builder<'ast> {
         let mut inline_block_env = env.derive();
         inline_block_env.set_instruction_scope(InstructionScope::Block);
 
-        let return_value = match node {
-            Node::Or(_)
-            | Node::And(_)
-            | Node::Lt(_)
-            | Node::Gt(_)
-            | Node::Lte(_)
-            | Node::Gte(_)
-            | Node::Eq(_)
-            | Node::Neq(_)
-            | Node::BitAnd(_)
-            | Node::BitOr(_)
-            | Node::BitXor(_)
-            | Node::Add(_)
-            | Node::Sub(_)
-            | Node::Mul(_)
-            | Node::Div(_)
-            | Node::Access(_) => self.gen_bin_op(&mut inline_block_env, node),
-            Node::Return(_) | Node::Negate(_) | Node::Deref(_) => {
+        let return_value = match &node.kind {
+            NodeKind::Or(_)
+            | NodeKind::And(_)
+            | NodeKind::Lt(_)
+            | NodeKind::Gt(_)
+            | NodeKind::Lte(_)
+            | NodeKind::Gte(_)
+            | NodeKind::Eq(_)
+            | NodeKind::Neq(_)
+            | NodeKind::BitAnd(_)
+            | NodeKind::BitOr(_)
+            | NodeKind::BitXor(_)
+            | NodeKind::Add(_)
+            | NodeKind::Sub(_)
+            | NodeKind::Mul(_)
+            | NodeKind::Div(_)
+            | NodeKind::Access(_) => self.gen_bin_op(&mut inline_block_env, node),
+            NodeKind::Return(_) | NodeKind::Negate(_) | NodeKind::Deref(_) => {
                 self.gen_un_op(&mut inline_block_env, node)
             }
-            Node::ReferenceTy(_) | Node::PointerTy(_) => {
+            NodeKind::ReferenceTy(_) | NodeKind::PointerTy(_) => {
                 self.gen_ref_ty(&mut inline_block_env, node)
             }
-            Node::Call(_) => self.gen_call(&mut inline_block_env, node),
-            Node::SizedNumberLiteral(_) => {
+            NodeKind::Call(_) => self.gen_call(&mut inline_block_env, node),
+            NodeKind::SizedNumberLiteral(_) => {
                 self.gen_sized_number_literal(&mut inline_block_env, node)
             }
-            Node::IfExpr(_) => self.gen_branch(&mut inline_block_env, node),
-            Node::StructDecl(_)
-            | Node::ModuleDecl(_)
-            | Node::VarDecl(_)
-            | Node::Identifier(_)
-            | Node::NumberLiteral(_)
-            | Node::SubroutineDecl(_) => unreachable!(),
+            NodeKind::IfExpr(_) => self.gen_branch(&mut inline_block_env, node),
+            NodeKind::StructDecl(_)
+            | NodeKind::ModuleDecl(_)
+            | NodeKind::VarDecl(_)
+            | NodeKind::Identifier(_)
+            | NodeKind::NumberLiteral(_)
+            | NodeKind::SubroutineDecl(_) => unreachable!(),
         };
         inline_block_env.add_instruction(
             Inst::inline_block_break(inline_block.into(), return_value.into()).into(),
@@ -393,37 +393,37 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_bin_op(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let inner = match node {
-            Node::Or(inner)
-            | Node::And(inner)
-            | Node::Lt(inner)
-            | Node::Gt(inner)
-            | Node::Lte(inner)
-            | Node::Gte(inner)
-            | Node::Eq(inner)
-            | Node::Neq(inner)
-            | Node::BitAnd(inner)
-            | Node::BitOr(inner)
-            | Node::BitXor(inner)
-            | Node::Add(inner)
-            | Node::Sub(inner)
-            | Node::Mul(inner)
-            | Node::Div(inner)
-            | Node::Access(inner) => inner,
-            Node::StructDecl(_)
-            | Node::VarDecl(_)
-            | Node::ModuleDecl(_)
-            | Node::Call(_)
-            | Node::Negate(_)
-            | Node::Deref(_)
-            | Node::Return(_)
-            | Node::Identifier(_)
-            | Node::ReferenceTy(_)
-            | Node::PointerTy(_)
-            | Node::NumberLiteral(_)
-            | Node::SizedNumberLiteral(_)
-            | Node::IfExpr(_)
-            | Node::SubroutineDecl(_) => unreachable!(),
+        let inner = match &node.kind {
+            NodeKind::Or(inner)
+            | NodeKind::And(inner)
+            | NodeKind::Lt(inner)
+            | NodeKind::Gt(inner)
+            | NodeKind::Lte(inner)
+            | NodeKind::Gte(inner)
+            | NodeKind::Eq(inner)
+            | NodeKind::Neq(inner)
+            | NodeKind::BitAnd(inner)
+            | NodeKind::BitOr(inner)
+            | NodeKind::BitXor(inner)
+            | NodeKind::Add(inner)
+            | NodeKind::Sub(inner)
+            | NodeKind::Mul(inner)
+            | NodeKind::Div(inner)
+            | NodeKind::Access(inner) => inner,
+            NodeKind::StructDecl(_)
+            | NodeKind::VarDecl(_)
+            | NodeKind::ModuleDecl(_)
+            | NodeKind::Call(_)
+            | NodeKind::Negate(_)
+            | NodeKind::Deref(_)
+            | NodeKind::Return(_)
+            | NodeKind::Identifier(_)
+            | NodeKind::ReferenceTy(_)
+            | NodeKind::PointerTy(_)
+            | NodeKind::NumberLiteral(_)
+            | NodeKind::SizedNumberLiteral(_)
+            | NodeKind::IfExpr(_)
+            | NodeKind::SubroutineDecl(_) => unreachable!(),
         };
 
         let lhs_idx = self.gen_expr(env, &*inner.lhs);
@@ -435,23 +435,23 @@ impl<'ast> Builder<'ast> {
 
         let payload = ExtraPayload::new(ed_idx, node_idx);
 
-        let inst = match node {
-            Node::Or(_) => Inst::Or(payload),
-            Node::And(_) => Inst::And(payload),
-            Node::Lt(_) => Inst::Lt(payload),
-            Node::Gt(_) => Inst::Gt(payload),
-            Node::Lte(_) => Inst::Lte(payload),
-            Node::Gte(_) => Inst::Gte(payload),
-            Node::Eq(_) => Inst::Eq(payload),
-            Node::Neq(_) => Inst::Neq(payload),
-            Node::BitAnd(_) => Inst::BitAnd(payload),
-            Node::BitOr(_) => Inst::BitOr(payload),
-            Node::BitXor(_) => Inst::BitXor(payload),
-            Node::Add(_) => Inst::Add(payload),
-            Node::Sub(_) => Inst::Sub(payload),
-            Node::Mul(_) => Inst::Mul(payload),
-            Node::Div(_) => Inst::Div(payload),
-            Node::Access(_) => Inst::Access(payload),
+        let inst = match node.kind {
+            NodeKind::Or(_) => Inst::Or(payload),
+            NodeKind::And(_) => Inst::And(payload),
+            NodeKind::Lt(_) => Inst::Lt(payload),
+            NodeKind::Gt(_) => Inst::Gt(payload),
+            NodeKind::Lte(_) => Inst::Lte(payload),
+            NodeKind::Gte(_) => Inst::Gte(payload),
+            NodeKind::Eq(_) => Inst::Eq(payload),
+            NodeKind::Neq(_) => Inst::Neq(payload),
+            NodeKind::BitAnd(_) => Inst::BitAnd(payload),
+            NodeKind::BitOr(_) => Inst::BitOr(payload),
+            NodeKind::BitXor(_) => Inst::BitXor(payload),
+            NodeKind::Add(_) => Inst::Add(payload),
+            NodeKind::Sub(_) => Inst::Sub(payload),
+            NodeKind::Mul(_) => Inst::Mul(payload),
+            NodeKind::Div(_) => Inst::Div(payload),
+            NodeKind::Access(_) => Inst::Access(payload),
             _ => unreachable!(),
         };
 
@@ -459,8 +459,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_un_op(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let inner = match node {
-            Node::Negate(inner) | Node::Deref(inner) | Node::Return(inner) => inner,
+        let inner = match &node.kind {
+            NodeKind::Negate(inner) | NodeKind::Deref(inner) | NodeKind::Return(inner) => inner,
             _ => unreachable!(),
         };
 
@@ -469,10 +469,10 @@ impl<'ast> Builder<'ast> {
 
         let un_op = UnOp::new(lhs_idx, node_idx);
 
-        let inst = match node {
-            Node::Negate(_) => Inst::Negate(un_op),
-            Node::Deref(_) => Inst::Deref(un_op),
-            Node::Return(_) => Inst::Return(un_op),
+        let inst = match node.kind {
+            NodeKind::Negate(_) => Inst::Negate(un_op),
+            NodeKind::Deref(_) => Inst::Deref(un_op),
+            NodeKind::Return(_) => Inst::Return(un_op),
             _ => unreachable!(),
         };
 
@@ -480,8 +480,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_ref_ty(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let inner = match node {
-            Node::ReferenceTy(inner) | Node::PointerTy(inner) => inner,
+        let inner = match &node.kind {
+            NodeKind::ReferenceTy(inner) | NodeKind::PointerTy(inner) => inner,
             _ => unreachable!(),
         };
         let mutability = match inner.mutability {
@@ -498,9 +498,9 @@ impl<'ast> Builder<'ast> {
 
         let payload = ExtraPayload::new(extra_idx, node_idx);
 
-        let inst = match node {
-            Node::ReferenceTy(_) => Inst::RefTy(payload),
-            Node::PointerTy(_) => Inst::PtrTy(payload),
+        let inst = match node.kind {
+            NodeKind::ReferenceTy(_) => Inst::RefTy(payload),
+            NodeKind::PointerTy(_) => Inst::PtrTy(payload),
             _ => unreachable!(),
         };
 
@@ -509,8 +509,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_call(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let call = match node {
-            Node::Call(inner) => inner,
+        let call = match &node.kind {
+            NodeKind::Call(inner) => inner,
             _ => unreachable!(),
         };
 
@@ -539,8 +539,8 @@ impl<'ast> Builder<'ast> {
     }
 
     fn gen_branch(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
-        let if_expr = match node {
-            Node::IfExpr(inner) => inner,
+        let if_expr = match &node.kind {
+            NodeKind::IfExpr(inner) => inner,
             _ => unreachable!(),
         };
 
