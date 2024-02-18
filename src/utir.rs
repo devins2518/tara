@@ -191,7 +191,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             _ => unreachable!(),
         };
         self.write_expr(param)?;
-        write!(self, "\n");
+        write!(self, "\n")?;
         write!(self, "%{}: {}", u32::from(idx), param)?;
         return Ok(());
     }
