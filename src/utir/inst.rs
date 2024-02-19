@@ -13,7 +13,6 @@ pub enum Inst<'a> {
     FunctionDecl(ExtraPayload<'a, SubroutineDecl>),
     CombDecl(ExtraPayload<'a, SubroutineDecl>),
     Param(NodePayload<'a, InstRef>),
-    DeclVal(Str<'a>),
     InlineBlock(ExtraPayload<'a, Block>),
     InlineBlockBreak(BinOp),
     As(ExtraPayload<'a, BinOp>),
@@ -59,10 +58,6 @@ impl<'a> Inst<'a> {
         return Self::Param(NodePayload::new(inst_ref, node_idx));
     }
 
-    pub fn decl_val(ident: GlobalSymbol, node_idx: NodeIdx<'a>) -> Self {
-        return Self::DeclVal(Str::new(ident, node_idx));
-    }
-
     pub fn inline_block(extra_idx: ExtraIdx<Block>, node_idx: NodeIdx<'a>) -> Self {
         return Self::InlineBlock(ExtraPayload::new(extra_idx, node_idx));
     }
@@ -93,6 +88,20 @@ impl<'a> Inst<'a> {
 
     pub fn access(extra_idx: ExtraIdx<Access>, node_idx: NodeIdx<'a>) -> Self {
         return Self::Access(ExtraPayload::new(extra_idx, node_idx));
+    }
+
+    pub fn maybe_primitive(s: &'a str, node_idx: NodeIdx<'a>) -> Option<Self> {
+        let bytes = s.as_bytes();
+        if bytes[0] == b'u' {
+            let size = u16::from_str_radix(&s[1..], 10).ok()?;
+            let int_type = Inst::int_type(Signedness::Unsigned, size, node_idx);
+            return Some(int_type);
+        } else if bytes[0] == b'i' {
+            let size = u16::from_str_radix(&s[1..], 10).ok()?;
+            let int_type = Inst::int_type(Signedness::Signed, size, node_idx);
+            return Some(int_type);
+        }
+        None
     }
 }
 
@@ -244,8 +253,6 @@ impl From<Block> for [u32; BLOCK_U32S] {
     }
 }
 
-pub type Str<'a> = NodePayload<'a, GlobalSymbol>;
-
 pub const BIN_OP_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -368,7 +375,7 @@ impl From<[u32; BRANCH_U32S]> for Branch {
         return Self {
             cond: InstRef::from(value[0]),
             true_body_len: value[1],
-            false_body_len: value[1],
+            false_body_len: value[2],
         };
     }
 }
@@ -436,8 +443,12 @@ pub enum InstRef {
 
     TypeType = 16,
 
+    SigType = 17,
+
+    Undefined = 18,
+
     // Used to indicate end of known values
-    None = 17,
+    None = 19,
 }
 
 impl InstRef {
@@ -464,6 +475,8 @@ impl InstRef {
             "clock" => Some(Self::ClockType),
             "reset" => Some(Self::ResetType),
             "type" => Some(Self::TypeType),
+            "sig" => Some(Self::SigType),
+            "undefined" => Some(Self::Undefined),
             _ => None,
         }
     }
@@ -534,6 +547,8 @@ impl Display for InstRef {
                 Self::ClockType => "@clock_type",
                 Self::ResetType => "@reset_type",
                 Self::TypeType => "@type_type",
+                Self::SigType => "@sig_type",
+                Self::Undefined => "@undefined",
                 _ => unreachable!(),
             };
             f.write_str(s)?;

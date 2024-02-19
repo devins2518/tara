@@ -14,7 +14,7 @@ pub struct Node<'a> {
 impl<'a> Node<'a> {
     pub fn new(kind: NodeKind<'a>, span: pest::Span) -> Self {
         return Self {
-            span: Span::new(span.start() as u32, (span.end() - span.start()) as u32),
+            span: Span::new(span.start() as u32, span.end() as u32),
             kind,
         };
     }

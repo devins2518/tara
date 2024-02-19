@@ -1,113 +1,104 @@
 // RUN: @tara @file --dump-utir
 // CHECK: %0 = struct_decl({
-// CHECK:     "A" %1 = decl_val("u1")
+// CHECK:     "A" %1 = int_type(u, 1)
 // CHECK:     "B" %2 = inline_block({
-// CHECK:         %3 = decl_val("a")
-// CHECK:         %4 = decl_val("b")
-// CHECK:         %5 = bit_and(%3, %4)
-// CHECK:         %6 = inline_block_break(%2, %5)
+// CHECK:         %3 = bit_and(%1, %1)
+// CHECK:         %4 = inline_block_break(%2, %3)
 // CHECK:     })
-// CHECK:     "C" %7 = inline_block({
-// CHECK:         %8 = decl_val("a")
-// CHECK:         %9 = negate(%8)
-// CHECK:         %10 = inline_block_break(%7, %9)
+// CHECK:     "C" %5 = inline_block({
+// CHECK:         %6 = negate(%1)
+// CHECK:         %7 = inline_block_break(%5, %6)
 // CHECK:     })
-// CHECK:     "D" %11 = inline_block({
-// CHECK:         %12 = inline_block({
-// CHECK:             %13 = decl_val("a")
-// CHECK:             %14 = decl_val("b")
-// CHECK:             %15 = access(%13, %14)
-// CHECK:             %16 = inline_block_break(%12, %15)
+// CHECK:     "D" %8 = inline_block({
+// CHECK:         %9 = inline_block({
+// CHECK:             %10 = access(%2, "b")
+// CHECK:             %11 = inline_block_break(%9, %10)
 // CHECK:         })
-// CHECK:         %17 = call(%12, {})
-// CHECK:         %18 = inline_block_break(%11, %17)
+// CHECK:         %12 = call(%9, {})
+// CHECK:         %13 = inline_block_break(%8, %12)
 // CHECK:     })
-// CHECK:     "E" %19 = inline_block({
-// CHECK:         %20 = inline_block({
-// CHECK:             %21 = decl_val("a")
-// CHECK:             %22 = decl_val("b")
-// CHECK:             %23 = access(%21, %22)
-// CHECK:             %24 = inline_block_break(%20, %23)
+// CHECK:     "E" %14 = inline_block({
+// CHECK:         %15 = inline_block({
+// CHECK:             %16 = access(%2, "b")
+// CHECK:             %17 = inline_block_break(%15, %16)
 // CHECK:         })
-// CHECK:         %26 = decl_val("c")
-// CHECK:         %27 = decl_val("d")
-// CHECK:         %25 = call(%20, {
-// CHECK:             %26,
-// CHECK:             %27,
+// CHECK:         %19 = int_type(u, 1)
+// CHECK:         %18 = call(%15, {
+// CHECK:             %19,
+// CHECK:             %8,
 // CHECK:         })
-// CHECK:         %28 = inline_block_break(%19, %25)
+// CHECK:         %20 = inline_block_break(%14, %18)
 // CHECK:     })
-// CHECK:     "F" %29 = inline_block({
-// CHECK:         %30 = decl_val("a")
-// CHECK:         %31 = decl_val("b")
-// CHECK:         %32 = bit_or(%30, %31)
-// CHECK:         %33 = inline_block_break(%29, %32)
+// CHECK:     "F" %21 = inline_block({
+// CHECK:         %22 = bit_or(%5, %8)
+// CHECK:         %23 = inline_block_break(%21, %22)
 // CHECK:     })
-// CHECK:     "G" %34 = inline_block({
-// CHECK:         %35 = decl_val("u1")
-// CHECK:         %36 = ref_ty(const %35)
-// CHECK:         %37 = inline_block_break(%34, %36)
+// CHECK:     "G" %24 = inline_block({
+// CHECK:         %25 = int_type(u, 1)
+// CHECK:         %26 = ref_ty(const %25)
+// CHECK:         %27 = inline_block_break(%24, %26)
 // CHECK:     })
-// CHECK:     "H" %38 = inline_block({
-// CHECK:         %39 = decl_val("u1")
-// CHECK:         %40 = ref_ty(mut %39)
-// CHECK:         %41 = inline_block_break(%38, %40)
+// CHECK:     "H" %28 = inline_block({
+// CHECK:         %29 = int_type(u, 1)
+// CHECK:         %30 = ref_ty(mut %29)
+// CHECK:         %31 = inline_block_break(%28, %30)
 // CHECK:     })
-// CHECK:     "I" %42 = decl_val("undefined")
+// CHECK:     "I" @undefined
 // CHECK:     "J" @bool_true
 // CHECK:     "K" @bool_false
-// CHECK:     "L" %43 = inline_block({
-// CHECK:         %44 = decl_val("a")
-// CHECK:         %45 = deref(%44)
-// CHECK:         %46 = inline_block_break(%43, %45)
+// CHECK:     "L" %32 = inline_block({
+// CHECK:         %33 = deref(%1)
+// CHECK:         %34 = inline_block_break(%32, %33)
 // CHECK:     })
-// CHECK:     "M" %47 = inline_block({
-// CHECK:         %48 = decl_val("a")
-// CHECK:         %49 = return(%48)
-// CHECK:         %50 = inline_block_break(%47, %49)
+// CHECK:     "M" %35 = inline_block({
+// CHECK:         %36 = return(%1)
+// CHECK:         %37 = inline_block_break(%35, %36)
 // CHECK:     })
-// CHECK:     "N" %51 = int_literal(0)
-// CHECK:     "O" %52 = int_literal(0)
-// CHECK:     "P" %53 = int_literal(15)
-// CHECK:     "Q" %54 = inline_block({
-// CHECK:         %55 = int_literal(7)
-// CHECK:         %56 = int_type(u, 3)
-// CHECK:         %57 = as(%56, %55)
-// CHECK:         %58 = inline_block_break(%54, %57)
+// CHECK:     "N" %38 = int_literal(0)
+// CHECK:     "O" %39 = int_literal(0)
+// CHECK:     "P" %40 = int_literal(15)
+// CHECK:     "Q" %41 = inline_block({
+// CHECK:         %42 = int_literal(7)
+// CHECK:         %43 = int_type(u, 3)
+// CHECK:         %44 = as(%43, %42)
+// CHECK:         %45 = inline_block_break(%41, %44)
 // CHECK:     })
-// CHECK:     "R" %59 = inline_block({
-// CHECK:         %60 = int_literal(4294967295)
-// CHECK:         %61 = int_type(u, 32)
-// CHECK:         %62 = as(%61, %60)
-// CHECK:         %63 = inline_block_break(%59, %62)
+// CHECK:     "R" %46 = inline_block({
+// CHECK:         %47 = int_literal(4294967295)
+// CHECK:         %48 = int_type(u, 32)
+// CHECK:         %49 = as(%48, %47)
+// CHECK:         %50 = inline_block_break(%46, %49)
 // CHECK:     })
-// CHECK:     "S" %64 = inline_block({
-// CHECK:         %65 = decl_val("a")
-// CHECK:         %66 = branch(%65, {
-// CHECK:             %67 = int_literal(32)
+// CHECK:     "S" %51 = inline_block({
+// CHECK:         %52 = branch(%35, {
+// CHECK:             %53 = inline_block_break(%52, %1)
 // CHECK:         }, {
-// CHECK:             %68 = int_literal(16)
+// CHECK:             %54 = inline_block({
+// CHECK:                 %55 = bit_xor(%1, %2)
+// CHECK:                 %56 = inline_block_break(%54, %55)
+// CHECK:             })
+// CHECK:             %57 = inline_block_break(%52, %54)
 // CHECK:         })
-// CHECK:         %69 = inline_block_break(%64, %66)
+// CHECK:         %58 = inline_block_break(%51, %52)
 // CHECK:     })
 // CHECK: })
 
 const A = u1;
-const B = a & b;
-const C = -a;
-const D = a.b();
-const E = a.b(c, d);
-const F = (a | b);
+const B = A & A;
+const C = -A;
+const D = B.b();
+const E = B.b(u1, D);
+const F = (C | D);
 const G = &u1;
 const H = &var u1;
 const I = undefined;
 const J = true;
 const K = false;
-const L = a.*;
-const M = return a;
+const L = A.*;
+const M = return A;
 const N = 0;
 const O = 0b0;
 const P = 0xF;
 const Q = 3b111;
 const R = 32xFFFFFFFF;
-const S = if (a) 32 else 16;
+const S = if (M) A else A ^ B;

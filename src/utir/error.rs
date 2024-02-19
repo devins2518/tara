@@ -60,14 +60,20 @@ impl Failure {
         }
     }
 
+    fn message(&self) -> &'static str {
+        match self {
+            Self::VariableShadowing(_) => "Variable declaration shadows previous declaration",
+            Self::UnknownIdentifier(_) => "Use of unknown identifier",
+        }
+    }
+
     pub fn report(self, ast: &Ast) -> Result<()> {
         let diagnostic = Diagnostic::error()
-            .with_message("`case` clauses have incompatible types")
-            .with_code("E0308")
+            .with_message(self.message())
             .with_labels(self.labels())
             .with_notes(self.notes());
 
-        let writer = StandardStream::stderr(ColorChoice::Always);
+        let writer = StandardStream::stdout(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
 
         term::emit(&mut writer.lock(), &config, ast.source, &diagnostic)?;

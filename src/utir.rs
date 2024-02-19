@@ -20,7 +20,8 @@ pub struct Utir<'a> {
 }
 
 impl<'a> Utir<'a> {
-    pub fn gen(ast: &'a Ast) -> Self {
+    pub fn gen(ast: &'a Ast) -> Option<Self> {
+        // let mut failure = Failure::new();
         return Builder::new(ast).build();
     }
 }
@@ -136,7 +137,6 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             match inst {
                 Inst::StructDecl(_) => self.write_struct_decl(inst_idx)?,
                 Inst::ModuleDecl(_) => self.write_module_decl(inst_idx)?,
-                Inst::DeclVal(_) => self.write_decl_val(inst_idx)?,
                 Inst::Or(_)
                 | Inst::And(_)
                 | Inst::Lt(_)
@@ -153,8 +153,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 | Inst::Mul(_)
                 | Inst::Div(_)
                 | Inst::InlineBlockBreak(_)
-                | Inst::As(_)
-                | Inst::Access(_) => self.write_bin_op(inst_idx)?,
+                | Inst::As(_) => self.write_bin_op(inst_idx)?,
                 Inst::Negate(_) | Inst::Deref(_) | Inst::Return(_) => self.write_un_op(inst_idx)?,
                 Inst::InlineBlock(_) => self.write_inline_block(inst_idx)?,
                 Inst::FunctionDecl(_) => self.write_subroutine_decl(inst_idx)?,
@@ -165,24 +164,11 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 Inst::IntType(_) => self.write_int_type(inst_idx)?,
                 Inst::Branch(_) => self.write_branch(inst_idx)?,
                 Inst::Param(_) => self.write_param(inst_idx)?,
+                Inst::Access(_) => self.write_access(inst_idx)?,
             }
         } else {
             self.write_ref(inst_ref)?;
         }
-        Ok(())
-    }
-
-    fn write_decl_val(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
-        let decl_val = match self.utir.instructions.get(idx) {
-            Inst::DeclVal(decl_val) => decl_val,
-            _ => unreachable!(),
-        };
-        write!(
-            self,
-            "%{} = decl_val(\"{}\")",
-            u32::from(idx),
-            decl_val.val.as_str()
-        )?;
         Ok(())
     }
 
@@ -191,8 +177,14 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             Inst::Param(inner) => inner.val,
             _ => unreachable!(),
         };
-        self.write_expr(param)?;
-        write!(self, "\n")?;
+        // HACK: don't print out things that we've already printed out
+        if let Some(param_idx) = param.to_inst() {
+            if u32::from(param_idx) < u32::from(idx) {
+                self.write_expr(param)?;
+                write!(self, "\n")?;
+            }
+        }
+
         write!(self, "%{}: {}", u32::from(idx), param)?;
         return Ok(());
     }
@@ -260,10 +252,6 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "div",
             ),
-            Inst::Access(payload) => (
-                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
-                "access",
-            ),
             Inst::As(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "as",
@@ -274,7 +262,6 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::FunctionDecl(_)
             | Inst::CombDecl(_)
             | Inst::Param(_)
-            | Inst::DeclVal(_)
             | Inst::InlineBlock(_)
             | Inst::Negate(_)
             | Inst::Deref(_)
@@ -284,7 +271,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::Call(_)
             | Inst::IntLiteral(_)
             | Inst::IntType(_)
-            | Inst::Branch(_) => unreachable!(),
+            | Inst::Branch(_)
+            | Inst::Access(_) => unreachable!(),
         };
         write!(
             self,
@@ -308,7 +296,6 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::FunctionDecl(_)
             | Inst::CombDecl(_)
             | Inst::Param(_)
-            | Inst::DeclVal(_)
             | Inst::InlineBlock(_)
             | Inst::InlineBlockBreak(_)
             | Inst::As(_)
@@ -384,9 +371,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                     write!(self, "\n")?;
 
                     let param_offset = param_base + (param_num * INST_REF_U32S as u32);
-                    let param_idx: InstRef = self.utir.extra_data.get_extra(param_offset.into());
+                    let param_ref: InstRef = self.utir.extra_data.get_extra(param_offset.into());
 
-                    self.write_expr(param_idx)?;
+                    self.write_expr(param_ref)?;
                 }
                 write!(self, "\n")?;
 
@@ -449,6 +436,12 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         for arg_num in 0..call.num_args {
             let arg_ed_idx = arg_base + arg_num;
             let arg_ref: InstRef = self.utir.extra_data.get_extra(Id::from(arg_ed_idx));
+            // HACK: don't print out things that we've already printed out
+            if let Some(arg_idx) = arg_ref.to_inst() {
+                if u32::from(arg_idx) < u32::from(idx) {
+                    continue;
+                }
+            }
             self.write_expr(arg_ref)?;
             write!(self, "\n")?;
         }
@@ -531,6 +524,22 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         }
         write!(self, "}})")?;
 
+        return Ok(());
+    }
+
+    fn write_access(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let extra_idx = match self.utir.instructions.get(idx) {
+            Inst::Access(access) => access.extra_idx,
+            _ => unreachable!(),
+        };
+        let access: Access = self.utir.extra_data.get_extra(extra_idx.to_u32());
+        write!(
+            self,
+            "%{} = access({}, \"{}\")",
+            u32::from(idx),
+            access.lhs,
+            access.rhs.as_str()
+        )?;
         return Ok(());
     }
 

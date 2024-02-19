@@ -1,11 +1,11 @@
 // RUN: @tara @file --dump-utir
 // CHECK: %0 = struct_decl({
 // CHECK:     "A" @bool_type
-// CHECK:     "B" %1 = decl_val("u1")
-// CHECK:     "C" %2 = decl_val("i1")
-// CHECK:     "D" %3 = decl_val("sig")
-// CHECK:     "E" %4 = module_decl({})
-// CHECK:     "F" %5 = struct_decl({})
+// CHECK:     "B" %1 = int_type(u, 1)
+// CHECK:     "C" %2 = int_type(i, 1)
+// CHECK:     "D" @sig_type
+// CHECK:     "E" %3 = module_decl({})
+// CHECK:     "F" %4 = struct_decl({})
 // CHECK:     "G" @type_type
 // CHECK:     "H" @clock_type
 // CHECK:     "I" @reset_type

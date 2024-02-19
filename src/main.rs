@@ -31,10 +31,10 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let utir = Utir::gen(&ast);
-
-    if &args[2] == "--dump-utir" {
-        println!("{}", utir);
+    if let Some(utir) = Utir::gen(&ast) {
+        if &args[2] == "--dump-utir" {
+            println!("{}", utir);
+        }
     }
 
     return Ok(());

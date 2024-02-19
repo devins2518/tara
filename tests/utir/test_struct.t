@@ -1,10 +1,10 @@
 // RUN: @tara @file --dump-utir
 // CHECK: %0 = struct_decl({
 // CHECK:     "S" %1 = struct_decl({
-// CHECK:         "d": %2 = decl_val("u1")
+// CHECK:         "d": %2 = int_type(u, 1)
 // CHECK:         "A" @bool_type
 // CHECK:         "B" %3 = struct_decl({
-// CHECK:             "C" %4 = decl_val("u1")
+// CHECK:             "C" %4 = int_type(u, 1)
 // CHECK:         })
 // CHECK:     })
 // CHECK: })
