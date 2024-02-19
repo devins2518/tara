@@ -1,20 +1,20 @@
 use crate::{builtin::Mutability, parser::TaraParser};
 use anyhow::Result;
-use miette::SourceSpan;
+use codespan::{FileId, Span};
+use codespan_reporting::files::SimpleFile;
 use num_bigint::BigUint;
-use std::fmt::Display;
-use std::marker::PhantomData;
+use std::{fmt::Display, marker::PhantomData};
 use symbol_table::GlobalSymbol;
 
 pub struct Node<'a> {
-    pub span: SourceSpan,
+    pub span: Span,
     pub kind: NodeKind<'a>,
 }
 
 impl<'a> Node<'a> {
     pub fn new(kind: NodeKind<'a>, span: pest::Span) -> Self {
         return Self {
-            span: SourceSpan::new(span.start().into(), (span.end() - span.start()).into()),
+            span: Span::new(span.start() as u32, (span.end() - span.start()) as u32),
             kind,
         };
     }
@@ -367,13 +367,13 @@ impl Display for SubroutineDecl<'_> {
 }
 
 pub struct Ast<'a> {
-    source: &'a str,
+    pub source: &'a SimpleFile<&'a str, &'a str>,
     pub root: Node<'a>,
 }
 
 impl<'a> Ast<'a> {
-    pub fn parse(source: &'a str) -> Result<Ast<'a>> {
-        let root = TaraParser::parse_source(&source)?;
+    pub fn parse(source: &'a SimpleFile<&str, &str>) -> Result<Ast<'a>> {
+        let root = TaraParser::parse_source(source.source())?;
 
         return Ok(Self { source, root });
     }

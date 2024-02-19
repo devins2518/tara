@@ -2,11 +2,13 @@ use crate::{
     arena::{Arena, ArenaRef, ExtraArenaContainable},
     ast::{Ast, Node, NodeKind, TypedName},
     builtin::{Mutability, Signedness},
-    utir::{inst::*, Utir},
+    utir::{error::*, inst::*, Utir},
 };
 use num_traits::cast::ToPrimitive;
 use std::{collections::HashMap, mem::MaybeUninit};
 use symbol_table::GlobalSymbol;
+
+type AstResult = Result<InstRef, Failure>;
 
 pub struct Builder<'ast> {
     // Underlying reference to ast used to create UTIR
@@ -14,7 +16,6 @@ pub struct Builder<'ast> {
     instructions: Arena<Inst<'ast>>,
     extra_data: Arena<u32>,
     nodes: Arena<&'ast Node<'ast>>,
-    failure: Failure<'ast>,
 }
 
 impl<'ast> Builder<'ast> {
@@ -24,7 +25,6 @@ impl<'ast> Builder<'ast> {
             instructions: Arena::new(),
             extra_data: Arena::new(),
             nodes: Arena::new(),
-            failure: Failure::new(),
         };
     }
 
@@ -716,30 +716,5 @@ impl<'inst, 'parent> Scope<'inst, 'parent> {
         } else {
             self.bindings.insert(ident, inst);
         }
-    }
-}
-
-struct Failure<'ast> {
-    fail_node: Option<&'ast Node<'ast>>,
-    reason: String,
-    notes: Vec<String>,
-}
-
-impl<'ast> Failure<'ast> {
-    pub fn new() -> Self {
-        return Self {
-            fail_node: None,
-            reason: String::new(),
-            notes: Vec::new(),
-        };
-    }
-
-    pub fn fail_with(&mut self, node: &'ast Node<'ast>, reason: &str) {
-        self.fail_node = Some(node);
-        self.reason = reason.to_owned();
-    }
-
-    pub fn add_node(&mut self, note: &str) {
-        self.notes.push(note.to_owned());
     }
 }

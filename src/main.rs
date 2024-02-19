@@ -8,6 +8,7 @@ mod utir;
 
 use anyhow::Result;
 use ast::Ast;
+use codespan_reporting::files::SimpleFiles;
 use std::path::PathBuf;
 use utir::Utir;
 
@@ -19,9 +20,11 @@ fn main() -> Result<()> {
     }
 
     let file_path = PathBuf::from(&args[1]);
+    let mut files = SimpleFiles::<&str, &str>::new();
     let contents = std::fs::read_to_string(&file_path)?;
+    let file_id = files.add(&args[1], &contents);
 
-    let ast = Ast::parse(&contents)?;
+    let ast = Ast::parse(files.get(file_id).unwrap())?;
 
     if &args[2] == "--dump-ast" {
         println!("{}", ast);
