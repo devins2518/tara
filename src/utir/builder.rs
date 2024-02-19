@@ -358,8 +358,7 @@ impl<'ast> Builder<'ast> {
             | NodeKind::Add(_)
             | NodeKind::Sub(_)
             | NodeKind::Mul(_)
-            | NodeKind::Div(_)
-            | NodeKind::Access(_) => self.gen_bin_op(&mut inline_block_env, node),
+            | NodeKind::Div(_) => self.gen_bin_op(&mut inline_block_env, node),
             NodeKind::Return(_) | NodeKind::Negate(_) | NodeKind::Deref(_) => {
                 self.gen_un_op(&mut inline_block_env, node)
             }
@@ -371,6 +370,7 @@ impl<'ast> Builder<'ast> {
                 self.gen_sized_number_literal(&mut inline_block_env, node)
             }
             NodeKind::IfExpr(_) => self.gen_branch(&mut inline_block_env, node),
+            NodeKind::Access(_) => self.gen_access(&mut inline_block_env, node),
             NodeKind::StructDecl(_)
             | NodeKind::ModuleDecl(_)
             | NodeKind::VarDecl(_)
@@ -451,7 +451,6 @@ impl<'ast> Builder<'ast> {
             NodeKind::Sub(_) => Inst::Sub(payload),
             NodeKind::Mul(_) => Inst::Mul(payload),
             NodeKind::Div(_) => Inst::Div(payload),
-            NodeKind::Access(_) => Inst::Access(payload),
             _ => unreachable!(),
         };
 
@@ -568,6 +567,24 @@ impl<'ast> Builder<'ast> {
 
         env.set_instruction(branch_instr, Inst::branch(extra_idx, node_idx));
         return branch_instr;
+    }
+
+    fn gen_access(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> InstRef {
+        let access = match &node.kind {
+            NodeKind::Access(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        let lhs = self.gen_expr(env, &*access.lhs);
+        let rhs = match access.rhs.kind {
+            NodeKind::Identifier(ident) => ident,
+            _ => unreachable!(),
+        };
+
+        let extra_idx = env.add_extra(Access { lhs, rhs });
+        let node_idx = self.add_node(node);
+
+        return env.add_instruction(Inst::access(extra_idx, node_idx));
     }
 
     fn add_node(&self, node: &'ast Node) -> NodeIdx<'ast> {

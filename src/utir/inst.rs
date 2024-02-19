@@ -34,7 +34,7 @@ pub enum Inst<'a> {
     Mul(ExtraPayload<'a, BinOp>),
     Div(ExtraPayload<'a, BinOp>),
     // TODO: lhs should be instruction, rhs should be ident
-    Access(ExtraPayload<'a, BinOp>),
+    Access(ExtraPayload<'a, Access>),
     Negate(UnOp<'a>),
     Deref(UnOp<'a>),
     Return(UnOp<'a>),
@@ -89,6 +89,10 @@ impl<'a> Inst<'a> {
 
     pub fn branch(extra_idx: ExtraIdx<Branch>, node_idx: NodeIdx<'a>) -> Self {
         return Self::Branch(ExtraPayload::new(extra_idx, node_idx));
+    }
+
+    pub fn access(extra_idx: ExtraIdx<Access>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::Access(ExtraPayload::new(extra_idx, node_idx));
     }
 }
 
@@ -372,6 +376,31 @@ impl From<[u32; BRANCH_U32S]> for Branch {
 impl From<Branch> for [u32; BRANCH_U32S] {
     fn from(value: Branch) -> Self {
         return [value.cond.into(), value.true_body_len, value.false_body_len];
+    }
+}
+
+pub const ACCESS_U32S: usize = 2;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Access {
+    pub(super) lhs: InstRef,
+    pub(super) rhs: GlobalSymbol,
+}
+
+impl ExtraArenaContainable<ACCESS_U32S> for Access {}
+impl From<[u32; ACCESS_U32S]> for Access {
+    fn from(value: [u32; ACCESS_U32S]) -> Self {
+        return Self {
+            lhs: InstRef::from(value[0]),
+            rhs: GlobalSymbol::from(NonZeroU32::new(value[1]).unwrap()),
+        };
+    }
+}
+
+impl From<Access> for [u32; ACCESS_U32S] {
+    fn from(value: Access) -> Self {
+        let nonzero = NonZeroU32::from(value.rhs);
+        return [value.lhs.into(), nonzero.into()];
     }
 }
 
