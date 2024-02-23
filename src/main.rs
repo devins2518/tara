@@ -1,15 +1,17 @@
 mod ast;
 mod auto_indenting_stream;
 mod builtin;
+mod comp;
 mod parser;
+mod sema;
+mod types;
 mod utils;
 mod utir;
+mod values;
 
 use anyhow::Result;
 use ast::Ast;
-use codespan_reporting::files::SimpleFiles;
-use std::path::PathBuf;
-use utir::Utir;
+use comp::Compilation;
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
@@ -18,23 +20,8 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    let file_path = PathBuf::from(&args[1]);
-    let mut files = SimpleFiles::<&str, &str>::new();
-    let contents = std::fs::read_to_string(&file_path)?;
-    let file_id = files.add(&args[1], &contents);
-
-    let ast = Ast::parse(files.get(file_id).unwrap())?;
-
-    if &args[2] == "--dump-ast" {
-        println!("{}", ast);
-        return Ok(());
-    }
-
-    if let Some(utir) = Utir::gen(&ast) {
-        if &args[2] == "--dump-utir" {
-            println!("{}", utir);
-        }
-    }
+    let mut compilation = Compilation::new();
+    compilation.compile_all()?;
 
     return Ok(());
 }

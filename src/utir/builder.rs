@@ -28,15 +28,12 @@ impl<'ast> Builder<'ast> {
         };
     }
 
-    pub fn build(self) -> Option<Utir<'ast>> {
+    pub fn build(self) -> Result<Utir<'ast>, Failure> {
         match self.gen_root() {
             Ok(_) => {}
-            Err(e) => {
-                e.report(self.ast).unwrap();
-                return None;
-            }
+            Err(e) => return Err(e),
         }
-        return Some(self.into());
+        return Ok(self.into());
     }
 
     fn gen_root(&self) -> AstResult {

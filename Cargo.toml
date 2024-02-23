@@ -17,6 +17,7 @@ indenter = "0.2"
 num-traits = "0.2.18"
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
+internment = { version = "0.7.4", features = ["arena"] }
 
 [dev-dependencies]
 lit = "0.3.4"

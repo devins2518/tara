@@ -1,3 +1,4 @@
+use crate::utils::slice::OwnedString;
 use crate::{builtin::Mutability, parser::TaraParser};
 use anyhow::Result;
 use codespan::{FileId, Span};
@@ -367,12 +368,12 @@ impl Display for SubroutineDecl<'_> {
 }
 
 pub struct Ast<'a> {
-    pub source: &'a SimpleFile<&'a str, &'a str>,
+    pub source: &'a SimpleFile<GlobalSymbol, OwnedString>,
     pub root: Node<'a>,
 }
 
 impl<'a> Ast<'a> {
-    pub fn parse(source: &'a SimpleFile<&str, &str>) -> Result<Ast<'a>> {
+    pub fn parse(source: &'a SimpleFile<GlobalSymbol, OwnedString>) -> Result<Ast<'a>> {
         let root = TaraParser::parse_source(source.source())?;
 
         return Ok(Self { source, root });

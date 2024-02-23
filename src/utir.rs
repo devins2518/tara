@@ -12,6 +12,8 @@ use crate::{
 use builder::Builder;
 use std::fmt::{Display, Write};
 
+use self::error::Failure;
+
 pub struct Utir<'a> {
     ast: &'a Ast<'a>,
     instructions: Arena<Inst<'a>>,
@@ -20,8 +22,7 @@ pub struct Utir<'a> {
 }
 
 impl<'a> Utir<'a> {
-    pub fn gen(ast: &'a Ast) -> Option<Self> {
-        // let mut failure = Failure::new();
+    pub fn gen(ast: &'a Ast) -> Result<Self, Failure> {
         return Builder::new(ast).build();
     }
 }
