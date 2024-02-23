@@ -1,8 +1,6 @@
 use crate::ast::{Ast, Node};
 use anyhow::Result;
-use codespan::FileId;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
-use codespan_reporting::files::SimpleFile;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 
@@ -21,7 +19,7 @@ pub struct UnknownDecl {
 }
 
 impl Failure {
-    pub fn shadow(ast: &Ast, shadow: &Node, original: &Node) -> Self {
+    pub fn shadow(shadow: &Node, original: &Node) -> Self {
         let shadow_label = Label::primary((), shadow.span);
         let original_label = Label::secondary((), original.span);
         return Self::VariableShadowing(Shadow {
@@ -30,7 +28,7 @@ impl Failure {
         });
     }
 
-    pub fn unknown(ast: &Ast, node: &Node) -> Self {
+    pub fn unknown(node: &Node) -> Self {
         let node_label = Label::primary((), node.span);
         return Self::UnknownIdentifier(UnknownDecl {
             reference: node_label,

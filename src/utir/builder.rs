@@ -153,7 +153,7 @@ impl<'ast> Builder<'ast> {
         }?;
 
         if let Some(prev_inst) = env.add_binding(ident, node, init_expr) {
-            return Err(Failure::shadow(self.ast, node, prev_inst));
+            return Err(Failure::shadow(node, prev_inst));
         }
         return Ok(init_expr);
     }
@@ -200,7 +200,7 @@ impl<'ast> Builder<'ast> {
         env.set_instruction(subroutine_idx, Inst::FunctionDecl(subroutine_decl));
 
         if let Some(prev_inst) = env.add_binding(ident, node, subroutine_idx) {
-            return Err(Failure::shadow(self.ast, node, prev_inst));
+            return Err(Failure::shadow(node, prev_inst));
         }
         return Ok(subroutine_idx);
     }
@@ -247,7 +247,7 @@ impl<'ast> Builder<'ast> {
         env.set_instruction(subroutine_idx, Inst::CombDecl(subroutine_decl));
 
         if let Some(prev_inst) = env.add_binding(ident, node, subroutine_idx) {
-            return Err(Failure::shadow(self.ast, node, prev_inst));
+            return Err(Failure::shadow(node, prev_inst));
         }
         return Ok(subroutine_idx);
     }
@@ -259,7 +259,7 @@ impl<'ast> Builder<'ast> {
         let inst_ref = env.add_instruction(Inst::param(type_expr, node_idx));
 
         if let Some(prev_inst) = env.add_binding(param.name, &*param.ty, inst_ref) {
-            return Err(Failure::shadow(self.ast, &*param.ty, prev_inst));
+            return Err(Failure::shadow(&*param.ty, prev_inst));
         }
 
         return Ok(inst_ref);
@@ -331,7 +331,7 @@ impl<'ast> Builder<'ast> {
         }
         let inst = env
             .resolve_binding(*symbol)
-            .ok_or_else(|| Failure::unknown(&self.ast, node))?;
+            .ok_or_else(|| Failure::unknown(node))?;
         return Ok(inst);
     }
 
