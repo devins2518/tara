@@ -1,7 +1,7 @@
 use crate::{
-    arena::{Arena, ArenaRef, ExtraArenaContainable},
     ast::{Ast, Node, NodeKind, TypedName},
     builtin::{Mutability, Signedness},
+    utils::arena::{Arena, ArenaRef, ExtraArenaContainable},
     utir::{error::*, inst::*, Utir},
 };
 use num_traits::cast::ToPrimitive;
@@ -760,8 +760,8 @@ impl<'builder, 'inst, 'parent> Environment<'builder, 'inst, 'parent> {
 
     pub fn finish(self) {
         if let Some(parent) = self.parent {
-            let data = ArenaRef::from(self.tmp_extra);
-            for inst in data.data.iter() {
+            let mut data = ArenaRef::from(self.tmp_extra);
+            for inst in data.iter() {
                 parent.add_extra_u32(*inst);
             }
         }

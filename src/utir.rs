@@ -3,9 +3,9 @@ mod error;
 mod inst;
 
 use crate::{
-    arena::{Arena, Id},
     ast::Node,
     auto_indenting_stream::AutoIndentingStream,
+    utils::arena::{Arena, Id},
     utir::inst::*,
     Ast,
 };

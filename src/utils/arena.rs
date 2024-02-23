@@ -90,6 +90,12 @@ impl<T: Copy> From<Arena<T>> for ArenaRef<T> {
     }
 }
 
+impl<T: Copy> ArenaRef<T> {
+    pub fn iter(&mut self) -> impl Iterator<Item = &T> {
+        self.data.iter()
+    }
+}
+
 pub const ID_U32S: usize = 1;
 pub struct Id<T> {
     id: u32,

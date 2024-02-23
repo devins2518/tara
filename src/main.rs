@@ -1,9 +1,8 @@
-#[deny(unused_variables)]
-mod arena;
 mod ast;
 mod auto_indenting_stream;
 mod builtin;
 mod parser;
+mod utils;
 mod utir;
 
 use anyhow::Result;
