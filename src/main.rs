@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     }
 
     let mut compilation = Compilation::new();
-    compilation.compile_all()?;
+    compilation.compile()?;
 
     return Ok(());
 }
