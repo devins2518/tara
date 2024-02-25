@@ -1,7 +1,8 @@
 mod builder;
 mod error;
-mod inst;
+pub(super) mod inst;
 
+use self::error::Failure;
 use crate::{
     ast::Node,
     auto_indenting_stream::AutoIndentingStream,
@@ -12,18 +13,26 @@ use crate::{
 use builder::Builder;
 use std::fmt::{Display, Write};
 
-use self::error::Failure;
-
+// Untyped IR
 pub struct Utir<'a> {
-    ast: &'a Ast<'a>,
-    instructions: Arena<Inst<'a>>,
-    extra_data: Arena<u32>,
-    nodes: Arena<&'a Node<'a>>,
+    pub ast: &'a Ast<'a>,
+    // TODO: make this private and force use of get_inst
+    pub instructions: Arena<Inst<'a>>,
+    pub extra_data: Arena<u32>,
+    pub nodes: Arena<&'a Node<'a>>,
 }
 
 impl<'a> Utir<'a> {
     pub fn gen(ast: &'a Ast) -> Result<Self, Failure> {
         return Builder::new(ast).build();
+    }
+
+    pub fn get_inst(&self, node: InstIdx<'a>) -> Inst<'a> {
+        return self.instructions.get(node);
+    }
+
+    pub fn get_node(&self, node: NodeIdx<'a>) -> &'a Node<'a> {
+        return self.nodes.get(node);
     }
 }
 

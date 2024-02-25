@@ -1,5 +1,4 @@
-use std::cell::UnsafeCell;
-use std::marker::PhantomData;
+use std::{cell::UnsafeCell, marker::PhantomData, ops::Add};
 
 pub struct Arena<T> {
     inner: UnsafeCell<Vec<T>>,
@@ -77,6 +76,17 @@ impl Arena<u32> {
         let slice = self.get_inner()[idx..(idx + N)].try_into().unwrap();
         return T::from(slice);
     }
+
+    pub fn slice<const N: usize, T: ExtraArenaContainable<N>>(
+        &self,
+        start: Id<T>,
+        end: Id<T>,
+    ) -> &[T] {
+        let vec = self.get_inner();
+        let start: u32 = start.into();
+        let end: u32 = end.into();
+        return unsafe { std::mem::transmute(&vec[start as usize..end as usize]) };
+    }
 }
 
 pub struct ArenaRef<T: Copy> {
@@ -147,5 +157,21 @@ impl<T> From<u32> for Id<T> {
 impl<T> From<Id<T>> for u32 {
     fn from(id: Id<T>) -> u32 {
         return id.id;
+    }
+}
+
+impl<T> Add<u32> for Id<T> {
+    type Output = Id<T>;
+
+    fn add(self, rhs: u32) -> Self::Output {
+        return Self::from(self.id + rhs);
+    }
+}
+
+impl<T> Add<usize> for Id<T> {
+    type Output = Id<T>;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        return Self::from(self.id + rhs as u32);
     }
 }

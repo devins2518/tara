@@ -108,8 +108,8 @@ impl<'a> Inst<'a> {
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct ExtraPayload<'a, T> {
-    pub(super) extra_idx: ExtraIdx<T>,
-    pub(super) node_idx: NodeIdx<'a>,
+    pub extra_idx: ExtraIdx<T>,
+    pub node_idx: NodeIdx<'a>,
 }
 
 impl<'a, T> ExtraPayload<'a, T> {
@@ -124,8 +124,8 @@ impl<'a, T> ExtraPayload<'a, T> {
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct NodePayload<'a, T> {
-    pub(super) val: T,
-    pub(super) node_idx: NodeIdx<'a>,
+    pub val: T,
+    pub node_idx: NodeIdx<'a>,
 }
 
 impl<'a, T> NodePayload<'a, T> {
@@ -139,8 +139,8 @@ pub const CONTAINER_DECL_U32S: usize = 2;
 // `ContainerVarDecl`
 #[derive(Copy, Clone)]
 pub struct ContainerDecl {
-    pub(super) fields: u32,
-    pub(super) decls: u32,
+    pub fields: u32,
+    pub decls: u32,
 }
 
 impl ExtraArenaContainable<CONTAINER_DECL_U32S> for ContainerDecl {}
@@ -169,8 +169,8 @@ pub type ContainerMember = NamedRef;
 pub const NAMED_REF_U32S: usize = 2;
 #[derive(Copy, Clone)]
 pub struct NamedRef {
-    pub(super) name: GlobalSymbol,
-    pub(super) inst_ref: InstRef,
+    pub name: GlobalSymbol,
+    pub inst_ref: InstRef,
 }
 
 impl NamedRef {
@@ -202,9 +202,9 @@ pub const SUBROUTINE_DECL_U32S: usize = 3;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct SubroutineDecl {
-    pub(super) params: u32,
-    pub(super) return_type: InstRef,
-    pub(super) body_len: u32,
+    pub params: u32,
+    pub return_type: InstRef,
+    pub body_len: u32,
 }
 
 impl ExtraArenaContainable<SUBROUTINE_DECL_U32S> for SubroutineDecl {}
@@ -229,7 +229,7 @@ pub const BLOCK_U32S: usize = 1;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Block {
-    pub(super) num_instrs: u32,
+    pub num_instrs: u32,
 }
 
 impl Block {
@@ -257,8 +257,8 @@ pub const BIN_OP_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct BinOp {
-    pub(super) lhs: InstRef,
-    pub(super) rhs: InstRef,
+    pub lhs: InstRef,
+    pub rhs: InstRef,
 }
 
 impl BinOp {
@@ -289,8 +289,8 @@ pub const REF_TY_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct RefTy {
-    pub(super) mutability: Mutability,
-    pub(super) ty: InstRef,
+    pub mutability: Mutability,
+    pub ty: InstRef,
 }
 
 impl RefTy {
@@ -329,8 +329,8 @@ pub const CALL_ARGS_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CallArgs {
-    pub(super) lhs: InstRef,
-    pub(super) num_args: u32,
+    pub lhs: InstRef,
+    pub num_args: u32,
 }
 
 impl ExtraArenaContainable<CALL_ARGS_U32S> for CallArgs {}
@@ -352,8 +352,8 @@ impl From<CallArgs> for [u32; CALL_ARGS_U32S] {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct IntInfo {
-    pub(super) signedness: Signedness,
-    pub(super) size: u16,
+    pub signedness: Signedness,
+    pub size: u16,
 }
 
 pub type IntType<'a> = NodePayload<'a, IntInfo>;
@@ -364,9 +364,9 @@ pub const BRANCH_U32S: usize = 3;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Branch {
-    pub(super) cond: InstRef,
-    pub(super) true_body_len: u32,
-    pub(super) false_body_len: u32,
+    pub cond: InstRef,
+    pub true_body_len: u32,
+    pub false_body_len: u32,
 }
 
 impl ExtraArenaContainable<BRANCH_U32S> for Branch {}
@@ -390,8 +390,8 @@ pub const ACCESS_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Access {
-    pub(super) lhs: InstRef,
-    pub(super) rhs: GlobalSymbol,
+    pub lhs: InstRef,
+    pub rhs: GlobalSymbol,
 }
 
 impl ExtraArenaContainable<ACCESS_U32S> for Access {}

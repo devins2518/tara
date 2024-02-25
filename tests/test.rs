@@ -30,7 +30,7 @@ mod tests {
 
             config.constants.insert("tara".to_owned(), tara_exe());
         })
-        .expect("Lit tests failed");
+        .expect("Parser tests failed");
     }
 
     #[test]
@@ -41,6 +41,17 @@ mod tests {
 
             config.constants.insert("tara".to_owned(), tara_exe());
         })
-        .expect("Lit tests failed");
+        .expect("UTIR tests failed");
+    }
+
+    #[test]
+    fn tir_tests() {
+        lit::run::tests(|config| {
+            config.add_search_path("tests/tir/");
+            config.add_extension("t");
+
+            config.constants.insert("tara".to_owned(), tara_exe());
+        })
+        .expect("TIR tests failed");
     }
 }

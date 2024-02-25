@@ -1,9 +1,4 @@
-use crate::{
-    ast::Ast,
-    types::Type,
-    utils::slice::{OwnedSlice, OwnedString},
-    utir::Utir,
-};
+use crate::{ast::Ast, tir::Tir, types::Type, utils::slice::OwnedString, utir::Utir};
 use anyhow::Result;
 use codespan_reporting::files::SimpleFiles;
 use internment::Arena;
@@ -42,6 +37,12 @@ impl<'a> Compilation<'a> {
         if options.dump_utir {
             println!("{}", utir);
         }
+
+        let tir = match Tir::gen(&utir) {
+            Ok(tir) => tir,
+            Err(fail) => return fail.report(&ast),
+        };
+
         return Ok(());
     }
 }
@@ -50,6 +51,7 @@ struct CompilationOptions {
     top_file: GlobalSymbol,
     dump_ast: bool,
     dump_utir: bool,
+    dump_tir: bool,
 }
 
 impl CompilationOptions {
@@ -58,10 +60,12 @@ impl CompilationOptions {
         let mut found_top = false;
         let mut dump_ast = false;
         let mut dump_utir = false;
+        let mut dump_tir = false;
         for arg in std::env::args().skip(1) {
             match arg.as_str() {
                 "--dump-ast" => dump_ast = true,
                 "--dump-utir" => dump_utir = true,
+                "--dump-tir" => dump_tir = true,
                 _ => {
                     if found_top {
                         println!("[ERROR] Found multiple top files in arguments");
@@ -83,6 +87,7 @@ impl CompilationOptions {
             top_file: unsafe { top_file.assume_init() },
             dump_ast,
             dump_utir,
+            dump_tir,
         };
     }
 }

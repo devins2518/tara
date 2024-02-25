@@ -4,6 +4,7 @@ mod builtin;
 mod comp;
 mod parser;
 mod sema;
+mod tir;
 mod types;
 mod utils;
 mod utir;
