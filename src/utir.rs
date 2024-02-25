@@ -6,7 +6,7 @@ use self::error::Failure;
 use crate::{
     ast::Node,
     auto_indenting_stream::AutoIndentingStream,
-    utils::arena::{Arena, Id},
+    utils::arena::{Arena, ExtraArenaContainable, Id},
     utir::inst::*,
     Ast,
 };
@@ -17,9 +17,9 @@ use std::fmt::{Display, Write};
 pub struct Utir<'a> {
     pub ast: &'a Ast<'a>,
     // TODO: make this private and force use of get_inst
-    pub instructions: Arena<Inst<'a>>,
-    pub extra_data: Arena<u32>,
-    pub nodes: Arena<&'a Node<'a>>,
+    instructions: Arena<Inst<'a>>,
+    extra_data: Arena<u32>,
+    nodes: Arena<&'a Node<'a>>,
 }
 
 impl<'a> Utir<'a> {
@@ -27,8 +27,20 @@ impl<'a> Utir<'a> {
         return Builder::new(ast).build();
     }
 
-    pub fn get_inst(&self, node: InstIdx<'a>) -> Inst<'a> {
-        return self.instructions.get(node);
+    pub fn get_inst(&self, inst: InstIdx<'a>) -> Inst<'a> {
+        return self.instructions.get(inst);
+    }
+
+    pub fn get_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, extra: ExtraIdx<T>) -> T {
+        return self.extra_data.get_extra(extra.to_u32());
+    }
+
+    pub fn slice<const N: usize, T: ExtraArenaContainable<N>>(
+        &self,
+        start: ExtraIdx<T>,
+        end: ExtraIdx<T>,
+    ) -> &[T] {
+        return self.extra_data.slice(start, end);
     }
 
     pub fn get_node(&self, node: NodeIdx<'a>) -> &'a Node<'a> {

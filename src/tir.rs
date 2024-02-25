@@ -36,15 +36,15 @@ impl Tir {
         let top = 'top: {
             let root = utir.get_inst(Id::from(0));
             let extra_idx = match root {
-                UtirInst::StructDecl(payload) => payload.extra_idx.to_u32(),
+                UtirInst::StructDecl(payload) => payload.extra_idx,
                 _ => unreachable!(),
             };
-            let top_decl: ContainerDecl = utir.extra_data.get_extra(extra_idx);
+            let top_decl = utir.get_extra(extra_idx);
             let field_base = extra_idx + CONTAINER_DECL_U32S;
             let decls_base = field_base + (top_decl.fields * CONTAINER_FIELD_U32S as u32);
             for i in 0..top_decl.decls {
                 let decl_offset = decls_base + (i * CONTAINER_FIELD_U32S as u32);
-                let decl: ContainerMember = utir.extra_data.get_extra(decl_offset.into());
+                let decl: ContainerMember = utir.get_extra(decl_offset.to_u32().from_u32());
                 if decl.name.as_str() == "Top" {
                     break 'top decl.inst_ref;
                 }
@@ -60,14 +60,14 @@ impl Tir {
                     _ => return Err(Failure::TopNotModule),
                 };
 
-                let extra_idx = payload.extra_idx.to_u32();
+                let extra_idx = payload.extra_idx;
 
-                let top_decl: ContainerDecl = utir.extra_data.get_extra(extra_idx);
+                let top_decl = utir.get_extra(extra_idx);
                 let field_base = extra_idx + CONTAINER_DECL_U32S;
                 let decls_base = field_base + (top_decl.fields * CONTAINER_FIELD_U32S as u32);
                 for i in 0..top_decl.decls {
                     let decl_offset = decls_base + (i * CONTAINER_FIELD_U32S as u32);
-                    let decl: ContainerMember = utir.extra_data.get_extra(decl_offset.into());
+                    let decl: ContainerMember = utir.get_extra(decl_offset.to_u32().from_u32());
                     if decl.name.as_str() == "top" {
                         break 'top_top decl.inst_ref;
                     }
@@ -82,24 +82,24 @@ impl Tir {
 
         let top_body_idxs = 'top_body: {
             let extra_idx = if let Some(idx) = top_top.to_inst() {
-                match utir.instructions.get(idx) {
-                    UtirInst::CombDecl(payload) => payload.extra_idx.to_u32(),
+                match utir.get_inst(idx) {
+                    UtirInst::CombDecl(payload) => payload.extra_idx,
                     _ => unreachable!(),
                 }
             } else {
                 return Err(Failure::TopTopNotComb);
             };
-            let subroutine: SubroutineDecl = utir.extra_data.get_extra(extra_idx);
+            let subroutine: SubroutineDecl = utir.get_extra(extra_idx);
             let body_start: Id<InstIdx> =
-                (extra_idx + SUBROUTINE_DECL_U32S + subroutine.params).from_u32();
+                extra_idx.to_u32().from_u32() + SUBROUTINE_DECL_U32S + subroutine.params;
             let body_end: Id<InstIdx> = body_start + subroutine.body_len;
-            let body = utir.extra_data.slice(body_start, body_end);
+            let body = utir.slice(body_start, body_end);
             break 'top_body body;
         };
 
         let mut top_body = Vec::new();
         for idx in top_body_idxs {
-            top_body.push(utir.instructions.get(*idx));
+            top_body.push(utir.get_inst(*idx));
         }
 
         sema.analyze_body_inner(&mut top_block, &top_body)?;
