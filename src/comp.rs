@@ -31,6 +31,9 @@ impl<'module> Compilation<'module> {
         let ast = Ast::parse(self.files.get(file_id)?)?;
         if options.dump_ast {
             println!("{}", ast);
+            if options.exit_early {
+                return Ok(());
+            }
         }
 
         let utir = match Utir::gen(&ast) {
@@ -39,6 +42,9 @@ impl<'module> Compilation<'module> {
         };
         if options.dump_utir {
             println!("{}", utir);
+            if options.exit_early {
+                return Ok(());
+            }
         }
 
         let tir = match Tir::gen(module, &utir) {
@@ -52,6 +58,7 @@ impl<'module> Compilation<'module> {
 
 struct CompilationOptions {
     top_file: GlobalSymbol,
+    exit_early: bool,
     dump_ast: bool,
     dump_utir: bool,
     dump_tir: bool,
@@ -61,11 +68,13 @@ impl CompilationOptions {
     pub fn from_args() -> CompilationOptions {
         let mut top_file = MaybeUninit::uninit();
         let mut found_top = false;
+        let mut exit_early = false;
         let mut dump_ast = false;
         let mut dump_utir = false;
         let mut dump_tir = false;
         for arg in std::env::args().skip(1) {
             match arg.as_str() {
+                "--exit-early" => exit_early = true,
                 "--dump-ast" => dump_ast = true,
                 "--dump-utir" => dump_utir = true,
                 "--dump-tir" => dump_tir = true,
@@ -88,6 +97,7 @@ impl CompilationOptions {
 
         return CompilationOptions {
             top_file: unsafe { top_file.assume_init() },
+            exit_early,
             dump_ast,
             dump_utir,
             dump_tir,
