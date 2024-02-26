@@ -1,4 +1,5 @@
 use crate::{
+    module::Module,
     tir::{
         error::Failure,
         inst::{Inst, InstIdx},
@@ -9,18 +10,18 @@ use crate::{
 };
 use std::collections::HashMap;
 
-pub struct Sema<'utir, 'ast> {
+pub struct Sema<'comp, 'ast, 'utir, 'module> {
     utir: &'utir Utir<'ast>,
+    module: &'comp mut Module<'module>,
     instructions: Arena<Inst>,
     extra_data: Arena<u32>,
     utir_map: HashMap<UtirInst<'utir>, InstIdx>,
 }
 
-impl Unpin for Sema<'_, '_> {}
-
-impl<'utir, 'ast> Sema<'utir, 'ast> {
-    pub fn new(utir: &'utir Utir<'ast>) -> Self {
+impl<'comp, 'ast, 'utir, 'module> Sema<'comp, 'ast, 'utir, 'module> {
+    pub fn new(module: &'comp mut Module<'module>, utir: &'utir Utir<'ast>) -> Self {
         return Self {
+            module,
             utir,
             instructions: Arena::new(),
             extra_data: Arena::new(),
@@ -44,8 +45,8 @@ impl<'utir, 'ast> Sema<'utir, 'ast> {
     }
 }
 
-pub struct Block<'sema, 'ast, 'parent> {
-    pub parent: Option<&'parent Block<'sema, 'ast, 'parent>>,
-    pub sema: &'sema Sema<'sema, 'ast>,
+pub struct Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module> {
+    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module>>,
+    pub sema: &'sema Sema<'comp, 'ast, 'utir, 'module>,
     pub instructions: Vec<InstIdx>,
 }

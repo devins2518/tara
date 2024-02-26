@@ -31,6 +31,40 @@ impl<'a> Utir<'a> {
         return self.instructions.get(inst);
     }
 
+    // Returns the instruction of decl.name
+    pub fn get_decl(&self, decl: InstIdx<'a>, name: &str) -> Option<InstRef> {
+        let extra_idx = match self.get_inst(decl) {
+            Inst::StructDecl(payload) => payload.extra_idx,
+            Inst::ModuleDecl(payload) => payload.extra_idx,
+            _ => return None,
+        };
+        let container_decl = self.get_extra(extra_idx);
+        let field_base = extra_idx + CONTAINER_DECL_U32S;
+        let decls_base = field_base + (container_decl.fields * CONTAINER_FIELD_U32S as u32);
+        for i in 0..container_decl.decls {
+            let member_offset = decls_base.to_u32().from_u32() + (i * CONTAINER_FIELD_U32S as u32);
+            let member: ContainerMember = self.get_extra(member_offset);
+            if member.name.as_str() == name {
+                return Some(member.inst_ref);
+            }
+        }
+        return None;
+    }
+
+    pub fn get_body(&self, decl: InstIdx<'a>) -> Option<&[InstIdx]> {
+        let extra_idx = match self.get_inst(decl) {
+            Inst::FunctionDecl(payload) => payload.extra_idx,
+            Inst::CombDecl(payload) => payload.extra_idx,
+            _ => return None,
+        };
+        let subroutine = self.get_extra(extra_idx);
+        let body_start: Id<InstIdx> =
+            extra_idx.to_u32().from_u32() + SUBROUTINE_DECL_U32S + subroutine.params;
+        let body_end: Id<InstIdx> = body_start + subroutine.body_len;
+        let body = self.slice(body_start, body_end);
+        return Some(body);
+    }
+
     pub fn get_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, extra: ExtraIdx<T>) -> T {
         return self.extra_data.get_extra(extra.to_u32());
     }

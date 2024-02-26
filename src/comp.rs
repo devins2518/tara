@@ -1,20 +1,20 @@
-use crate::{ast::Ast, tir::Tir, types::Type, utils::slice::OwnedString, utir::Utir};
+use crate::{ast::Ast, module::Module, tir::Tir, utils::slice::OwnedString, utir::Utir};
 use anyhow::Result;
 use codespan_reporting::files::SimpleFiles;
-use internment::Arena;
 use std::mem::MaybeUninit;
+use std::pin::Pin;
 use symbol_table::GlobalSymbol;
 
-pub struct Compilation<'a> {
+pub struct Compilation<'module> {
     files: SimpleFiles<GlobalSymbol, OwnedString>,
-    types: Arena<Type<'a>>,
+    modules: Vec<Module<'module>>,
 }
 
-impl<'a> Compilation<'a> {
+impl<'module> Compilation<'module> {
     pub fn new() -> Self {
         return Self {
             files: SimpleFiles::new(),
-            types: Arena::new(),
+            modules: Vec::new(),
         };
     }
 
@@ -24,6 +24,9 @@ impl<'a> Compilation<'a> {
         let file_id = self
             .files
             .add(options.top_file, OwnedString::from(contents));
+
+        self.modules.push(Module::new());
+        let module = &mut self.modules.last_mut().unwrap();
 
         let ast = Ast::parse(self.files.get(file_id)?)?;
         if options.dump_ast {
@@ -38,7 +41,7 @@ impl<'a> Compilation<'a> {
             println!("{}", utir);
         }
 
-        let tir = match Tir::gen(&utir) {
+        let tir = match Tir::gen(module, &utir) {
             Ok(tir) => tir,
             Err(fail) => return fail.report(&ast),
         };

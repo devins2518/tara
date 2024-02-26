@@ -2,8 +2,9 @@ mod ast;
 mod auto_indenting_stream;
 mod builtin;
 mod comp;
+mod intern;
+mod module;
 mod parser;
-mod sema;
 mod tir;
 mod types;
 mod utils;
@@ -13,6 +14,7 @@ mod values;
 use anyhow::Result;
 use ast::Ast;
 use comp::Compilation;
+use std::pin::Pin;
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
@@ -21,7 +23,8 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    let mut compilation = Compilation::new();
+    let mut unpinned_comp = Compilation::new();
+    let mut compilation = Pin::new(&mut unpinned_comp);
     compilation.compile()?;
 
     return Ok(());
