@@ -13,6 +13,8 @@ pub enum Inst<'a> {
     FunctionDecl(ExtraPayload<'a, SubroutineDecl>),
     CombDecl(ExtraPayload<'a, SubroutineDecl>),
     Param(NodePayload<'a, InstRef>),
+    Block(ExtraPayload<'a, Block>),
+    BlockBreak(BinOp),
     InlineBlock(ExtraPayload<'a, Block>),
     InlineBlockBreak(BinOp),
     As(ExtraPayload<'a, BinOp>),
@@ -43,6 +45,8 @@ pub enum Inst<'a> {
     IntLiteral(u64),
     IntType(IntType<'a>),
     Branch(ExtraPayload<'a, Branch>),
+    // Used to maintain noreturn invariant for subroutine blocks.
+    RetImplicitVoid,
 }
 
 impl<'a> Inst<'a> {
@@ -56,6 +60,14 @@ impl<'a> Inst<'a> {
 
     pub fn param(inst_ref: InstRef, node_idx: NodeIdx<'a>) -> Self {
         return Self::Param(NodePayload::new(inst_ref, node_idx));
+    }
+
+    pub fn block(extra_idx: ExtraIdx<Block>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::Block(ExtraPayload::new(extra_idx, node_idx));
+    }
+
+    pub fn block_break(lhs: InstRef, rhs: InstRef) -> Self {
+        return Self::BlockBreak(BinOp::new(lhs, rhs));
     }
 
     pub fn inline_block(extra_idx: ExtraIdx<Block>, node_idx: NodeIdx<'a>) -> Self {
@@ -102,6 +114,47 @@ impl<'a> Inst<'a> {
             return Some(int_type);
         }
         None
+    }
+
+    pub fn is_no_return(&self) -> bool {
+        match self {
+            Self::StructDecl(_)
+            | Self::ModuleDecl(_)
+            | Self::FunctionDecl(_)
+            | Self::CombDecl(_)
+            | Self::Param(_)
+            | Self::Block(_)
+            | Self::InlineBlock(_)
+            | Self::As(_)
+            | Self::Or(_)
+            | Self::And(_)
+            | Self::Lt(_)
+            | Self::Gt(_)
+            | Self::Lte(_)
+            | Self::Gte(_)
+            | Self::Eq(_)
+            | Self::Neq(_)
+            | Self::BitAnd(_)
+            | Self::BitOr(_)
+            | Self::BitXor(_)
+            | Self::Add(_)
+            | Self::Sub(_)
+            | Self::Mul(_)
+            | Self::Div(_)
+            | Self::Access(_)
+            | Self::Negate(_)
+            | Self::Deref(_)
+            | Self::Return(_)
+            | Self::RefTy(_)
+            | Self::PtrTy(_)
+            | Self::Call(_)
+            | Self::IntLiteral(_)
+            | Self::IntType(_) => false,
+            Self::BlockBreak(_)
+            | Self::InlineBlockBreak(_)
+            | Self::Branch(_)
+            | Self::RetImplicitVoid => true,
+        }
     }
 }
 
@@ -196,15 +249,15 @@ impl From<NamedRef> for [u32; NAMED_REF_U32S] {
     }
 }
 
-// Followed by `params` number of `InstRef`s which are indexes of `Param`s, then `body_len` number of instructions which make up
-// the body of the subroutine
+// Followed by `params` number of `InstRef`s which are indexes of `Param`s, then a `body` InstRef
+// which is a block
 pub const SUBROUTINE_DECL_U32S: usize = 3;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct SubroutineDecl {
     pub params: u32,
     pub return_type: InstRef,
-    pub body_len: u32,
+    pub body: InstRef,
 }
 
 impl ExtraArenaContainable<SUBROUTINE_DECL_U32S> for SubroutineDecl {}
@@ -213,14 +266,14 @@ impl From<[u32; SUBROUTINE_DECL_U32S]> for SubroutineDecl {
         return Self {
             params: value[0],
             return_type: InstRef::from(value[1]),
-            body_len: value[2],
+            body: InstRef::from(value[2]),
         };
     }
 }
 
 impl From<SubroutineDecl> for [u32; SUBROUTINE_DECL_U32S] {
     fn from(value: SubroutineDecl) -> Self {
-        return [value.params, value.return_type.into(), value.body_len];
+        return [value.params, value.return_type.into(), value.body.into()];
     }
 }
 
@@ -365,8 +418,8 @@ pub const BRANCH_U32S: usize = 3;
 #[derive(Copy, Clone)]
 pub struct Branch {
     pub cond: InstRef,
-    pub true_body_len: u32,
-    pub false_body_len: u32,
+    pub true_block: InstRef,
+    pub false_block: InstRef,
 }
 
 impl ExtraArenaContainable<BRANCH_U32S> for Branch {}
@@ -374,15 +427,19 @@ impl From<[u32; BRANCH_U32S]> for Branch {
     fn from(value: [u32; BRANCH_U32S]) -> Self {
         return Self {
             cond: InstRef::from(value[0]),
-            true_body_len: value[1],
-            false_body_len: value[2],
+            true_block: InstRef::from(value[1]),
+            false_block: InstRef::from(value[2]),
         };
     }
 }
 
 impl From<Branch> for [u32; BRANCH_U32S] {
     fn from(value: Branch) -> Self {
-        return [value.cond.into(), value.true_body_len, value.false_body_len];
+        return [
+            value.cond.into(),
+            value.true_block.into(),
+            value.false_block.into(),
+        ];
     }
 }
 

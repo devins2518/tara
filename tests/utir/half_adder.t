@@ -17,13 +17,13 @@
 // CHECK:                 %12: %8
 // CHECK:             }
 // CHECK:             %13 = int_type(u, 1)
-// CHECK:             %14 = inline_block({
+// CHECK:             %14 = block({
 // CHECK:                 %15 = inline_block({
 // CHECK:                     %16 = bit_xor(%7, %12)
-// CHECK:                     %17 = inline_block_break(%15, %16)
+// CHECK:                     %17 = return(%16)
+// CHECK:                     %18 = inline_block_break(%15, %17)
 // CHECK:                 })
-// CHECK:                 %18 = return(%15)
-// CHECK:                 %19 = inline_block_break(%14, %18)
+// CHECK:                 %19 = ret_implicit_void()
 // CHECK:             })
 // CHECK:         )
 // CHECK:         "carry" %20 = subroutine_decl(
@@ -42,13 +42,13 @@
 // CHECK:                 %30: %26
 // CHECK:             }
 // CHECK:             %31 = int_type(u, 1)
-// CHECK:             %32 = inline_block({
+// CHECK:             %32 = block({
 // CHECK:                 %33 = inline_block({
 // CHECK:                     %34 = bit_and(%25, %30)
-// CHECK:                     %35 = inline_block_break(%33, %34)
+// CHECK:                     %35 = return(%34)
+// CHECK:                     %36 = inline_block_break(%33, %35)
 // CHECK:                 })
-// CHECK:                 %36 = return(%33)
-// CHECK:                 %37 = inline_block_break(%32, %36)
+// CHECK:                 %37 = ret_implicit_void()
 // CHECK:             })
 // CHECK:         )
 // CHECK:     })

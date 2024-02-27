@@ -77,6 +77,14 @@ impl Arena<u32> {
         return T::from(slice);
     }
 
+    pub fn set_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, id: Id<T>, val: T) {
+        let idx: usize = u32::from(id) as usize;
+        let u32s = val.into();
+        for i in 0..N {
+            self.get_inner()[i] = u32s[i];
+        }
+    }
+
     pub fn slice<const N: usize, T: ExtraArenaContainable<N>>(
         &self,
         start: Id<T>,

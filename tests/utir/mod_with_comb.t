@@ -8,13 +8,13 @@
 // CHECK:                 %4: @bool_type
 // CHECK:             }
 // CHECK:             @bool_type
-// CHECK:             %5 = inline_block({
+// CHECK:             %5 = block({
 // CHECK:                 %6 = inline_block({
 // CHECK:                     %7 = and(%3, %4)
-// CHECK:                     %8 = inline_block_break(%6, %7)
+// CHECK:                     %8 = return(%7)
+// CHECK:                     %9 = inline_block_break(%6, %8)
 // CHECK:                 })
-// CHECK:                 %9 = return(%6)
-// CHECK:                 %10 = inline_block_break(%5, %9)
+// CHECK:                 %10 = ret_implicit_void()
 // CHECK:             })
 // CHECK:         )
 // CHECK:     })
