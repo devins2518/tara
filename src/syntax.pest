@@ -138,6 +138,6 @@ block = { "{" ~ statement* ~ "}" }
 
 statement = { (decl_statement | expr_statement) }
 
-decl_statement = { "const" ~ identifier ~ (":" ~ type_expr)? ~ expr ~ ";" }
+decl_statement = { "const" ~ identifier ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
 
 expr_statement = _{ expr ~ ";" }

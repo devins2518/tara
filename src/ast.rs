@@ -32,6 +32,7 @@ pub enum NodeKind<'a> {
     StructDecl(StructInner<'a>),
     VarDecl(VarDecl<'a>),
     ModuleDecl(ModuleInner<'a>),
+    LocalVarDecl(VarDecl<'a>),
     Or(BinOp<'a>),
     And(BinOp<'a>),
     Lt(BinOp<'a>),
@@ -71,6 +72,7 @@ impl Display for NodeKind<'_> {
             NodeKind::ModuleDecl(mod_inner) => {
                 f.write_fmt(format_args!("module_decl({})", mod_inner))?
             }
+            NodeKind::LocalVarDecl(var_decl) => f.write_fmt(format_args!("local({})", var_decl))?,
             NodeKind::Or(expr) => f.write_fmt(format_args!("or({})", expr))?,
             NodeKind::And(expr) => f.write_fmt(format_args!("and({})", expr))?,
             NodeKind::Lt(expr) => f.write_fmt(format_args!("lt({})", expr))?,

@@ -163,7 +163,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             let inst = self.utir.instructions.get(inst_idx);
             match inst {
                 Inst::StructDecl(_) | Inst::ModuleDecl(_) => self.write_container_decl(inst_idx)?,
-                Inst::Or(_)
+                Inst::Alloc(_)
+                | Inst::Or(_)
                 | Inst::And(_)
                 | Inst::Lt(_)
                 | Inst::Gt(_)
@@ -193,6 +194,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 Inst::Param(_) => self.write_param(inst_idx)?,
                 Inst::Access(_) => self.write_access(inst_idx)?,
                 Inst::RetImplicitVoid => self.write_ret_implicit_void(inst_idx)?,
+                Inst::MakeAllocConst(_) => self.write_make_alloc_const(inst_idx)?,
             }
         } else {
             self.write_ref(inst_ref)?;
@@ -220,6 +222,10 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
     fn write_bin_op(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
         let instr = self.utir.instructions.get(idx);
         let (payload, name) = match instr {
+            Inst::Alloc(payload) => (
+                self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
+                "alloc",
+            ),
             Inst::Or(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "or",
@@ -291,6 +297,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::FunctionDecl(_)
             | Inst::CombDecl(_)
             | Inst::Block(_)
+            | Inst::MakeAllocConst(_)
             | Inst::Param(_)
             | Inst::InlineBlock(_)
             | Inst::Negate(_)
@@ -328,6 +335,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::CombDecl(_)
             | Inst::Block(_)
             | Inst::BlockBreak(_)
+            | Inst::Alloc(_)
+            | Inst::MakeAllocConst(_)
             | Inst::Param(_)
             | Inst::InlineBlock(_)
             | Inst::InlineBlockBreak(_)
@@ -398,7 +407,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.indent();
 
             write!(self, "{{")?;
-            {
+            if subroutine_decl.params > 0 {
                 self.indent();
 
                 let param_base = u32::from(ed_idx) + SUBROUTINE_DECL_U32S as u32;
@@ -553,6 +562,15 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
 
     fn write_ref(&mut self, inst_ref: InstRef) -> std::fmt::Result {
         write!(self, "{}", inst_ref)?;
+        return Ok(());
+    }
+
+    fn write_make_alloc_const(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let ptr = match self.utir.instructions.get(idx) {
+            Inst::MakeAllocConst(ptr) => ptr,
+            _ => unreachable!(),
+        };
+        write!(self, "%{} = make_alloc_const({})", u32::from(idx), ptr)?;
         return Ok(());
     }
 }

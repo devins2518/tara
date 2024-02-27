@@ -218,13 +218,13 @@ impl TaraParser {
         let span = input.as_span();
         let node = match_nodes!(
             input.into_children();
-            [identifier(ident), expr(init_expr)] => NodeKind::VarDecl(VarDecl::new(
+            [identifier(ident), expr(init_expr)] => NodeKind::LocalVarDecl(VarDecl::new(
                 Publicity::Private,
                 ident,
                 None,
                 init_expr,
             )),
-            [identifier(ident), type_expr(type_expr), expr(init_expr)] => NodeKind::VarDecl(VarDecl::new(
+            [identifier(ident), type_expr(type_expr), expr(init_expr)] => NodeKind::LocalVarDecl(VarDecl::new(
                 Publicity::Private,
                 ident,
                 Some(type_expr),

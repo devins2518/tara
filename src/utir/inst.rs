@@ -12,6 +12,8 @@ pub enum Inst<'a> {
     ModuleDecl(ExtraPayload<'a, ContainerDecl>),
     FunctionDecl(ExtraPayload<'a, SubroutineDecl>),
     CombDecl(ExtraPayload<'a, SubroutineDecl>),
+    Alloc(ExtraPayload<'a, BinOp>),
+    MakeAllocConst(InstRef),
     Param(NodePayload<'a, InstRef>),
     Block(ExtraPayload<'a, Block>),
     BlockBreak(BinOp),
@@ -149,7 +151,9 @@ impl<'a> Inst<'a> {
             | Self::PtrTy(_)
             | Self::Call(_)
             | Self::IntLiteral(_)
-            | Self::IntType(_) => false,
+            | Self::IntType(_)
+            | Self::Alloc(_)
+            | Self::MakeAllocConst(_) => false,
             Self::BlockBreak(_)
             | Self::InlineBlockBreak(_)
             | Self::Branch(_)

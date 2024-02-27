@@ -262,6 +262,7 @@ impl<'ast> Builder<'ast> {
             NodeKind::ModuleDecl(_) => self.gen_module_inner(env, node),
             NodeKind::Identifier(_) => self.resolve_identifier(env, node),
             NodeKind::NumberLiteral(_) => self.gen_number_literal(env, node),
+            NodeKind::LocalVarDecl(_) => self.gen_local_var_decl(env, node),
             NodeKind::Or(_)
             | NodeKind::And(_)
             | NodeKind::Lt(_)
@@ -288,6 +289,47 @@ impl<'ast> Builder<'ast> {
             | NodeKind::IfExpr(_) => self.gen_inline_block(env, node),
             NodeKind::VarDecl(_) | NodeKind::SubroutineDecl(_) => unreachable!(),
         };
+    }
+
+    fn gen_local_var_decl(
+        &self,
+        env: &mut Environment<'_, 'ast, '_>,
+        node: &'ast Node,
+    ) -> AstResult {
+        let local_var_decl = match &node.kind {
+            NodeKind::LocalVarDecl(inner) => inner,
+            _ => unreachable!(),
+        };
+        let node_idx = self.add_node(node);
+
+        let ident = local_var_decl.ident;
+
+        let mut var_env = env.derive();
+        var_env.set_instruction_scope(InstructionScope::Block);
+
+        let type_inst = if let Some(ty_node) = &local_var_decl.ty {
+            Some(self.gen_type_expr(&mut var_env, &*ty_node)?)
+        } else {
+            None
+        };
+
+        let mut init_expr = self.gen_expr(&mut var_env, &*local_var_decl.expr)?;
+
+        if let Some(type_inst_ref) = type_inst {
+            let bin_op = BinOp {
+                lhs: type_inst_ref,
+                rhs: init_expr,
+            };
+            let extra_idx = var_env.add_extra(bin_op);
+            init_expr = var_env.add_instruction(Inst::as_instr(extra_idx, node_idx));
+        }
+
+        let ptr_inst = var_env.add_instruction(Inst::MakeAllocConst(init_expr));
+
+        if let Some(prev_inst) = env.add_binding(ident, node, init_expr) {
+            return Err(Failure::shadow(node, prev_inst));
+        }
+        return Ok(ptr_inst);
     }
 
     fn resolve_identifier(
@@ -391,6 +433,7 @@ impl<'ast> Builder<'ast> {
             NodeKind::StructDecl(_)
             | NodeKind::ModuleDecl(_)
             | NodeKind::VarDecl(_)
+            | NodeKind::LocalVarDecl(_)
             | NodeKind::Identifier(_)
             | NodeKind::NumberLiteral(_)
             | NodeKind::SubroutineDecl(_) => unreachable!(),
@@ -439,6 +482,7 @@ impl<'ast> Builder<'ast> {
             | NodeKind::Access(inner) => inner,
             NodeKind::StructDecl(_)
             | NodeKind::VarDecl(_)
+            | NodeKind::LocalVarDecl(_)
             | NodeKind::ModuleDecl(_)
             | NodeKind::Call(_)
             | NodeKind::Negate(_)
