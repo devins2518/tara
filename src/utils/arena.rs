@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomData, ops::Add};
+use std::{cell::UnsafeCell, hash::Hash, marker::PhantomData, ops::Add};
 
 pub struct Arena<T> {
     inner: UnsafeCell<Vec<T>>,
@@ -118,6 +118,12 @@ pub const ID_U32S: usize = 1;
 pub struct Id<T> {
     id: u32,
     _phantom: PhantomData<T>,
+}
+
+impl<T> Hash for Id<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
 }
 
 impl<T> ExtraArenaContainable<ID_U32S> for Id<T> {}
