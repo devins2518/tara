@@ -851,11 +851,9 @@ where
 
     pub fn finish(mut self) {
         self.finish_block();
-        if let Some(parent) = self.parent {
-            let mut data = ArenaRef::from(self.tmp_extra);
-            for inst in data.iter() {
-                parent.add_extra_u32(*inst);
-            }
+        let mut data = ArenaRef::from(self.tmp_extra);
+        for extra in data.iter() {
+            _ = self.builder.extra_data.alloc(*extra);
         }
     }
 }
