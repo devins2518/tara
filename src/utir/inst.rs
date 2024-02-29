@@ -20,7 +20,6 @@ pub enum Inst<'a> {
     InlineBlock(ExtraPayload<'a, Block>),
     InlineBlockBreak(BinOp),
     As(ExtraPayload<'a, BinOp>),
-    // TODO: integers
     Or(ExtraPayload<'a, BinOp>),
     And(ExtraPayload<'a, BinOp>),
     Lt(ExtraPayload<'a, BinOp>),
@@ -36,7 +35,6 @@ pub enum Inst<'a> {
     Sub(ExtraPayload<'a, BinOp>),
     Mul(ExtraPayload<'a, BinOp>),
     Div(ExtraPayload<'a, BinOp>),
-    // TODO: lhs should be instruction, rhs should be ident
     Access(ExtraPayload<'a, Access>),
     Negate(UnOp<'a>),
     Deref(UnOp<'a>),
@@ -47,6 +45,7 @@ pub enum Inst<'a> {
     IntLiteral(u64),
     IntType(IntType<'a>),
     Branch(ExtraPayload<'a, Branch>),
+    StructInit(ExtraPayload<'a, StructInit>),
     // Used to maintain noreturn invariant for subroutine blocks.
     RetImplicitVoid,
 }
@@ -104,6 +103,10 @@ impl<'a> Inst<'a> {
         return Self::Access(ExtraPayload::new(extra_idx, node_idx));
     }
 
+    pub fn struct_init(extra_idx: ExtraIdx<StructInit>, node_idx: NodeIdx<'a>) -> Self {
+        return Self::StructInit(ExtraPayload::new(extra_idx, node_idx));
+    }
+
     pub fn maybe_primitive(s: &'a str, node_idx: NodeIdx<'a>) -> Option<Self> {
         let bytes = s.as_bytes();
         if bytes[0] == b'u' {
@@ -153,7 +156,8 @@ impl<'a> Inst<'a> {
             | Self::IntLiteral(_)
             | Self::IntType(_)
             | Self::Alloc(_)
-            | Self::MakeAllocConst(_) => false,
+            | Self::MakeAllocConst(_)
+            | Self::StructInit(_) => false,
             Self::BlockBreak(_)
             | Self::InlineBlockBreak(_)
             | Self::Branch(_)
@@ -469,6 +473,56 @@ impl From<Access> for [u32; ACCESS_U32S] {
     fn from(value: Access) -> Self {
         let nonzero = NonZeroU32::from(value.rhs);
         return [value.lhs.into(), nonzero.into()];
+    }
+}
+
+pub const STRUCT_INIT_U32S: usize = 2;
+// Followed by `StructInit.fields` number of `FieldInit`s
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct StructInit {
+    pub type_expr: InstRef,
+    pub fields: u32,
+}
+
+impl ExtraArenaContainable<STRUCT_INIT_U32S> for StructInit {}
+impl From<[u32; STRUCT_INIT_U32S]> for StructInit {
+    fn from(value: [u32; STRUCT_INIT_U32S]) -> Self {
+        return Self {
+            type_expr: InstRef::from(value[0]),
+            fields: value[1],
+        };
+    }
+}
+
+impl From<StructInit> for [u32; STRUCT_INIT_U32S] {
+    fn from(value: StructInit) -> Self {
+        return [value.type_expr.into(), value.fields];
+    }
+}
+
+pub const FIELD_INIT_U32S: usize = 2;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct FieldInit {
+    pub name: GlobalSymbol,
+    pub expr: InstRef,
+}
+
+impl ExtraArenaContainable<FIELD_INIT_U32S> for FieldInit {}
+impl From<[u32; FIELD_INIT_U32S]> for FieldInit {
+    fn from(value: [u32; FIELD_INIT_U32S]) -> Self {
+        return Self {
+            name: GlobalSymbol::from(NonZeroU32::new(value[0]).unwrap()),
+            expr: InstRef::from(value[1]),
+        };
+    }
+}
+
+impl From<FieldInit> for [u32; FIELD_INIT_U32S] {
+    fn from(value: FieldInit) -> Self {
+        let nonzero = NonZeroU32::from(value.name);
+        return [nonzero.into(), value.expr.into()];
     }
 }
 

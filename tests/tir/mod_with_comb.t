@@ -1,6 +1,12 @@
 // RUN: @tara @file --dump-tir
 // CHECK: 
 
+const Mod = module {
+    pub comb add(a: &u1, b: &u1) u1 {
+        return a ^ b;
+    }
+};
+
 const Top = module {
     const A = bool;
 
@@ -9,7 +15,7 @@ const Top = module {
     }
 
     pub comb top() void {
-        const a = Top{};
-        a.a();
+        const b = Mod{};
+        b.add();
     }
 };

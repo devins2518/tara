@@ -60,6 +60,7 @@ pub enum NodeKind<'a> {
     SizedNumberLiteral(SizedNumberLiteral),
     IfExpr(IfExpr<'a>),
     SubroutineDecl(SubroutineDecl<'a>),
+    StructInit(StructInit<'a>),
 }
 
 impl Display for NodeKind<'_> {
@@ -106,6 +107,7 @@ impl Display for NodeKind<'_> {
             NodeKind::SubroutineDecl(subroutine) => {
                 f.write_fmt(format_args!("subroutine_decl({})", subroutine))?
             }
+            NodeKind::StructInit(expr) => f.write_fmt(format_args!("struct_init({})", expr))?,
         }
         Ok(())
     }
@@ -363,6 +365,32 @@ impl Display for SubroutineDecl<'_> {
         f.write_fmt(format_args!(") {} (", *self.return_type))?;
         for statement in &self.block {
             f.write_fmt(format_args!("({}), ", statement))?;
+        }
+        f.write_str(")")?;
+        Ok(())
+    }
+}
+
+pub struct StructInit<'a> {
+    pub ty: Box<Node<'a>>,
+    // Technically not a typed name, but a named value but whatever
+    pub fields: Vec<TypedName<'a>>,
+}
+
+impl<'a> StructInit<'a> {
+    pub fn new(ty: Node<'a>, fields: Vec<TypedName<'a>>) -> Self {
+        return Self {
+            ty: Box::new(ty),
+            fields,
+        };
+    }
+}
+
+impl Display for StructInit<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}, (", *self.ty))?;
+        for field in &self.fields {
+            f.write_fmt(format_args!(".{} = {}, ", field.name, *field.ty))?;
         }
         f.write_str(")")?;
         Ok(())

@@ -49,7 +49,13 @@ fn_decl = { publicity ~ "fn" ~ identifier ~ "(" ~ param_list ~ ")" ~ type_expr ~
 
 expr = { prefix_operator* ~ primary_expr ~ postfix_operator* ~ (infix_operator ~ prefix_operator* ~ primary_expr ~ postfix_operator* )* }
 
-primary_expr = { parened_expr | identifier | type_expr | return_expr | number | if_expr }
+primary_expr = { parened_expr | return_expr | number | if_expr | struct_init_expr | type_expr | identifier }
+
+struct_init_expr = { type_expr ~ "{" ~ field_init_list ~ "}" }
+
+field_init_list = { ((field_init ~ ",")* ~ (field_init ~ ","?)?)? }
+
+field_init = ${ "." ~ identifier ~ WHITESPACE* ~ "=" ~ WHITESPACE* ~ expr }
 
 parened_expr = { "(" ~ expr ~ ")" }
 

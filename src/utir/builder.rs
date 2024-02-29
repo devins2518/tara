@@ -113,6 +113,7 @@ impl<'ast> Builder<'ast> {
                 ),
                 _ => unreachable!(),
             };
+            module_env.add_binding(name, member, decl_idx);
             let container_member = ContainerMember::new(name, decl_idx);
             module_env.add_tmp_extra(container_member);
         }
@@ -263,6 +264,7 @@ impl<'ast> Builder<'ast> {
             NodeKind::Identifier(_) => self.resolve_identifier(env, node),
             NodeKind::NumberLiteral(_) => self.gen_number_literal(env, node),
             NodeKind::LocalVarDecl(_) => self.gen_local_var_decl(env, node),
+            NodeKind::StructInit(_) => self.gen_struct_init(env, node),
             NodeKind::Or(_)
             | NodeKind::And(_)
             | NodeKind::Lt(_)
@@ -291,6 +293,41 @@ impl<'ast> Builder<'ast> {
         };
     }
 
+    fn gen_struct_init(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> AstResult {
+        let struct_init = match &node.kind {
+            NodeKind::StructInit(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        let type_expr = self.gen_type_expr(env, &*struct_init.ty)?;
+
+        let mut struct_init_env = env.derive();
+        for field in &struct_init.fields {
+            let expr_ref = self.gen_expr(&mut struct_init_env, &*field.ty)?;
+            struct_init_env.add_tmp_extra(FieldInit {
+                name: field.name,
+                expr: expr_ref,
+            });
+        }
+        println!(
+            "len: {}, len: {}",
+            struct_init.fields.len(),
+            struct_init_env.tmp_extra.len()
+        );
+
+        let extra_idx = struct_init_env.add_extra(StructInit {
+            type_expr,
+            fields: struct_init.fields.len() as u32,
+        });
+        struct_init_env.finish();
+
+        let node_idx = self.add_node(node);
+
+        let inst = env.add_instruction(Inst::struct_init(extra_idx, node_idx));
+
+        return Ok(inst);
+    }
+
     fn gen_local_var_decl(
         &self,
         env: &mut Environment<'_, 'ast, '_>,
@@ -304,29 +341,26 @@ impl<'ast> Builder<'ast> {
 
         let ident = local_var_decl.ident;
 
-        let mut var_env = env.derive();
-        var_env.set_instruction_scope(InstructionScope::Block);
-
         let type_inst = if let Some(ty_node) = &local_var_decl.ty {
-            Some(self.gen_type_expr(&mut var_env, &*ty_node)?)
+            Some(self.gen_type_expr(env, &*ty_node)?)
         } else {
             None
         };
 
-        let mut init_expr = self.gen_expr(&mut var_env, &*local_var_decl.expr)?;
+        let mut init_expr = self.gen_expr(env, &*local_var_decl.expr)?;
 
         if let Some(type_inst_ref) = type_inst {
             let bin_op = BinOp {
                 lhs: type_inst_ref,
                 rhs: init_expr,
             };
-            let extra_idx = var_env.add_extra(bin_op);
-            init_expr = var_env.add_instruction(Inst::as_instr(extra_idx, node_idx));
+            let extra_idx = env.add_extra(bin_op);
+            init_expr = env.add_instruction(Inst::as_instr(extra_idx, node_idx));
         }
 
-        let ptr_inst = var_env.add_instruction(Inst::MakeAllocConst(init_expr));
+        let ptr_inst = env.add_instruction(Inst::MakeAllocConst(init_expr));
 
-        if let Some(prev_inst) = env.add_binding(ident, node, init_expr) {
+        if let Some(prev_inst) = env.add_binding(ident, node, ptr_inst) {
             return Err(Failure::shadow(node, prev_inst));
         }
         return Ok(ptr_inst);
@@ -436,7 +470,8 @@ impl<'ast> Builder<'ast> {
             | NodeKind::LocalVarDecl(_)
             | NodeKind::Identifier(_)
             | NodeKind::NumberLiteral(_)
-            | NodeKind::SubroutineDecl(_) => unreachable!(),
+            | NodeKind::SubroutineDecl(_)
+            | NodeKind::StructInit(_) => unreachable!(),
         }?;
 
         return Ok(return_value);
@@ -494,7 +529,8 @@ impl<'ast> Builder<'ast> {
             | NodeKind::NumberLiteral(_)
             | NodeKind::SizedNumberLiteral(_)
             | NodeKind::IfExpr(_)
-            | NodeKind::SubroutineDecl(_) => unreachable!(),
+            | NodeKind::SubroutineDecl(_)
+            | NodeKind::StructInit(_) => unreachable!(),
         };
 
         let lhs_idx = self.gen_expr(env, &*inner.lhs)?;
@@ -775,6 +811,13 @@ where
         node: &'inst Node<'inst>,
         inst: InstRef,
     ) -> Option<&'inst Node<'inst>> {
+        let mut env = &*self;
+        while let Some(parent) = env.parent {
+            if let Some(prev) = parent.scope.bindings.get(&ident) {
+                return Some(prev.0);
+            }
+            env = parent;
+        }
         return self.scope.add_binding(ident, node, inst);
     }
 

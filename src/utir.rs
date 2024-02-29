@@ -195,6 +195,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                 Inst::Access(_) => self.write_access(inst_idx)?,
                 Inst::RetImplicitVoid => self.write_ret_implicit_void(inst_idx)?,
                 Inst::MakeAllocConst(_) => self.write_make_alloc_const(inst_idx)?,
+                Inst::StructInit(_) => self.write_struct_init(inst_idx)?,
             }
         } else {
             self.write_ref(inst_ref)?;
@@ -310,6 +311,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::IntType(_)
             | Inst::Branch(_)
             | Inst::Access(_)
+            | Inst::StructInit(_)
             | Inst::RetImplicitVoid => unreachable!(),
         };
         write!(
@@ -363,6 +365,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             | Inst::IntLiteral(_)
             | Inst::IntType(_)
             | Inst::Branch(_)
+            | Inst::StructInit(_)
             | Inst::RetImplicitVoid => unreachable!(),
         };
         write!(self, "%{} = {}({})", u32::from(idx), name, payload.val)?;
@@ -571,6 +574,43 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             _ => unreachable!(),
         };
         write!(self, "%{} = make_alloc_const({})", u32::from(idx), ptr)?;
+        return Ok(());
+    }
+
+    fn write_struct_init(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+        let extra_idx = match self.utir.instructions.get(idx) {
+            Inst::StructInit(inner) => inner.extra_idx,
+            _ => unreachable!(),
+        };
+        let struct_init: StructInit = self.utir.extra_data.get_extra(extra_idx.to_u32());
+
+        write!(
+            self,
+            "%{} = struct_init({}, {{",
+            u32::from(idx),
+            struct_init.type_expr
+        )?;
+
+        if struct_init.fields > 0 {
+            self.indent();
+            write!(self, "\n")?;
+
+            let struct_field_base: ExtraIdx<FieldInit> =
+                (extra_idx + STRUCT_INIT_U32S).to_u32().from_u32();
+            for i in 0..struct_init.fields {
+                let field_init: FieldInit = self.utir.get_extra(struct_field_base + i);
+                write!(
+                    self,
+                    ".{} = {}\n",
+                    field_init.name.as_str(),
+                    field_init.expr
+                )?;
+            }
+
+            self.deindent();
+        }
+
+        write!(self, "}})")?;
         return Ok(());
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         BinOp, Call, IfExpr, ModuleInner, Node, NodeKind, Publicity, RefTy, SizedNumberLiteral,
-        StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
+        StructInit, StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
     },
     builtin::Mutability,
 };
@@ -386,11 +386,12 @@ impl TaraParser {
         let node = match_nodes!(
             input.into_children();
             [parened_expr(parened_expr)] => parened_expr,
-            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
-            [type_expr(type_expr)] => type_expr,
             [return_expr(return_expr)] => return_expr,
             [number(number)] => number,
             [if_expr(if_expr)] => if_expr,
+            [struct_init_expr(struct_init_expr)] => struct_init_expr,
+            [type_expr(type_expr)] => type_expr,
+            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
         );
 
         return Ok(node);
@@ -427,6 +428,31 @@ impl TaraParser {
                 Node::new(NodeKind::IfExpr(if_expr), span)
             },
         ))
+    }
+
+    fn struct_init_expr(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
+        Ok(match_nodes!(
+            input.into_children();
+            [type_expr(ty), field_init_list(fields)] => {
+                let struct_init = StructInit::new(ty, fields);
+                Node::new(NodeKind::StructInit(struct_init), span)
+            },
+        ))
+    }
+
+    fn field_init_list(input: ParseNode) -> ParseResult<Vec<TypedName>> {
+        return Ok(match_nodes!(
+            input.into_children();
+            [field_init(fields)..] => fields.collect()
+        ));
+    }
+
+    fn field_init(input: ParseNode) -> ParseResult<TypedName> {
+        return Ok(match_nodes!(
+            input.into_children();
+            [identifier(ident), expr(expr)] => TypedName::new(expr, ident),
+        ));
     }
 
     fn number(input: ParseNode) -> ParseResult<Node> {
