@@ -4,7 +4,7 @@ mod sema;
 
 use crate::{
     module::Module,
-    tir::{error::Failure, inst::Inst, sema::Sema},
+    tir::{error::Failure, inst::TirInst, sema::Sema},
     utils::arena::{Arena, Id},
     utir::Utir,
 };
@@ -14,7 +14,7 @@ use self::sema::Block;
 
 // Typed IR
 pub struct Tir {
-    instructions: Arena<Inst>,
+    instructions: Arena<TirInst>,
     extra_data: Arena<u32>,
 }
 

@@ -2,20 +2,20 @@ use crate::{
     module::Module,
     tir::{
         error::Failure,
-        inst::{Inst, InstIdx},
+        inst::{TirInst, TirInstIdx},
         Tir,
     },
     utils::arena::Arena,
-    utir::{inst::Inst as UtirInst, Utir},
+    utir::{inst::UtirInst, Utir},
 };
 use std::collections::HashMap;
 
 pub struct Sema<'comp, 'ast, 'utir, 'module> {
     utir: &'utir Utir<'ast>,
     module: &'comp mut Module<'module>,
-    instructions: Arena<Inst>,
+    instructions: Arena<TirInst>,
     extra_data: Arena<u32>,
-    utir_map: HashMap<UtirInst<'utir>, InstIdx>,
+    utir_map: HashMap<UtirInst<'utir>, TirInstIdx>,
 }
 
 impl<'comp, 'ast, 'utir, 'module> Sema<'comp, 'ast, 'utir, 'module> {
@@ -48,5 +48,5 @@ impl<'comp, 'ast, 'utir, 'module> Sema<'comp, 'ast, 'utir, 'module> {
 pub struct Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module> {
     pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module>>,
     pub sema: &'sema Sema<'comp, 'ast, 'utir, 'module>,
-    pub instructions: Vec<InstIdx>,
+    pub instructions: Vec<TirInstIdx>,
 }

@@ -1,5 +1,5 @@
 use crate::utils::arena::Id;
 
-pub enum Inst {}
+pub enum TirInst {}
 
-pub type InstIdx = Id<Inst>;
+pub type TirInstIdx = Id<TirInst>;

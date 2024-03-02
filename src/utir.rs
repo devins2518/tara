@@ -17,7 +17,7 @@ use std::fmt::{Display, Write};
 pub struct Utir<'a> {
     pub ast: &'a Ast<'a>,
     // TODO: make this private and force use of get_inst
-    instructions: Arena<Inst<'a>>,
+    instructions: Arena<UtirInst<'a>>,
     extra_data: Arena<u32>,
     nodes: Arena<&'a Node<'a>>,
 }
@@ -27,15 +27,15 @@ impl<'a> Utir<'a> {
         return Builder::new(ast).build();
     }
 
-    pub fn get_inst(&self, inst: InstIdx<'a>) -> Inst<'a> {
+    pub fn get_inst(&self, inst: UtirInstIdx<'a>) -> UtirInst<'a> {
         return self.instructions.get(inst);
     }
 
     // Returns the instruction of decl.name
-    pub fn get_decl(&self, decl: InstIdx<'a>, name: &str) -> Option<InstRef> {
+    pub fn get_decl(&self, decl: UtirInstIdx<'a>, name: &str) -> Option<UtirInstRef> {
         let extra_idx = match self.get_inst(decl) {
-            Inst::StructDecl(payload) => payload.extra_idx,
-            Inst::ModuleDecl(payload) => payload.extra_idx,
+            UtirInst::StructDecl(payload) => payload.extra_idx,
+            UtirInst::ModuleDecl(payload) => payload.extra_idx,
             _ => return None,
         };
         let container_decl = self.get_extra(extra_idx);
@@ -51,20 +51,20 @@ impl<'a> Utir<'a> {
         return None;
     }
 
-    pub fn get_body(&self, decl: InstIdx<'a>) -> Option<&[InstIdx]> {
+    pub fn get_body(&self, decl: UtirInstIdx<'a>) -> Option<&[UtirInstIdx]> {
         let extra_idx = match self.get_inst(decl) {
-            Inst::FunctionDecl(payload) => payload.extra_idx,
-            Inst::CombDecl(payload) => payload.extra_idx,
+            UtirInst::FunctionDecl(payload) => payload.extra_idx,
+            UtirInst::CombDecl(payload) => payload.extra_idx,
             _ => return None,
         };
         let subroutine = self.get_extra(extra_idx);
         let body_ref = subroutine.body;
         let block_extra_idx = match self.get_inst(body_ref.to_inst().unwrap()) {
-            Inst::Block(payload) => payload.extra_idx,
+            UtirInst::Block(payload) => payload.extra_idx,
             _ => unreachable!(),
         };
         let block = self.get_extra(block_extra_idx);
-        let body_start: ExtraIdx<InstIdx> = (block_extra_idx + 1 as u32).to_u32().from_u32();
+        let body_start: ExtraIdx<UtirInstIdx> = (block_extra_idx + 1 as u32).to_u32().from_u32();
         let body_end = body_start + block.num_instrs;
         let body = self.slice(body_start, body_end);
         return Some(body);
@@ -104,14 +104,14 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
     }
 
     pub fn write_root(&mut self) -> std::fmt::Result {
-        self.write_container_decl(InstIdx::from(0))?;
+        self.write_container_decl(UtirInstIdx::from(0))?;
         Ok(())
     }
 
-    fn write_container_decl(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_container_decl(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let (ed_idx, name) = match self.utir.instructions.get(idx) {
-            Inst::StructDecl(payload) => (payload.extra_idx.to_u32(), "struct_decl"),
-            Inst::ModuleDecl(payload) => (payload.extra_idx.to_u32(), "module_decl"),
+            UtirInst::StructDecl(payload) => (payload.extra_idx.to_u32(), "struct_decl"),
+            UtirInst::ModuleDecl(payload) => (payload.extra_idx.to_u32(), "module_decl"),
             _ => unreachable!(),
         };
         let container_decl: ContainerDecl = self.utir.extra_data.get_extra(ed_idx);
@@ -158,44 +158,48 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_expr(&mut self, inst_ref: InstRef) -> std::fmt::Result {
+    fn write_expr(&mut self, inst_ref: UtirInstRef) -> std::fmt::Result {
         if let Some(inst_idx) = inst_ref.into() {
             let inst = self.utir.instructions.get(inst_idx);
             match inst {
-                Inst::StructDecl(_) | Inst::ModuleDecl(_) => self.write_container_decl(inst_idx)?,
-                Inst::Alloc(_)
-                | Inst::Or(_)
-                | Inst::And(_)
-                | Inst::Lt(_)
-                | Inst::Gt(_)
-                | Inst::Lte(_)
-                | Inst::Gte(_)
-                | Inst::Eq(_)
-                | Inst::Neq(_)
-                | Inst::BitAnd(_)
-                | Inst::BitOr(_)
-                | Inst::BitXor(_)
-                | Inst::Add(_)
-                | Inst::Sub(_)
-                | Inst::Mul(_)
-                | Inst::Div(_)
-                | Inst::BlockBreak(_)
-                | Inst::InlineBlockBreak(_)
-                | Inst::As(_) => self.write_bin_op(inst_idx)?,
-                Inst::Negate(_) | Inst::Deref(_) | Inst::Return(_) => self.write_un_op(inst_idx)?,
-                Inst::InlineBlock(_) | Inst::Block(_) => self.write_block(inst_idx)?,
-                Inst::FunctionDecl(_) => self.write_subroutine_decl(inst_idx)?,
-                Inst::CombDecl(_) => self.write_subroutine_decl(inst_idx)?,
-                Inst::RefTy(_) | Inst::PtrTy(_) => self.write_ref_ty(inst_idx)?,
-                Inst::Call(_) => self.write_call(inst_idx)?,
-                Inst::IntLiteral(_) => self.write_int_literal(inst_idx)?,
-                Inst::IntType(_) => self.write_int_type(inst_idx)?,
-                Inst::Branch(_) => self.write_branch(inst_idx)?,
-                Inst::Param(_) => self.write_param(inst_idx)?,
-                Inst::Access(_) => self.write_access(inst_idx)?,
-                Inst::RetImplicitVoid => self.write_ret_implicit_void(inst_idx)?,
-                Inst::MakeAllocConst(_) => self.write_make_alloc_const(inst_idx)?,
-                Inst::StructInit(_) => self.write_struct_init(inst_idx)?,
+                UtirInst::StructDecl(_) | UtirInst::ModuleDecl(_) => {
+                    self.write_container_decl(inst_idx)?
+                }
+                UtirInst::Alloc(_)
+                | UtirInst::Or(_)
+                | UtirInst::And(_)
+                | UtirInst::Lt(_)
+                | UtirInst::Gt(_)
+                | UtirInst::Lte(_)
+                | UtirInst::Gte(_)
+                | UtirInst::Eq(_)
+                | UtirInst::Neq(_)
+                | UtirInst::BitAnd(_)
+                | UtirInst::BitOr(_)
+                | UtirInst::BitXor(_)
+                | UtirInst::Add(_)
+                | UtirInst::Sub(_)
+                | UtirInst::Mul(_)
+                | UtirInst::Div(_)
+                | UtirInst::BlockBreak(_)
+                | UtirInst::InlineBlockBreak(_)
+                | UtirInst::As(_) => self.write_bin_op(inst_idx)?,
+                UtirInst::Negate(_) | UtirInst::Deref(_) | UtirInst::Return(_) => {
+                    self.write_un_op(inst_idx)?
+                }
+                UtirInst::InlineBlock(_) | UtirInst::Block(_) => self.write_block(inst_idx)?,
+                UtirInst::FunctionDecl(_) => self.write_subroutine_decl(inst_idx)?,
+                UtirInst::CombDecl(_) => self.write_subroutine_decl(inst_idx)?,
+                UtirInst::RefTy(_) | UtirInst::PtrTy(_) => self.write_ref_ty(inst_idx)?,
+                UtirInst::Call(_) => self.write_call(inst_idx)?,
+                UtirInst::IntLiteral(_) => self.write_int_literal(inst_idx)?,
+                UtirInst::IntType(_) => self.write_int_type(inst_idx)?,
+                UtirInst::Branch(_) => self.write_branch(inst_idx)?,
+                UtirInst::Param(_) => self.write_param(inst_idx)?,
+                UtirInst::Access(_) => self.write_access(inst_idx)?,
+                UtirInst::RetImplicitVoid => self.write_ret_implicit_void(inst_idx)?,
+                UtirInst::MakeAllocConst(_) => self.write_make_alloc_const(inst_idx)?,
+                UtirInst::StructInit(_) => self.write_struct_init(inst_idx)?,
             }
         } else {
             self.write_ref(inst_ref)?;
@@ -203,9 +207,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_param(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_param(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let param = match self.utir.instructions.get(idx) {
-            Inst::Param(inner) => inner.val,
+            UtirInst::Param(inner) => inner.val,
             _ => unreachable!(),
         };
         // HACK: don't print out things that we've already printed out
@@ -220,99 +224,99 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_bin_op(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_bin_op(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let instr = self.utir.instructions.get(idx);
         let (payload, name) = match instr {
-            Inst::Alloc(payload) => (
+            UtirInst::Alloc(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "alloc",
             ),
-            Inst::Or(payload) => (
+            UtirInst::Or(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "or",
             ),
-            Inst::And(payload) => (
+            UtirInst::And(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "and",
             ),
-            Inst::Lt(payload) => (
+            UtirInst::Lt(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "lt",
             ),
-            Inst::Gt(payload) => (
+            UtirInst::Gt(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "gt",
             ),
-            Inst::Lte(payload) => (
+            UtirInst::Lte(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "lte",
             ),
-            Inst::Gte(payload) => (
+            UtirInst::Gte(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "gte",
             ),
-            Inst::Eq(payload) => (
+            UtirInst::Eq(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "eq",
             ),
-            Inst::Neq(payload) => (
+            UtirInst::Neq(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "neq",
             ),
-            Inst::BitAnd(payload) => (
+            UtirInst::BitAnd(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "bit_and",
             ),
-            Inst::BitOr(payload) => (
+            UtirInst::BitOr(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "bit_or",
             ),
-            Inst::BitXor(payload) => (
+            UtirInst::BitXor(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "bit_xor",
             ),
-            Inst::Add(payload) => (
+            UtirInst::Add(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "add",
             ),
-            Inst::Sub(payload) => (
+            UtirInst::Sub(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "sub",
             ),
-            Inst::Mul(payload) => (
+            UtirInst::Mul(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "mul",
             ),
-            Inst::Div(payload) => (
+            UtirInst::Div(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "div",
             ),
-            Inst::As(payload) => (
+            UtirInst::As(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "as",
             ),
-            Inst::InlineBlockBreak(payload) => (payload, "inline_block_break"),
-            Inst::BlockBreak(payload) => (payload, "block_break"),
-            Inst::StructDecl(_)
-            | Inst::ModuleDecl(_)
-            | Inst::FunctionDecl(_)
-            | Inst::CombDecl(_)
-            | Inst::Block(_)
-            | Inst::MakeAllocConst(_)
-            | Inst::Param(_)
-            | Inst::InlineBlock(_)
-            | Inst::Negate(_)
-            | Inst::Deref(_)
-            | Inst::Return(_)
-            | Inst::RefTy(_)
-            | Inst::PtrTy(_)
-            | Inst::Call(_)
-            | Inst::IntLiteral(_)
-            | Inst::IntType(_)
-            | Inst::Branch(_)
-            | Inst::Access(_)
-            | Inst::StructInit(_)
-            | Inst::RetImplicitVoid => unreachable!(),
+            UtirInst::InlineBlockBreak(payload) => (payload, "inline_block_break"),
+            UtirInst::BlockBreak(payload) => (payload, "block_break"),
+            UtirInst::StructDecl(_)
+            | UtirInst::ModuleDecl(_)
+            | UtirInst::FunctionDecl(_)
+            | UtirInst::CombDecl(_)
+            | UtirInst::Block(_)
+            | UtirInst::MakeAllocConst(_)
+            | UtirInst::Param(_)
+            | UtirInst::InlineBlock(_)
+            | UtirInst::Negate(_)
+            | UtirInst::Deref(_)
+            | UtirInst::Return(_)
+            | UtirInst::RefTy(_)
+            | UtirInst::PtrTy(_)
+            | UtirInst::Call(_)
+            | UtirInst::IntLiteral(_)
+            | UtirInst::IntType(_)
+            | UtirInst::Branch(_)
+            | UtirInst::Access(_)
+            | UtirInst::StructInit(_)
+            | UtirInst::RetImplicitVoid => unreachable!(),
         };
         write!(
             self,
@@ -325,57 +329,57 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_un_op(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_un_op(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let instr = self.utir.instructions.get(idx);
         let (payload, name) = match instr {
-            Inst::Negate(payload) => (payload, "negate"),
-            Inst::Deref(payload) => (payload, "deref"),
-            Inst::Return(payload) => (payload, "return"),
-            Inst::StructDecl(_)
-            | Inst::ModuleDecl(_)
-            | Inst::FunctionDecl(_)
-            | Inst::CombDecl(_)
-            | Inst::Block(_)
-            | Inst::BlockBreak(_)
-            | Inst::Alloc(_)
-            | Inst::MakeAllocConst(_)
-            | Inst::Param(_)
-            | Inst::InlineBlock(_)
-            | Inst::InlineBlockBreak(_)
-            | Inst::As(_)
-            | Inst::Or(_)
-            | Inst::And(_)
-            | Inst::Lt(_)
-            | Inst::Gt(_)
-            | Inst::Lte(_)
-            | Inst::Gte(_)
-            | Inst::Eq(_)
-            | Inst::Neq(_)
-            | Inst::BitAnd(_)
-            | Inst::BitOr(_)
-            | Inst::BitXor(_)
-            | Inst::Add(_)
-            | Inst::Sub(_)
-            | Inst::Mul(_)
-            | Inst::Div(_)
-            | Inst::Access(_)
-            | Inst::RefTy(_)
-            | Inst::PtrTy(_)
-            | Inst::Call(_)
-            | Inst::IntLiteral(_)
-            | Inst::IntType(_)
-            | Inst::Branch(_)
-            | Inst::StructInit(_)
-            | Inst::RetImplicitVoid => unreachable!(),
+            UtirInst::Negate(payload) => (payload, "negate"),
+            UtirInst::Deref(payload) => (payload, "deref"),
+            UtirInst::Return(payload) => (payload, "return"),
+            UtirInst::StructDecl(_)
+            | UtirInst::ModuleDecl(_)
+            | UtirInst::FunctionDecl(_)
+            | UtirInst::CombDecl(_)
+            | UtirInst::Block(_)
+            | UtirInst::BlockBreak(_)
+            | UtirInst::Alloc(_)
+            | UtirInst::MakeAllocConst(_)
+            | UtirInst::Param(_)
+            | UtirInst::InlineBlock(_)
+            | UtirInst::InlineBlockBreak(_)
+            | UtirInst::As(_)
+            | UtirInst::Or(_)
+            | UtirInst::And(_)
+            | UtirInst::Lt(_)
+            | UtirInst::Gt(_)
+            | UtirInst::Lte(_)
+            | UtirInst::Gte(_)
+            | UtirInst::Eq(_)
+            | UtirInst::Neq(_)
+            | UtirInst::BitAnd(_)
+            | UtirInst::BitOr(_)
+            | UtirInst::BitXor(_)
+            | UtirInst::Add(_)
+            | UtirInst::Sub(_)
+            | UtirInst::Mul(_)
+            | UtirInst::Div(_)
+            | UtirInst::Access(_)
+            | UtirInst::RefTy(_)
+            | UtirInst::PtrTy(_)
+            | UtirInst::Call(_)
+            | UtirInst::IntLiteral(_)
+            | UtirInst::IntType(_)
+            | UtirInst::Branch(_)
+            | UtirInst::StructInit(_)
+            | UtirInst::RetImplicitVoid => unreachable!(),
         };
         write!(self, "%{} = {}({})", u32::from(idx), name, payload.val)?;
         Ok(())
     }
 
-    fn write_block(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_block(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let (ed_idx, name) = match self.utir.instructions.get(idx) {
-            Inst::Block(payload) => (payload.extra_idx.to_u32(), "block"),
-            Inst::InlineBlock(payload) => (payload.extra_idx.to_u32(), "inline_block"),
+            UtirInst::Block(payload) => (payload.extra_idx.to_u32(), "block"),
+            UtirInst::InlineBlock(payload) => (payload.extra_idx.to_u32(), "inline_block"),
             _ => unreachable!(),
         };
         let block: Block = self.utir.extra_data.get_extra(ed_idx);
@@ -386,7 +390,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
 
             for instr in 0..block.num_instrs {
                 let inst_idx = u32::from(ed_idx) + instr + 1;
-                let instr: InstRef = self.utir.extra_data.get_extra(inst_idx.into());
+                let instr: UtirInstRef = self.utir.extra_data.get_extra(inst_idx.into());
                 self.write_expr(instr)?;
                 write!(self, "\n")?;
             }
@@ -398,9 +402,11 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_subroutine_decl(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_subroutine_decl(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let ed_idx = match self.utir.instructions.get(idx) {
-            Inst::FunctionDecl(payload) | Inst::CombDecl(payload) => payload.extra_idx.to_u32(),
+            UtirInst::FunctionDecl(payload) | UtirInst::CombDecl(payload) => {
+                payload.extra_idx.to_u32()
+            }
             _ => unreachable!(),
         };
         let subroutine_decl: SubroutineDecl = self.utir.extra_data.get_extra(ed_idx);
@@ -418,7 +424,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
                     write!(self, "\n")?;
 
                     let param_offset = param_base + (param_num * INST_REF_U32S as u32);
-                    let param_ref: InstRef = self.utir.extra_data.get_extra(param_offset.into());
+                    let param_ref: UtirInstRef =
+                        self.utir.extra_data.get_extra(param_offset.into());
 
                     self.write_expr(param_ref)?;
                 }
@@ -439,14 +446,14 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_ref_ty(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_ref_ty(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let instr = self.utir.instructions.get(idx);
         let (ref_ty, name): (RefTy, &'static str) = match instr {
-            Inst::RefTy(payload) => (
+            UtirInst::RefTy(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "ref_ty",
             ),
-            Inst::PtrTy(payload) => (
+            UtirInst::PtrTy(payload) => (
                 self.utir.extra_data.get_extra(payload.extra_idx.to_u32()),
                 "ptr_ty",
             ),
@@ -463,9 +470,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_call(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_call(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let ed_idx = match self.utir.instructions.get(idx) {
-            Inst::Call(payload) => payload.extra_idx,
+            UtirInst::Call(payload) => payload.extra_idx,
             _ => unreachable!(),
         };
         let call: CallArgs = self.utir.extra_data.get_extra(ed_idx.to_u32());
@@ -479,7 +486,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
 
             for arg_num in 0..call.num_args {
                 let arg_ed_idx = arg_base + arg_num;
-                let arg_idx: InstRef = self.utir.extra_data.get_extra(Id::from(arg_ed_idx));
+                let arg_idx: UtirInstRef = self.utir.extra_data.get_extra(Id::from(arg_ed_idx));
                 write!(self, "{},\n", arg_idx)?;
             }
 
@@ -489,18 +496,18 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_int_literal(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_int_literal(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let number = match self.utir.instructions.get(idx) {
-            Inst::IntLiteral(num) => num,
+            UtirInst::IntLiteral(num) => num,
             _ => unreachable!(),
         };
         write!(self, "%{} = int_literal({})", u32::from(idx), number)?;
         return Ok(());
     }
 
-    fn write_int_type(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_int_type(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let int_type = match self.utir.instructions.get(idx) {
-            Inst::IntType(num) => num.val,
+            UtirInst::IntType(num) => num.val,
             _ => unreachable!(),
         };
         write!(
@@ -513,9 +520,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_branch(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_branch(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let extra_idx = match self.utir.instructions.get(idx) {
-            Inst::Branch(payload) => payload.extra_idx.to_u32(),
+            UtirInst::Branch(payload) => payload.extra_idx.to_u32(),
             _ => unreachable!(),
         };
         let branch: Branch = self.utir.extra_data.get_extra(extra_idx);
@@ -542,9 +549,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_access(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_access(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let extra_idx = match self.utir.instructions.get(idx) {
-            Inst::Access(access) => access.extra_idx,
+            UtirInst::Access(access) => access.extra_idx,
             _ => unreachable!(),
         };
         let access: Access = self.utir.extra_data.get_extra(extra_idx.to_u32());
@@ -558,28 +565,28 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_ret_implicit_void(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_ret_implicit_void(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         write!(self, "%{} = ret_implicit_void()", u32::from(idx))?;
         return Ok(());
     }
 
-    fn write_ref(&mut self, inst_ref: InstRef) -> std::fmt::Result {
+    fn write_ref(&mut self, inst_ref: UtirInstRef) -> std::fmt::Result {
         write!(self, "{}", inst_ref)?;
         return Ok(());
     }
 
-    fn write_make_alloc_const(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_make_alloc_const(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let ptr = match self.utir.instructions.get(idx) {
-            Inst::MakeAllocConst(ptr) => ptr,
+            UtirInst::MakeAllocConst(ptr) => ptr,
             _ => unreachable!(),
         };
         write!(self, "%{} = make_alloc_const({})", u32::from(idx), ptr)?;
         return Ok(());
     }
 
-    fn write_struct_init(&mut self, idx: InstIdx<'b>) -> std::fmt::Result {
+    fn write_struct_init(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
         let extra_idx = match self.utir.instructions.get(idx) {
-            Inst::StructInit(inner) => inner.extra_idx,
+            UtirInst::StructInit(inner) => inner.extra_idx,
             _ => unreachable!(),
         };
         let struct_init: StructInit = self.utir.extra_data.get_extra(extra_idx.to_u32());

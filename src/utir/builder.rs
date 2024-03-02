@@ -8,12 +8,12 @@ use num_traits::cast::ToPrimitive;
 use std::{collections::HashMap, mem::MaybeUninit};
 use symbol_table::GlobalSymbol;
 
-type AstResult = Result<InstRef, Failure>;
+type AstResult = Result<UtirInstRef, Failure>;
 
 pub struct Builder<'ast> {
     // Underlying reference to ast used to create UTIR
     ast: &'ast Ast<'ast>,
-    instructions: Arena<Inst<'ast>>,
+    instructions: Arena<UtirInst<'ast>>,
     extra_data: Arena<u32>,
     nodes: Arena<&'ast Node<'ast>>,
 }
@@ -80,7 +80,7 @@ impl<'ast> Builder<'ast> {
         let extra_idx = env.add_extra(ContainerDecl { fields, decls });
         struct_env.finish();
 
-        env.set_instruction(struct_idx, Inst::struct_decl(extra_idx, node_idx));
+        env.set_instruction(struct_idx, UtirInst::struct_decl(extra_idx, node_idx));
         return Ok(struct_idx);
     }
 
@@ -124,7 +124,7 @@ impl<'ast> Builder<'ast> {
         let extra_idx = env.add_extra(ContainerDecl { fields, decls });
         module_env.finish();
 
-        env.set_instruction(module_idx, Inst::module_decl(extra_idx, node_idx));
+        env.set_instruction(module_idx, UtirInst::module_decl(extra_idx, node_idx));
         return Ok(module_idx);
     }
 
@@ -158,7 +158,7 @@ impl<'ast> Builder<'ast> {
 
     fn gen_subroutine_decl(
         &self,
-        inst: InstRef,
+        inst: UtirInstRef,
         env: &mut Environment<'_, 'ast, '_>,
         node: &'ast Node<'ast>,
     ) -> Result<ExtraPayload<'ast, SubroutineDecl>, Failure> {
@@ -187,7 +187,7 @@ impl<'ast> Builder<'ast> {
             for instr in &subroutine_decl.block {
                 self.gen_expr(&mut body_env, instr)?;
             }
-            body_env.add_instruction(Inst::RetImplicitVoid);
+            body_env.add_instruction(UtirInst::RetImplicitVoid);
 
             body_env.finish();
             body_inst
@@ -216,7 +216,7 @@ impl<'ast> Builder<'ast> {
     ) -> AstResult {
         let subroutine_idx = env.reserve_instruction();
         let subroutine_decl = self.gen_subroutine_decl(subroutine_idx, env, node)?;
-        env.set_instruction(subroutine_idx, Inst::FunctionDecl(subroutine_decl));
+        env.set_instruction(subroutine_idx, UtirInst::FunctionDecl(subroutine_decl));
 
         return Ok(subroutine_idx);
     }
@@ -228,7 +228,7 @@ impl<'ast> Builder<'ast> {
     ) -> AstResult {
         let subroutine_idx = env.reserve_instruction();
         let subroutine_decl = self.gen_subroutine_decl(subroutine_idx, env, node)?;
-        env.set_instruction(subroutine_idx, Inst::CombDecl(subroutine_decl));
+        env.set_instruction(subroutine_idx, UtirInst::CombDecl(subroutine_decl));
 
         return Ok(subroutine_idx);
     }
@@ -237,7 +237,7 @@ impl<'ast> Builder<'ast> {
         let type_expr = self.gen_type_expr(env, &*param.ty)?;
         let node_idx = self.add_node(&*param.ty);
 
-        let inst_ref = env.add_instruction(Inst::param(type_expr, node_idx));
+        let inst_ref = env.add_instruction(UtirInst::param(type_expr, node_idx));
 
         if let Some(prev_inst) = env.add_binding(param.name, &*param.ty, inst_ref) {
             return Err(Failure::shadow(&*param.ty, prev_inst));
@@ -323,7 +323,7 @@ impl<'ast> Builder<'ast> {
 
         let node_idx = self.add_node(node);
 
-        let inst = env.add_instruction(Inst::struct_init(extra_idx, node_idx));
+        let inst = env.add_instruction(UtirInst::struct_init(extra_idx, node_idx));
 
         return Ok(inst);
     }
@@ -355,10 +355,10 @@ impl<'ast> Builder<'ast> {
                 rhs: init_expr,
             };
             let extra_idx = env.add_extra(bin_op);
-            init_expr = env.add_instruction(Inst::as_instr(extra_idx, node_idx));
+            init_expr = env.add_instruction(UtirInst::as_instr(extra_idx, node_idx));
         }
 
-        let ptr_inst = env.add_instruction(Inst::MakeAllocConst(init_expr));
+        let ptr_inst = env.add_instruction(UtirInst::MakeAllocConst(init_expr));
 
         if let Some(prev_inst) = env.add_binding(ident, node, ptr_inst) {
             return Err(Failure::shadow(node, prev_inst));
@@ -378,11 +378,11 @@ impl<'ast> Builder<'ast> {
             _ => unreachable!(),
         };
         // Try to resolve to some well known value
-        if let Some(inst_ref) = InstRef::from_str(symbol.as_str()) {
+        if let Some(inst_ref) = UtirInstRef::from_str(symbol.as_str()) {
             return Ok(inst_ref);
         }
         let node_idx = self.add_node(node);
-        if let Some(inst) = Inst::maybe_primitive(symbol.as_str(), node_idx) {
+        if let Some(inst) = UtirInst::maybe_primitive(symbol.as_str(), node_idx) {
             return Ok(env.add_instruction(inst));
         }
         let inst = env
@@ -401,7 +401,7 @@ impl<'ast> Builder<'ast> {
             _ => unreachable!(),
         };
         if let Some(number) = int.to_u64() {
-            let inst = Inst::int_literal(number);
+            let inst = UtirInst::int_literal(number);
             return Ok(env.add_instruction(inst));
         } else {
             unimplemented!("large number literal")
@@ -420,8 +420,8 @@ impl<'ast> Builder<'ast> {
         if let Some(int) = sized_number_literal.literal.to_u64() {
             let node_idx = self.add_node(node);
 
-            let int_inst = env.add_instruction(Inst::int_literal(int));
-            let type_inst = env.add_instruction(Inst::int_type(
+            let int_inst = env.add_instruction(UtirInst::int_literal(int));
+            let type_inst = env.add_instruction(UtirInst::int_type(
                 Signedness::Unsigned,
                 sized_number_literal.size,
                 node_idx,
@@ -432,7 +432,7 @@ impl<'ast> Builder<'ast> {
 
             let node_idx = self.add_node(node);
 
-            let as_instr = env.add_instruction(Inst::as_instr(extra_idx, node_idx));
+            let as_instr = env.add_instruction(UtirInst::as_instr(extra_idx, node_idx));
             return Ok(as_instr);
         } else {
             unimplemented!("large sized number literal")
@@ -489,7 +489,8 @@ impl<'ast> Builder<'ast> {
 
             let return_expr = self.gen_inline_block(&mut inline_block_env, node)?;
 
-            inline_block_env.add_instruction(Inst::inline_block_break(inline_block, return_expr));
+            inline_block_env
+                .add_instruction(UtirInst::inline_block_break(inline_block, return_expr));
 
             inline_block_env.finish();
 
@@ -543,21 +544,21 @@ impl<'ast> Builder<'ast> {
         let payload = ExtraPayload::new(ed_idx, node_idx);
 
         let inst = match node.kind {
-            NodeKind::Or(_) => Inst::Or(payload),
-            NodeKind::And(_) => Inst::And(payload),
-            NodeKind::Lt(_) => Inst::Lt(payload),
-            NodeKind::Gt(_) => Inst::Gt(payload),
-            NodeKind::Lte(_) => Inst::Lte(payload),
-            NodeKind::Gte(_) => Inst::Gte(payload),
-            NodeKind::Eq(_) => Inst::Eq(payload),
-            NodeKind::Neq(_) => Inst::Neq(payload),
-            NodeKind::BitAnd(_) => Inst::BitAnd(payload),
-            NodeKind::BitOr(_) => Inst::BitOr(payload),
-            NodeKind::BitXor(_) => Inst::BitXor(payload),
-            NodeKind::Add(_) => Inst::Add(payload),
-            NodeKind::Sub(_) => Inst::Sub(payload),
-            NodeKind::Mul(_) => Inst::Mul(payload),
-            NodeKind::Div(_) => Inst::Div(payload),
+            NodeKind::Or(_) => UtirInst::Or(payload),
+            NodeKind::And(_) => UtirInst::And(payload),
+            NodeKind::Lt(_) => UtirInst::Lt(payload),
+            NodeKind::Gt(_) => UtirInst::Gt(payload),
+            NodeKind::Lte(_) => UtirInst::Lte(payload),
+            NodeKind::Gte(_) => UtirInst::Gte(payload),
+            NodeKind::Eq(_) => UtirInst::Eq(payload),
+            NodeKind::Neq(_) => UtirInst::Neq(payload),
+            NodeKind::BitAnd(_) => UtirInst::BitAnd(payload),
+            NodeKind::BitOr(_) => UtirInst::BitOr(payload),
+            NodeKind::BitXor(_) => UtirInst::BitXor(payload),
+            NodeKind::Add(_) => UtirInst::Add(payload),
+            NodeKind::Sub(_) => UtirInst::Sub(payload),
+            NodeKind::Mul(_) => UtirInst::Mul(payload),
+            NodeKind::Div(_) => UtirInst::Div(payload),
             _ => unreachable!(),
         };
 
@@ -576,9 +577,9 @@ impl<'ast> Builder<'ast> {
         let un_op = UnOp::new(lhs_idx, node_idx);
 
         let inst = match node.kind {
-            NodeKind::Negate(_) => Inst::Negate(un_op),
-            NodeKind::Deref(_) => Inst::Deref(un_op),
-            NodeKind::Return(_) => Inst::Return(un_op),
+            NodeKind::Negate(_) => UtirInst::Negate(un_op),
+            NodeKind::Deref(_) => UtirInst::Deref(un_op),
+            NodeKind::Return(_) => UtirInst::Return(un_op),
             _ => unreachable!(),
         };
 
@@ -605,8 +606,8 @@ impl<'ast> Builder<'ast> {
         let payload = ExtraPayload::new(extra_idx, node_idx);
 
         let inst = match node.kind {
-            NodeKind::ReferenceTy(_) => Inst::RefTy(payload),
-            NodeKind::PointerTy(_) => Inst::PtrTy(payload),
+            NodeKind::ReferenceTy(_) => UtirInst::RefTy(payload),
+            NodeKind::PointerTy(_) => UtirInst::PtrTy(payload),
             _ => unreachable!(),
         };
 
@@ -638,7 +639,7 @@ impl<'ast> Builder<'ast> {
         }
 
         let node_idx = self.add_node(node);
-        let call_inst = env.add_instruction(Inst::call(extra_idx, node_idx));
+        let call_inst = env.add_instruction(UtirInst::call(extra_idx, node_idx));
 
         return Ok(call_inst);
     }
@@ -662,7 +663,7 @@ impl<'ast> Builder<'ast> {
             let true_block = true_env.block.unwrap();
 
             let break_val = self.gen_expr(&mut true_env, &*if_expr.body)?;
-            true_env.add_instruction(Inst::inline_block_break(true_block, break_val));
+            true_env.add_instruction(UtirInst::inline_block_break(true_block, break_val));
 
             true_env.finish();
             true_block
@@ -675,7 +676,7 @@ impl<'ast> Builder<'ast> {
             let false_block = false_env.block.unwrap();
 
             let break_val = self.gen_expr(&mut false_env, &*if_expr.else_body)?;
-            false_env.add_instruction(Inst::inline_block_break(false_block, break_val));
+            false_env.add_instruction(UtirInst::inline_block_break(false_block, break_val));
 
             false_env.finish();
             false_block
@@ -690,7 +691,7 @@ impl<'ast> Builder<'ast> {
 
         let node_idx = self.add_node(node);
 
-        env.set_instruction(branch_instr, Inst::branch(extra_idx, node_idx));
+        env.set_instruction(branch_instr, UtirInst::branch(extra_idx, node_idx));
         return Ok(branch_instr);
     }
 
@@ -709,7 +710,7 @@ impl<'ast> Builder<'ast> {
         let extra_idx = env.add_extra(Access { lhs, rhs });
         let node_idx = self.add_node(node);
 
-        return Ok(env.add_instruction(Inst::access(extra_idx, node_idx)));
+        return Ok(env.add_instruction(UtirInst::access(extra_idx, node_idx)));
     }
 
     fn add_node(&self, node: &'ast Node) -> NodeIdx<'ast> {
@@ -744,7 +745,7 @@ where
     builder: &'builder Builder<'inst>,
     // Possible block instruction that created this environment. While this is an `InstRef`, it is
     // guarenteed to be an `InstIdx`. The instruction value is uninitialized.
-    block: Option<InstRef>,
+    block: Option<UtirInstRef>,
 }
 
 impl<'builder, 'inst, 'parent> Environment<'builder, 'inst, 'parent>
@@ -783,8 +784,8 @@ where
         };
 
         let block = match scope {
-            InstructionScope::Block => Inst::block(extra_idx, node_idx),
-            InstructionScope::InlineBlock => Inst::inline_block(extra_idx, node_idx),
+            InstructionScope::Block => UtirInst::block(extra_idx, node_idx),
+            InstructionScope::InlineBlock => UtirInst::inline_block(extra_idx, node_idx),
             _ => unreachable!(),
         };
         let block_inst = self.add_instruction(block);
@@ -809,7 +810,7 @@ where
         &mut self,
         ident: GlobalSymbol,
         node: &'inst Node<'inst>,
-        inst: InstRef,
+        inst: UtirInstRef,
     ) -> Option<&'inst Node<'inst>> {
         let mut env = &*self;
         while let Some(parent) = env.parent {
@@ -821,7 +822,7 @@ where
         return self.scope.add_binding(ident, node, inst);
     }
 
-    pub fn resolve_binding(&self, ident: GlobalSymbol) -> Option<InstRef> {
+    pub fn resolve_binding(&self, ident: GlobalSymbol) -> Option<UtirInstRef> {
         let mut maybe_env = Some(self);
         let mut maybe_binding = None;
         while let Some(env) = maybe_env {
@@ -836,9 +837,9 @@ where
         return maybe_binding;
     }
 
-    pub fn add_instruction(&self, inst: Inst<'inst>) -> InstRef {
+    pub fn add_instruction(&self, inst: UtirInst<'inst>) -> UtirInstRef {
         let inst_idx = self.builder.instructions.alloc(inst);
-        let inst_ref = InstRef::from(inst_idx);
+        let inst_ref = UtirInstRef::from(inst_idx);
         match self.instruction_scope {
             InstructionScope::Global => {}
             InstructionScope::InlineBlock | InstructionScope::Block => self.add_tmp_extra(inst_ref),
@@ -846,13 +847,13 @@ where
         return inst_ref;
     }
 
-    pub fn reserve_instruction(&self) -> InstRef {
+    pub fn reserve_instruction(&self) -> UtirInstRef {
         let uninit = MaybeUninit::uninit();
         let id = self.add_instruction(unsafe { uninit.assume_init() });
         return id;
     }
 
-    pub fn set_instruction(&self, inst: InstRef, val: Inst<'inst>) {
+    pub fn set_instruction(&self, inst: UtirInstRef, val: UtirInst<'inst>) {
         self.builder.instructions.set(inst.to_inst().unwrap(), val);
     }
 
@@ -869,8 +870,8 @@ where
             });
 
             let block = match self.builder.instructions.get(block_idx) {
-                Inst::Block(inner) => Inst::block(block_extra, inner.node_idx),
-                Inst::InlineBlock(inner) => Inst::inline_block(block_extra, inner.node_idx),
+                UtirInst::Block(inner) => UtirInst::block(block_extra, inner.node_idx),
+                UtirInst::InlineBlock(inner) => UtirInst::inline_block(block_extra, inner.node_idx),
                 _ => unreachable!(),
             };
 
@@ -880,8 +881,8 @@ where
 
             // Assert that the last instruction in a block is noreturn, this is a required
             // invariant of UTIR blocks
-            let last_idx: ExtraIdx<InstRef> = ExtraIdx::from(self.tmp_extra.len() as u32 - 1);
-            let last_inst: InstRef = self.tmp_extra.get_extra(last_idx.to_u32());
+            let last_idx: ExtraIdx<UtirInstRef> = ExtraIdx::from(self.tmp_extra.len() as u32 - 1);
+            let last_inst: UtirInstRef = self.tmp_extra.get_extra(last_idx.to_u32());
             if let Some(inst) = last_inst.to_inst() {
                 assert!(self.builder.instructions.get(inst).is_no_return());
             } else {
@@ -914,7 +915,7 @@ struct Scope<'inst> {
     // Current bindings of symbols to nodes
     // TODO: This is currently insufficient for referencing variables defined later in the file
     // even at namespace scope
-    bindings: HashMap<GlobalSymbol, (&'inst Node<'inst>, InstRef)>,
+    bindings: HashMap<GlobalSymbol, (&'inst Node<'inst>, UtirInstRef)>,
 }
 
 impl<'inst> Scope<'inst> {
@@ -928,7 +929,7 @@ impl<'inst> Scope<'inst> {
         &mut self,
         ident: GlobalSymbol,
         node: &'inst Node<'inst>,
-        inst: InstRef,
+        inst: UtirInstRef,
     ) -> Option<&'inst Node<'inst>> {
         if let Some(prev_inst) = self.bindings.get(&ident) {
             Some(prev_inst.0)
@@ -938,7 +939,7 @@ impl<'inst> Scope<'inst> {
         }
     }
 
-    pub fn resolve_binding(&self, ident: GlobalSymbol) -> Option<InstRef> {
+    pub fn resolve_binding(&self, ident: GlobalSymbol) -> Option<UtirInstRef> {
         if let Some(prev_inst) = self.bindings.get(&ident) {
             Some(prev_inst.1)
         } else {

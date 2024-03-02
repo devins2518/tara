@@ -1,5 +1,5 @@
 use crate::ast::Node;
-use crate::{ast::Ast, utir::inst::InstIdx as UtirInstIdx};
+use crate::{ast::Ast, utir::inst::UtirInstIdx};
 use anyhow::Result;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::term;

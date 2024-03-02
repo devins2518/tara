@@ -7,14 +7,14 @@ use std::{fmt::Display, num::NonZeroU32};
 use symbol_table::GlobalSymbol;
 
 #[derive(Copy, Clone)]
-pub enum Inst<'a> {
+pub enum UtirInst<'a> {
     StructDecl(ExtraPayload<'a, ContainerDecl>),
     ModuleDecl(ExtraPayload<'a, ContainerDecl>),
     FunctionDecl(ExtraPayload<'a, SubroutineDecl>),
     CombDecl(ExtraPayload<'a, SubroutineDecl>),
     Alloc(ExtraPayload<'a, BinOp>),
-    MakeAllocConst(InstRef),
-    Param(NodePayload<'a, InstRef>),
+    MakeAllocConst(UtirInstRef),
+    Param(NodePayload<'a, UtirInstRef>),
     Block(ExtraPayload<'a, Block>),
     BlockBreak(BinOp),
     InlineBlock(ExtraPayload<'a, Block>),
@@ -50,7 +50,7 @@ pub enum Inst<'a> {
     RetImplicitVoid,
 }
 
-impl<'a> Inst<'a> {
+impl<'a> UtirInst<'a> {
     pub fn struct_decl(extra_idx: ExtraIdx<ContainerDecl>, node_idx: NodeIdx<'a>) -> Self {
         return Self::StructDecl(ExtraPayload::new(extra_idx, node_idx));
     }
@@ -59,7 +59,7 @@ impl<'a> Inst<'a> {
         return Self::ModuleDecl(ExtraPayload::new(extra_idx, node_idx));
     }
 
-    pub fn param(inst_ref: InstRef, node_idx: NodeIdx<'a>) -> Self {
+    pub fn param(inst_ref: UtirInstRef, node_idx: NodeIdx<'a>) -> Self {
         return Self::Param(NodePayload::new(inst_ref, node_idx));
     }
 
@@ -67,7 +67,7 @@ impl<'a> Inst<'a> {
         return Self::Block(ExtraPayload::new(extra_idx, node_idx));
     }
 
-    pub fn block_break(lhs: InstRef, rhs: InstRef) -> Self {
+    pub fn block_break(lhs: UtirInstRef, rhs: UtirInstRef) -> Self {
         return Self::BlockBreak(BinOp::new(lhs, rhs));
     }
 
@@ -75,7 +75,7 @@ impl<'a> Inst<'a> {
         return Self::InlineBlock(ExtraPayload::new(extra_idx, node_idx));
     }
 
-    pub fn inline_block_break(lhs: InstRef, rhs: InstRef) -> Self {
+    pub fn inline_block_break(lhs: UtirInstRef, rhs: UtirInstRef) -> Self {
         return Self::InlineBlockBreak(BinOp::new(lhs, rhs));
     }
 
@@ -111,11 +111,11 @@ impl<'a> Inst<'a> {
         let bytes = s.as_bytes();
         if bytes[0] == b'u' {
             let size = u16::from_str_radix(&s[1..], 10).ok()?;
-            let int_type = Inst::int_type(Signedness::Unsigned, size, node_idx);
+            let int_type = UtirInst::int_type(Signedness::Unsigned, size, node_idx);
             return Some(int_type);
         } else if bytes[0] == b'i' {
             let size = u16::from_str_radix(&s[1..], 10).ok()?;
-            let int_type = Inst::int_type(Signedness::Signed, size, node_idx);
+            let int_type = UtirInst::int_type(Signedness::Signed, size, node_idx);
             return Some(int_type);
         }
         None
@@ -231,11 +231,11 @@ pub const NAMED_REF_U32S: usize = 2;
 #[derive(Copy, Clone)]
 pub struct NamedRef {
     pub name: GlobalSymbol,
-    pub inst_ref: InstRef,
+    pub inst_ref: UtirInstRef,
 }
 
 impl NamedRef {
-    pub fn new(name: GlobalSymbol, inst_ref: InstRef) -> Self {
+    pub fn new(name: GlobalSymbol, inst_ref: UtirInstRef) -> Self {
         return Self { name, inst_ref };
     }
 }
@@ -264,8 +264,8 @@ pub const SUBROUTINE_DECL_U32S: usize = 3;
 #[derive(Copy, Clone)]
 pub struct SubroutineDecl {
     pub params: u32,
-    pub return_type: InstRef,
-    pub body: InstRef,
+    pub return_type: UtirInstRef,
+    pub body: UtirInstRef,
 }
 
 impl ExtraArenaContainable<SUBROUTINE_DECL_U32S> for SubroutineDecl {}
@@ -273,8 +273,8 @@ impl From<[u32; SUBROUTINE_DECL_U32S]> for SubroutineDecl {
     fn from(value: [u32; SUBROUTINE_DECL_U32S]) -> Self {
         return Self {
             params: value[0],
-            return_type: InstRef::from(value[1]),
-            body: InstRef::from(value[2]),
+            return_type: UtirInstRef::from(value[1]),
+            body: UtirInstRef::from(value[2]),
         };
     }
 }
@@ -318,12 +318,12 @@ pub const BIN_OP_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct BinOp {
-    pub lhs: InstRef,
-    pub rhs: InstRef,
+    pub lhs: UtirInstRef,
+    pub rhs: UtirInstRef,
 }
 
 impl BinOp {
-    pub fn new(lhs: InstRef, rhs: InstRef) -> Self {
+    pub fn new(lhs: UtirInstRef, rhs: UtirInstRef) -> Self {
         return Self { lhs, rhs };
     }
 }
@@ -332,8 +332,8 @@ impl ExtraArenaContainable<BIN_OP_U32S> for BinOp {}
 impl From<[u32; BIN_OP_U32S]> for BinOp {
     fn from(value: [u32; BIN_OP_U32S]) -> Self {
         return Self {
-            lhs: InstRef::from(value[0]),
-            rhs: InstRef::from(value[1]),
+            lhs: UtirInstRef::from(value[0]),
+            rhs: UtirInstRef::from(value[1]),
         };
     }
 }
@@ -344,18 +344,18 @@ impl From<BinOp> for [u32; BIN_OP_U32S] {
     }
 }
 
-pub type UnOp<'a> = NodePayload<'a, InstRef>;
+pub type UnOp<'a> = NodePayload<'a, UtirInstRef>;
 
 pub const REF_TY_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct RefTy {
     pub mutability: Mutability,
-    pub ty: InstRef,
+    pub ty: UtirInstRef,
 }
 
 impl RefTy {
-    pub fn new(mutability: Mutability, ty: InstRef) -> Self {
+    pub fn new(mutability: Mutability, ty: UtirInstRef) -> Self {
         return Self { mutability, ty };
     }
 }
@@ -370,7 +370,7 @@ impl From<[u32; REF_TY_U32S]> for RefTy {
         };
         return Self {
             mutability,
-            ty: InstRef::from(value[1]),
+            ty: UtirInstRef::from(value[1]),
         };
     }
 }
@@ -390,7 +390,7 @@ pub const CALL_ARGS_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct CallArgs {
-    pub lhs: InstRef,
+    pub lhs: UtirInstRef,
     pub num_args: u32,
 }
 
@@ -398,7 +398,7 @@ impl ExtraArenaContainable<CALL_ARGS_U32S> for CallArgs {}
 impl From<[u32; CALL_ARGS_U32S]> for CallArgs {
     fn from(value: [u32; CALL_ARGS_U32S]) -> Self {
         return Self {
-            lhs: InstRef::from(value[0]),
+            lhs: UtirInstRef::from(value[0]),
             num_args: value[1],
         };
     }
@@ -425,18 +425,18 @@ pub const BRANCH_U32S: usize = 3;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Branch {
-    pub cond: InstRef,
-    pub true_block: InstRef,
-    pub false_block: InstRef,
+    pub cond: UtirInstRef,
+    pub true_block: UtirInstRef,
+    pub false_block: UtirInstRef,
 }
 
 impl ExtraArenaContainable<BRANCH_U32S> for Branch {}
 impl From<[u32; BRANCH_U32S]> for Branch {
     fn from(value: [u32; BRANCH_U32S]) -> Self {
         return Self {
-            cond: InstRef::from(value[0]),
-            true_block: InstRef::from(value[1]),
-            false_block: InstRef::from(value[2]),
+            cond: UtirInstRef::from(value[0]),
+            true_block: UtirInstRef::from(value[1]),
+            false_block: UtirInstRef::from(value[2]),
         };
     }
 }
@@ -455,7 +455,7 @@ pub const ACCESS_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Access {
-    pub lhs: InstRef,
+    pub lhs: UtirInstRef,
     pub rhs: GlobalSymbol,
 }
 
@@ -463,7 +463,7 @@ impl ExtraArenaContainable<ACCESS_U32S> for Access {}
 impl From<[u32; ACCESS_U32S]> for Access {
     fn from(value: [u32; ACCESS_U32S]) -> Self {
         return Self {
-            lhs: InstRef::from(value[0]),
+            lhs: UtirInstRef::from(value[0]),
             rhs: GlobalSymbol::from(NonZeroU32::new(value[1]).unwrap()),
         };
     }
@@ -481,7 +481,7 @@ pub const STRUCT_INIT_U32S: usize = 2;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct StructInit {
-    pub type_expr: InstRef,
+    pub type_expr: UtirInstRef,
     pub fields: u32,
 }
 
@@ -489,7 +489,7 @@ impl ExtraArenaContainable<STRUCT_INIT_U32S> for StructInit {}
 impl From<[u32; STRUCT_INIT_U32S]> for StructInit {
     fn from(value: [u32; STRUCT_INIT_U32S]) -> Self {
         return Self {
-            type_expr: InstRef::from(value[0]),
+            type_expr: UtirInstRef::from(value[0]),
             fields: value[1],
         };
     }
@@ -506,7 +506,7 @@ pub const FIELD_INIT_U32S: usize = 2;
 #[derive(Copy, Clone)]
 pub struct FieldInit {
     pub name: GlobalSymbol,
-    pub expr: InstRef,
+    pub expr: UtirInstRef,
 }
 
 impl ExtraArenaContainable<FIELD_INIT_U32S> for FieldInit {}
@@ -514,7 +514,7 @@ impl From<[u32; FIELD_INIT_U32S]> for FieldInit {
     fn from(value: [u32; FIELD_INIT_U32S]) -> Self {
         return Self {
             name: GlobalSymbol::from(NonZeroU32::new(value[0]).unwrap()),
-            expr: InstRef::from(value[1]),
+            expr: UtirInstRef::from(value[1]),
         };
     }
 }
@@ -527,14 +527,14 @@ impl From<FieldInit> for [u32; FIELD_INIT_U32S] {
 }
 
 // An index into `instructions`
-pub type InstIdx<'a> = Id<Inst<'a>>;
+pub type UtirInstIdx<'a> = Id<UtirInst<'a>>;
 
 // Refs include well known and well typed commonly used values
 pub const INST_REF_U32S: usize = 1;
 #[repr(u32)]
 #[non_exhaustive]
 #[derive(Copy, Clone)]
-pub enum InstRef {
+pub enum UtirInstRef {
     IntTypeU8 = 0,
     IntTypeU16 = 1,
     IntTypeU32 = 2,
@@ -566,8 +566,8 @@ pub enum InstRef {
     None = 19,
 }
 
-impl InstRef {
-    pub fn to_inst<'a>(&self) -> Option<InstIdx<'a>> {
+impl UtirInstRef {
+    pub fn to_inst<'a>(&self) -> Option<UtirInstIdx<'a>> {
         return (*self).into();
     }
 
@@ -597,49 +597,51 @@ impl InstRef {
     }
 }
 
-impl From<InstRef> for u32 {
-    fn from(value: InstRef) -> Self {
+impl From<UtirInstRef> for u32 {
+    fn from(value: UtirInstRef) -> Self {
         return unsafe { std::mem::transmute(value) };
     }
 }
 
-impl From<u32> for InstRef {
+impl From<u32> for UtirInstRef {
     fn from(value: u32) -> Self {
         return unsafe { std::mem::transmute(value) };
     }
 }
 
-impl From<InstIdx<'_>> for InstRef {
-    fn from(value: InstIdx) -> Self {
+impl From<UtirInstIdx<'_>> for UtirInstRef {
+    fn from(value: UtirInstIdx) -> Self {
         return unsafe { std::mem::transmute(u32::from(value) + u32::from(Self::None) + 1) };
     }
 }
 
-impl From<InstRef> for Option<InstIdx<'_>> {
-    fn from(value: InstRef) -> Self {
+impl From<UtirInstRef> for Option<UtirInstIdx<'_>> {
+    fn from(value: UtirInstRef) -> Self {
         let u32_val = u32::from(value);
-        if u32_val > u32::from(InstRef::None) {
-            return Some(InstIdx::from(u32_val - u32::from(InstRef::None) - 1));
+        if u32_val > u32::from(UtirInstRef::None) {
+            return Some(UtirInstIdx::from(
+                u32_val - u32::from(UtirInstRef::None) - 1,
+            ));
         } else {
             return None;
         }
     }
 }
 
-impl ExtraArenaContainable<INST_REF_U32S> for InstRef {}
-impl From<[u32; INST_REF_U32S]> for InstRef {
+impl ExtraArenaContainable<INST_REF_U32S> for UtirInstRef {}
+impl From<[u32; INST_REF_U32S]> for UtirInstRef {
     fn from(value: [u32; INST_REF_U32S]) -> Self {
         return value[0].into();
     }
 }
 
-impl From<InstRef> for [u32; INST_REF_U32S] {
-    fn from(value: InstRef) -> Self {
+impl From<UtirInstRef> for [u32; INST_REF_U32S] {
+    fn from(value: UtirInstRef) -> Self {
         return [value.into()];
     }
 }
 
-impl Display for InstRef {
+impl Display for UtirInstRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(inst_idx) = self.to_inst() {
             f.write_fmt(format_args!("%{}", u32::from(inst_idx)))?;
