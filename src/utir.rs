@@ -51,7 +51,7 @@ impl<'a> Utir<'a> {
         return None;
     }
 
-    pub fn get_body(&self, decl: UtirInstIdx<'a>) -> Option<&[UtirInstIdx]> {
+    pub fn get_body(&self, decl: UtirInstIdx<'a>) -> Option<&[UtirInstRef]> {
         let extra_idx = match self.get_inst(decl) {
             UtirInst::FunctionDecl(payload) => payload.extra_idx,
             UtirInst::CombDecl(payload) => payload.extra_idx,
@@ -64,7 +64,7 @@ impl<'a> Utir<'a> {
             _ => unreachable!(),
         };
         let block = self.get_extra(block_extra_idx);
-        let body_start: ExtraIdx<UtirInstIdx> = (block_extra_idx + 1 as u32).to_u32().from_u32();
+        let body_start: ExtraIdx<UtirInstRef> = (block_extra_idx + 1 as u32).to_u32().from_u32();
         let body_end = body_start + block.num_instrs;
         let body = self.slice(body_start, body_end);
         return Some(body);

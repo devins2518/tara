@@ -1,4 +1,10 @@
-use std::{cell::UnsafeCell, hash::Hash, marker::PhantomData, ops::Add};
+use std::{
+    cell::UnsafeCell,
+    cmp::{Eq, PartialEq},
+    hash::Hash,
+    marker::PhantomData,
+    ops::Add,
+};
 
 pub struct Arena<T> {
     inner: UnsafeCell<Vec<T>>,
@@ -125,6 +131,14 @@ impl<T> Hash for Id<T> {
         self.id.hash(state);
     }
 }
+
+impl<T> PartialEq for Id<T> {
+    fn eq(&self, other: &Self) -> bool {
+        return self.id == other.id;
+    }
+}
+
+impl<T> Eq for Id<T> {}
 
 impl<T> ExtraArenaContainable<ID_U32S> for Id<T> {}
 impl<T> From<[u32; ID_U32S]> for Id<T> {

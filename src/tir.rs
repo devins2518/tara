@@ -13,22 +13,18 @@ use anyhow::Result;
 use self::sema::Block;
 
 // Typed IR
-pub struct Tir {
-    instructions: Arena<TirInst>,
+pub struct Tir<'module> {
+    instructions: Arena<TirInst<'module>>,
     extra_data: Arena<u32>,
 }
 
-impl Tir {
-    pub fn gen<'comp, 'module, 'utir>(
+impl<'module> Tir<'module> {
+    pub fn gen<'comp, 'utir>(
         module: &'comp mut Module<'module>,
         utir: &'utir Utir<'utir>,
-    ) -> Result<Tir, Failure> {
+    ) -> Result<Self, Failure> {
         let sema = Sema::new(module, utir);
-        let mut top_block = Block {
-            parent: None,
-            sema: &sema,
-            instructions: Vec::new(),
-        };
+        let mut top_block = Block::new(&sema);
 
         // Find Top
         let top = utir
@@ -49,13 +45,8 @@ impl Tir {
             .map(|x| utir.get_body(x))?
             .ok_or(Failure::TopTopNotComb)?;
 
-        let mut top_body = Vec::new();
-        for idx in top_body_idxs {
-            top_body.push(utir.get_inst(*idx));
-        }
+        sema.analyze_body(&mut top_block, &top_body_idxs)?;
 
-        sema.analyze_body_inner(&mut top_block, &top_body)?;
-
-        Ok(sema.to_tir())
+        Ok(sema.into())
     }
 }

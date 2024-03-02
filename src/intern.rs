@@ -1,5 +1,5 @@
+use crate::utils::arena::{Arena, Id};
 use crate::{types::Type, values::Value};
-use internment::{Arena, ArenaIntern};
 
 pub struct Intern<'a> {
     values: Arena<Value<'a>>,
@@ -14,7 +14,10 @@ impl<'a> Intern<'a> {
         };
     }
 
-    pub fn intern_val(&mut self, val: Value<'a>) -> ArenaIntern<Value> {
-        self.values.intern(val)
+    pub fn intern_val(&mut self, val: Value<'a>) -> ValueId {
+        self.values.alloc(val)
     }
 }
+
+pub type ValueId<'a> = Id<Value<'a>>;
+pub type TypeId<'a> = Id<Type<'a>>;
