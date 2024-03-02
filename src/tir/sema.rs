@@ -13,17 +13,17 @@ use crate::{
 };
 use std::collections::HashMap;
 
-pub struct Sema<'comp, 'ast, 'utir, 'module> {
+pub struct Sema<'comp, 'ast, 'utir, 'module, 'tir> {
     utir: &'utir Utir<'ast>,
     module: &'comp mut Module<'module>,
-    instructions: Arena<TirInst<'module>>,
+    instructions: Arena<TirInst<'tir>>,
     extra_data: Arena<u32>,
     utir_map: HashMap<UtirInstIdx<'utir>, TirInstRef>,
 }
 
 type SemaResult = Result<TirInstRef, Failure>;
 
-impl<'comp, 'ast, 'utir, 'module> Sema<'comp, 'ast, 'utir, 'module> {
+impl<'comp, 'ast, 'utir, 'module, 'tir> Sema<'comp, 'ast, 'utir, 'module, 'tir> {
     pub fn new(module: &'comp mut Module<'module>, utir: &'utir Utir<'ast>) -> Self {
         return Self {
             module,
@@ -89,152 +89,152 @@ impl<'comp, 'ast, 'utir, 'module> Sema<'comp, 'ast, 'utir, 'module> {
                 .is_no_return(self));
                 break TirInstRef::AlwaysNoReturn;
             }
-            self.utir_map.insert(inst, tir_inst);
+            // self.utir_map.insert(inst, tir_inst);
             i += 1;
         };
 
         return Ok(());
     }
 
-    pub fn add_instruction(&self, inst: TirInst<'module>) -> TirInstIdx<'module> {
+    pub fn add_instruction(&self, inst: TirInst<'tir>) -> TirInstIdx<'tir> {
         return self.instructions.alloc(inst).into();
     }
 
-    pub fn get_instruction(&self, idx: TirInstIdx<'module>) -> TirInst<'module> {
+    pub fn get_instruction(&self, idx: TirInstIdx<'tir>) -> TirInst<'tir> {
         return self.instructions.get(idx);
     }
 
-    pub fn utir_struct_decl(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_struct_decl(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_module_decl(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_module_decl(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_func_decl(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_func_decl(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_comb_decl(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_comb_decl(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_alloc(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_alloc(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_make_alloc_const(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_make_alloc_const(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_param(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_param(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_as(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_as(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_or(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_or(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_and(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_and(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_lt(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_lt(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_gt(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_gt(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_lte(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_lte(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_gte(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_gte(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_eq(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_eq(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_neq(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_neq(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_bit_and(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_bit_and(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_bit_or(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_bit_or(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_bit_xor(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_bit_xor(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_add(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_add(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_sub(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_sub(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_mul(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_mul(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_div(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_div(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_access(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_access(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_negate(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_negate(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_deref(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_deref(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_ref_ty(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_ref_ty(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_ptr_ty(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_ptr_ty(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_call(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_call(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_int_literal(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_int_literal(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_int_type(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_int_type(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 
-    pub fn utir_struct_init(&self, block: &mut Block, inst: UtirInstIdx) -> SemaResult {
+    pub fn utir_struct_init(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
 }
 
-impl<'module> From<Sema<'_, '_, '_, 'module>> for Tir<'module> {
-    fn from(value: Sema<'_, '_, '_, 'module>) -> Self {
+impl<'tir> From<Sema<'_, '_, '_, '_, 'tir>> for Tir<'tir> {
+    fn from(value: Sema<'_, '_, '_, '_, 'tir>) -> Self {
         return Self {
             instructions: value.instructions,
             extra_data: value.extra_data,
@@ -242,16 +242,16 @@ impl<'module> From<Sema<'_, '_, '_, 'module>> for Tir<'module> {
     }
 }
 
-pub struct Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module> {
-    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module>>,
-    pub sema: &'sema Sema<'comp, 'ast, 'utir, 'module>,
-    pub instructions: Arena<TirInstIdx<'module>>,
+pub struct Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir> {
+    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir>>,
+    pub sema: &'sema Sema<'comp, 'ast, 'utir, 'module, 'tir>,
+    pub instructions: Arena<TirInstIdx<'tir>>,
 }
 
-impl<'parent, 'sema, 'comp, 'ast, 'utir, 'module>
-    Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module>
+impl<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir>
+    Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir>
 {
-    pub fn new(sema: &'sema Sema<'comp, 'ast, 'utir, 'module>) -> Self {
+    pub fn new(sema: &'sema Sema<'comp, 'ast, 'utir, 'module, 'tir>) -> Self {
         return Self {
             parent: None,
             sema,
@@ -267,7 +267,7 @@ impl<'parent, 'sema, 'comp, 'ast, 'utir, 'module>
         };
     }
 
-    pub fn add_instruction(&self, inst: TirInst<'module>) -> TirInstRef {
+    pub fn add_instruction(&self, inst: TirInst<'tir>) -> TirInstRef {
         let idx = self.sema.add_instruction(inst);
         self.instructions.alloc(idx);
         return idx.into();

@@ -76,7 +76,7 @@ pub enum TirInstRef {
 }
 
 impl TirInstRef {
-    pub fn to_inst<'a>(&self) -> Option<TirInstIdx> {
+    pub fn to_inst<'a>(&self) -> Option<TirInstIdx<'a>> {
         return (*self).into();
     }
 
@@ -86,7 +86,7 @@ impl TirInstRef {
         }
     }
 
-    pub fn is_no_return<'module>(&'module self, sema: &'module Sema<'_, '_, '_, 'module>) -> bool {
+    pub fn is_no_return<'tir, 'sema>(&self, sema: &'sema Sema<'_, '_, '_, '_, 'tir>) -> bool {
         if let Some(idx) = self.to_inst() {
             return sema.get_instruction(idx).is_no_return();
         } else {
