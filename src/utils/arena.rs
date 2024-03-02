@@ -87,7 +87,7 @@ impl Arena<u32> {
         let idx: usize = u32::from(id) as usize;
         let u32s = val.into();
         for i in 0..N {
-            self.get_inner()[i] = u32s[i];
+            self.get_inner()[idx + i] = u32s[i];
         }
     }
 

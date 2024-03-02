@@ -2,7 +2,6 @@ use crate::{ast::Ast, module::Module, tir::Tir, utils::slice::OwnedString, utir:
 use anyhow::Result;
 use codespan_reporting::files::SimpleFiles;
 use std::mem::MaybeUninit;
-use std::pin::Pin;
 use symbol_table::GlobalSymbol;
 
 pub struct Compilation<'module> {

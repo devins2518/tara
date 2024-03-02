@@ -1,9 +1,12 @@
-use crate::ast::Node;
-use crate::{ast::Ast, utir::inst::UtirInstIdx};
+use crate::ast::{Ast, Node};
 use anyhow::Result;
-use codespan_reporting::diagnostic::{Diagnostic, Label};
-use codespan_reporting::term;
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use codespan_reporting::{
+    diagnostic::{Diagnostic, Label},
+    term::{
+        self,
+        termcolor::{ColorChoice, StandardStream},
+    },
+};
 
 pub enum Failure {
     // Couldn't find root.Top
