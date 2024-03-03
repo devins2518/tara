@@ -51,11 +51,17 @@ expr = { prefix_operator* ~ primary_expr ~ postfix_operator* ~ (infix_operator ~
 
 primary_expr = { parened_expr | return_expr | number | if_expr | struct_init_expr | type_expr | identifier }
 
-struct_init_expr = { type_expr ~ "{" ~ field_init_list ~ "}" }
+struct_init_expr = { anon_struct_init_expr | typed_struct_init_expr }
+
+anon_struct_init_expr = { "." ~ "{" ~ field_init_list ~ "}" }
+
+typed_struct_init_expr = { type_expr ~ "{" ~ field_init_list ~ "}" }
 
 field_init_list = { ((field_init ~ ",")* ~ (field_init ~ ","?)?)? }
 
-field_init = ${ "." ~ identifier ~ WHITESPACE* ~ "=" ~ WHITESPACE* ~ expr }
+field_init = { field_init_name ~ "=" ~ expr }
+
+field_init_name = ${ "." ~ identifier }
 
 parened_expr = { "(" ~ expr ~ ")" }
 

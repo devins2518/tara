@@ -44,7 +44,6 @@ mod tests {
         .expect("UTIR tests failed");
     }
 
-    #[ignore]
     #[test]
     fn tir_tests() {
         lit::run::tests(|config| {

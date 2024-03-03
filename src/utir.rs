@@ -591,12 +591,15 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         };
         let struct_init: StructInit = self.utir.extra_data.get_extra(extra_idx.to_u32());
 
-        write!(
-            self,
-            "%{} = struct_init({}, {{",
-            u32::from(idx),
-            struct_init.type_expr
-        )?;
+        write!(self, "%{} = struct_init(", u32::from(idx),)?;
+
+        if struct_init.type_expr == UtirInstRef::None {
+            write!(self, "anon, ")?;
+        } else {
+            write!(self, "{}, ", struct_init.type_expr)?;
+        }
+
+        write!(self, "{{")?;
 
         if struct_init.fields > 0 {
             self.indent();
@@ -604,8 +607,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
 
             let struct_field_base: ExtraIdx<FieldInit> =
                 (extra_idx + STRUCT_INIT_U32S).to_u32().from_u32();
-            for i in 0..struct_init.fields {
-                let field_init: FieldInit = self.utir.get_extra(struct_field_base + i);
+            for field_num in 0..struct_init.fields {
+                let field_offset = struct_field_base + (field_num * FIELD_INIT_U32S as u32);
+                let field_init: FieldInit = self.utir.get_extra(field_offset);
                 write!(
                     self,
                     ".{} = {}\n",

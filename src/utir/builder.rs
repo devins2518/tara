@@ -264,7 +264,6 @@ impl<'ast> Builder<'ast> {
             NodeKind::Identifier(_) => self.resolve_identifier(env, node),
             NodeKind::NumberLiteral(_) => self.gen_number_literal(env, node),
             NodeKind::LocalVarDecl(_) => self.gen_local_var_decl(env, node),
-            NodeKind::StructInit(_) => self.gen_struct_init(env, node),
             NodeKind::Or(_)
             | NodeKind::And(_)
             | NodeKind::Lt(_)
@@ -288,7 +287,8 @@ impl<'ast> Builder<'ast> {
             | NodeKind::PointerTy(_)
             | NodeKind::Call(_)
             | NodeKind::SizedNumberLiteral(_)
-            | NodeKind::IfExpr(_) => self.gen_inline_block(env, node),
+            | NodeKind::IfExpr(_)
+            | NodeKind::StructInit(_) => self.gen_inline_block(env, node),
             NodeKind::VarDecl(_) | NodeKind::SubroutineDecl(_) => unreachable!(),
         };
     }
@@ -299,27 +299,28 @@ impl<'ast> Builder<'ast> {
             _ => unreachable!(),
         };
 
-        let type_expr = self.gen_type_expr(env, &*struct_init.ty)?;
+        let type_expr = if let Some(type_node) = &struct_init.ty {
+            Some(self.gen_type_expr(env, type_node)?)
+        } else {
+            None
+        };
 
-        let mut struct_init_env = env.derive();
+        let mut init_exprs = Vec::new();
         for field in &struct_init.fields {
-            let expr_ref = self.gen_expr(&mut struct_init_env, &*field.ty)?;
-            struct_init_env.add_tmp_extra(FieldInit {
+            let expr_ref = self.gen_expr(env, &*field.ty)?;
+            init_exprs.push(FieldInit {
                 name: field.name,
                 expr: expr_ref,
             });
         }
-        println!(
-            "len: {}, len: {}",
-            struct_init.fields.len(),
-            struct_init_env.tmp_extra.len()
-        );
 
-        let extra_idx = struct_init_env.add_extra(StructInit {
-            type_expr,
+        let extra_idx = env.add_extra(StructInit {
+            type_expr: type_expr.unwrap_or(UtirInstRef::None),
             fields: struct_init.fields.len() as u32,
         });
-        struct_init_env.finish();
+        for init_expr in init_exprs {
+            env.add_extra(init_expr);
+        }
 
         let node_idx = self.add_node(node);
 
@@ -464,14 +465,14 @@ impl<'ast> Builder<'ast> {
             NodeKind::SizedNumberLiteral(_) => self.gen_sized_number_literal(env, node),
             NodeKind::IfExpr(_) => self.gen_branch(env, node),
             NodeKind::Access(_) => self.gen_access(env, node),
+            NodeKind::StructInit(_) => self.gen_struct_init(env, node),
             NodeKind::StructDecl(_)
             | NodeKind::ModuleDecl(_)
             | NodeKind::VarDecl(_)
             | NodeKind::LocalVarDecl(_)
             | NodeKind::Identifier(_)
             | NodeKind::NumberLiteral(_)
-            | NodeKind::SubroutineDecl(_)
-            | NodeKind::StructInit(_) => unreachable!(),
+            | NodeKind::SubroutineDecl(_) => unreachable!(),
         }?;
 
         return Ok(return_value);

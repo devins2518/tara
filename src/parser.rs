@@ -431,11 +431,30 @@ impl TaraParser {
     }
 
     fn struct_init_expr(input: ParseNode) -> ParseResult<Node> {
+        Ok(match_nodes!(
+            input.into_children();
+            [anon_struct_init_expr(expr)] => expr,
+            [typed_struct_init_expr(expr)] => expr,
+        ))
+    }
+
+    fn anon_struct_init_expr(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
+        Ok(match_nodes!(
+            input.into_children();
+            [field_init_list(fields)] => {
+                let struct_init = StructInit::new_anon(fields);
+                Node::new(NodeKind::StructInit(struct_init), span)
+            },
+        ))
+    }
+
+    fn typed_struct_init_expr(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
         Ok(match_nodes!(
             input.into_children();
             [type_expr(ty), field_init_list(fields)] => {
-                let struct_init = StructInit::new(ty, fields);
+                let struct_init = StructInit::new_with_ty(ty, fields);
                 Node::new(NodeKind::StructInit(struct_init), span)
             },
         ))
@@ -451,7 +470,14 @@ impl TaraParser {
     fn field_init(input: ParseNode) -> ParseResult<TypedName> {
         return Ok(match_nodes!(
             input.into_children();
-            [identifier(ident), expr(expr)] => TypedName::new(expr, ident),
+            [field_init_name(ident), expr(expr)] => TypedName::new(expr, ident),
+        ));
+    }
+
+    fn field_init_name(input: ParseNode) -> ParseResult<GlobalSymbol> {
+        return Ok(match_nodes!(
+            input.into_children();
+            [identifier(ident)] => ident,
         ));
     }
 
@@ -519,8 +545,4 @@ impl TaraParser {
             [expr(expr)..] => expr.collect(),
         ))
     }
-}
-
-fn print_type_of<T>(_: &T) {
-    println!("{}", std::any::type_name::<T>())
 }
