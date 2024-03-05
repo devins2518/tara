@@ -13,8 +13,8 @@ use crate::{
 };
 use std::collections::HashMap;
 
-pub struct Sema<'comp, 'ast, 'utir, 'module, 'tir> {
-    utir: &'utir Utir<'ast>,
+pub struct Sema<'comp, 'utir, 'module, 'tir> {
+    utir: &'utir Utir<'utir>,
     module: &'comp mut Module<'module>,
     instructions: Arena<TirInst<'tir>>,
     extra_data: Arena<u32>,
@@ -23,8 +23,8 @@ pub struct Sema<'comp, 'ast, 'utir, 'module, 'tir> {
 
 type SemaResult = Result<TirInstRef, Failure>;
 
-impl<'comp, 'ast, 'utir, 'module, 'tir> Sema<'comp, 'ast, 'utir, 'module, 'tir> {
-    pub fn new(module: &'comp mut Module<'module>, utir: &'utir Utir<'ast>) -> Self {
+impl<'comp, 'utir, 'module, 'tir> Sema<'comp, 'utir, 'module, 'tir> {
+    pub fn new(module: &'comp mut Module<'module>, utir: &'utir Utir<'utir>) -> Self {
         return Self {
             module,
             utir,
@@ -233,8 +233,8 @@ impl<'comp, 'ast, 'utir, 'module, 'tir> Sema<'comp, 'ast, 'utir, 'module, 'tir> 
     }
 }
 
-impl<'tir> From<Sema<'_, '_, '_, '_, 'tir>> for Tir<'tir> {
-    fn from(value: Sema<'_, '_, '_, '_, 'tir>) -> Self {
+impl<'tir> From<Sema<'_, '_, '_, 'tir>> for Tir<'tir> {
+    fn from(value: Sema<'_, '_, '_, 'tir>) -> Self {
         return Self {
             instructions: value.instructions,
             extra_data: value.extra_data,
@@ -242,16 +242,16 @@ impl<'tir> From<Sema<'_, '_, '_, '_, 'tir>> for Tir<'tir> {
     }
 }
 
-pub struct Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir> {
-    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir>>,
-    pub sema: &'sema Sema<'comp, 'ast, 'utir, 'module, 'tir>,
+pub struct Block<'parent, 'sema, 'comp, 'utir, 'module, 'tir> {
+    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'utir, 'module, 'tir>>,
+    pub sema: &'sema Sema<'comp, 'utir, 'module, 'tir>,
     pub instructions: Arena<TirInstIdx<'tir>>,
 }
 
-impl<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir>
-    Block<'parent, 'sema, 'comp, 'ast, 'utir, 'module, 'tir>
+impl<'parent, 'sema, 'comp, 'utir, 'module, 'tir>
+    Block<'parent, 'sema, 'comp, 'utir, 'module, 'tir>
 {
-    pub fn new(sema: &'sema Sema<'comp, 'ast, 'utir, 'module, 'tir>) -> Self {
+    pub fn new(sema: &'sema Sema<'comp, 'utir, 'module, 'tir>) -> Self {
         return Self {
             parent: None,
             sema,
