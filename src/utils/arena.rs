@@ -94,12 +94,15 @@ impl Arena<u32> {
     pub fn slice<const N: usize, T: ExtraArenaContainable<N>>(
         &self,
         start: Id<T>,
-        end: Id<T>,
+        len: u32,
     ) -> &[T] {
         let vec = self.get_inner();
         let start: u32 = start.into();
-        let end: u32 = end.into();
-        return unsafe { std::mem::transmute(&vec[start as usize..end as usize]) };
+        let end: u32 = start + (len * N as u32);
+        let raw_slice = &vec[start as usize..end as usize];
+        return unsafe {
+            core::slice::from_raw_parts(raw_slice.as_ptr() as *const T, len as usize)
+        };
     }
 }
 

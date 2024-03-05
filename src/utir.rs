@@ -65,9 +65,34 @@ impl<'a> Utir<'a> {
         };
         let block = self.get_extra(block_extra_idx);
         let body_start: ExtraIdx<UtirInstRef> = (block_extra_idx + 1 as u32).to_u32().from_u32();
-        let body_end = body_start + block.num_instrs;
-        let body = self.slice(body_start, body_end);
+        let body = self.slice(body_start, block.num_instrs);
         return Some(body);
+    }
+
+    pub fn get_fields(&self, decl: UtirInstIdx<'a>) -> &[ContainerField] {
+        let extra_idx = match self.get_inst(decl) {
+            UtirInst::StructDecl(inner) => inner.extra_idx,
+            UtirInst::ModuleDecl(inner) => inner.extra_idx,
+            _ => unreachable!(),
+        };
+        let container_decl = self.get_extra(extra_idx);
+        let start: Id<ContainerField> = (extra_idx + CONTAINER_DECL_U32S).to_u32().from_u32();
+        return self.slice(start, container_decl.fields);
+    }
+
+    pub fn get_decls(&self, decl: UtirInstIdx<'a>) -> &[ContainerMember] {
+        let extra_idx = match self.get_inst(decl) {
+            UtirInst::StructDecl(inner) => inner.extra_idx,
+            UtirInst::ModuleDecl(inner) => inner.extra_idx,
+            _ => unreachable!(),
+        };
+        let container_decl = self.get_extra(extra_idx);
+        let start: Id<ContainerMember> = (extra_idx
+            + CONTAINER_DECL_U32S
+            + (container_decl.fields * CONTAINER_FIELD_U32S as u32))
+            .to_u32()
+            .from_u32();
+        return self.slice(start, container_decl.decls);
     }
 
     pub fn get_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, extra: ExtraIdx<T>) -> T {
@@ -77,9 +102,9 @@ impl<'a> Utir<'a> {
     pub fn slice<const N: usize, T: ExtraArenaContainable<N>>(
         &self,
         start: ExtraIdx<T>,
-        end: ExtraIdx<T>,
+        len: u32,
     ) -> &[T] {
-        return self.extra_data.slice(start, end);
+        return self.extra_data.slice(start, len);
     }
 
     pub fn get_node(&self, node: NodeIdx<'a>) -> &'a Node<'a> {
@@ -121,20 +146,14 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.indent();
             write!(self, "\n")?;
 
-            let field_base = u32::from(ed_idx) + 2;
-            for i in 0..container_decl.fields {
-                let field_offset = field_base + (i * CONTAINER_FIELD_U32S as u32);
-                let field: ContainerField = self.utir.extra_data.get_extra(field_offset.into());
-                self.write_container_field(field)?;
+            for field in self.utir.get_fields(idx) {
+                self.write_container_field(*field)?;
                 write!(self, "\n")?;
             }
 
-            let decls_base = field_base + (container_decl.fields * CONTAINER_FIELD_U32S as u32);
-            for i in 0..container_decl.decls {
-                let decl_offset = decls_base + (i * CONTAINER_FIELD_U32S as u32);
-                let decl: ContainerMember = self.utir.extra_data.get_extra(decl_offset.into());
-                self.write_container_member(decl)?;
-                self.stream.write_char('\n')?;
+            for decl in self.utir.get_decls(idx) {
+                self.write_container_member(*decl)?;
+                write!(self, "\n")?;
             }
 
             self.deindent();

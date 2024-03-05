@@ -209,15 +209,15 @@ impl ExtraArenaContainable<CONTAINER_DECL_U32S> for ContainerDecl {}
 impl From<[u32; CONTAINER_DECL_U32S]> for ContainerDecl {
     fn from(value: [u32; CONTAINER_DECL_U32S]) -> Self {
         return Self {
-            fields: value[0],
-            decls: value[1],
+            fields: value[1],
+            decls: value[0],
         };
     }
 }
 
 impl From<ContainerDecl> for [u32; CONTAINER_DECL_U32S] {
     fn from(value: ContainerDecl) -> Self {
-        return [value.fields, value.decls];
+        return [value.decls, value.fields];
     }
 }
 
@@ -244,8 +244,8 @@ impl ExtraArenaContainable<NAMED_REF_U32S> for NamedRef {}
 impl From<[u32; NAMED_REF_U32S]> for NamedRef {
     fn from(value: [u32; NAMED_REF_U32S]) -> Self {
         return Self {
-            name: GlobalSymbol::from(NonZeroU32::new(value[0]).unwrap()),
-            inst_ref: value[1].into(),
+            name: GlobalSymbol::from(NonZeroU32::new(value[1]).unwrap()),
+            inst_ref: value[0].into(),
         };
     }
 }
@@ -253,7 +253,7 @@ impl From<[u32; NAMED_REF_U32S]> for NamedRef {
 impl From<NamedRef> for [u32; NAMED_REF_U32S] {
     fn from(value: NamedRef) -> Self {
         let nonzero = NonZeroU32::from(value.name);
-        return [nonzero.into(), value.inst_ref.into()];
+        return [value.inst_ref.into(), nonzero.into()];
     }
 }
 
