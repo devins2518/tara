@@ -59,17 +59,21 @@ impl<'a> Utir<'a> {
         };
         let subroutine = self.get_extra(extra_idx);
         let body_ref = subroutine.body;
-        let block_extra_idx = match self.get_inst(body_ref.to_inst().unwrap()) {
-            UtirInst::Block(payload) => payload.extra_idx,
-            _ => unreachable!(),
-        };
-        let block = self.get_extra(block_extra_idx);
-        let body_start: ExtraIdx<UtirInstRef> = (block_extra_idx + 1 as u32).to_u32().from_u32();
-        let body = self.slice(body_start, block.num_instrs);
-        return Some(body);
+        return Some(self.get_block_body(body_ref.to_inst().unwrap()));
     }
 
-    pub fn get_fields(&self, decl: UtirInstIdx<'a>) -> &[ContainerField] {
+    pub fn get_block_body(&self, block: UtirInstIdx<'a>) -> &[UtirInstRef] {
+        let extra_idx = match self.get_inst(block) {
+            UtirInst::Block(payload) => payload.extra_idx,
+            UtirInst::InlineBlock(payload) => payload.extra_idx,
+            _ => unreachable!(),
+        };
+        let block = self.get_extra(extra_idx);
+        let body_start: ExtraIdx<UtirInstRef> = (extra_idx + 1 as u32).to_u32().from_u32();
+        return self.slice(body_start, block.num_instrs);
+    }
+
+    pub fn get_container_decl_fields(&self, decl: UtirInstIdx<'a>) -> &[ContainerField] {
         let extra_idx = match self.get_inst(decl) {
             UtirInst::StructDecl(inner) => inner.extra_idx,
             UtirInst::ModuleDecl(inner) => inner.extra_idx,
@@ -80,7 +84,7 @@ impl<'a> Utir<'a> {
         return self.slice(start, container_decl.fields);
     }
 
-    pub fn get_decls(&self, decl: UtirInstIdx<'a>) -> &[ContainerMember] {
+    pub fn get_container_decl_decls(&self, decl: UtirInstIdx<'a>) -> &[ContainerMember] {
         let extra_idx = match self.get_inst(decl) {
             UtirInst::StructDecl(inner) => inner.extra_idx,
             UtirInst::ModuleDecl(inner) => inner.extra_idx,
@@ -93,6 +97,37 @@ impl<'a> Utir<'a> {
             .to_u32()
             .from_u32();
         return self.slice(start, container_decl.decls);
+    }
+
+    pub fn get_struct_init_fields(&self, struct_init: UtirInstIdx<'a>) -> &[FieldInit] {
+        let extra_idx = match self.get_inst(struct_init) {
+            UtirInst::StructInit(inner) => inner.extra_idx,
+            _ => unreachable!(),
+        };
+        let container_decl = self.get_extra(extra_idx);
+        let start: Id<FieldInit> = (extra_idx + STRUCT_INIT_U32S).to_u32().from_u32();
+        return self.slice(start, container_decl.fields);
+    }
+
+    pub fn get_subroutine_params(&self, subroutine: UtirInstIdx<'a>) -> &[UtirInstRef] {
+        let extra_idx = match self.get_inst(subroutine) {
+            UtirInst::FunctionDecl(inner) => inner.extra_idx,
+            UtirInst::CombDecl(inner) => inner.extra_idx,
+            _ => unreachable!(),
+        };
+        let subroutine_decl = self.get_extra(extra_idx);
+        let start: Id<UtirInstRef> = (extra_idx + SUBROUTINE_DECL_U32S).to_u32().from_u32();
+        return self.slice(start, subroutine_decl.params);
+    }
+
+    pub fn get_call_args(&self, call: UtirInstIdx<'a>) -> &[UtirInstRef] {
+        let extra_idx = match self.get_inst(call) {
+            UtirInst::Call(inner) => inner.extra_idx,
+            _ => unreachable!(),
+        };
+        let call = self.get_extra(extra_idx);
+        let start: Id<UtirInstRef> = (extra_idx + CALL_ARGS_U32S).to_u32().from_u32();
+        return self.slice(start, call.num_args);
     }
 
     pub fn get_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, extra: ExtraIdx<T>) -> T {
@@ -146,12 +181,12 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.indent();
             write!(self, "\n")?;
 
-            for field in self.utir.get_fields(idx) {
+            for field in self.utir.get_container_decl_fields(idx) {
                 self.write_container_field(*field)?;
                 write!(self, "\n")?;
             }
 
-            for decl in self.utir.get_decls(idx) {
+            for decl in self.utir.get_container_decl_decls(idx) {
                 self.write_container_member(*decl)?;
                 write!(self, "\n")?;
             }
@@ -396,21 +431,18 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
     }
 
     fn write_block(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
-        let (ed_idx, name) = match self.utir.instructions.get(idx) {
-            UtirInst::Block(payload) => (payload.extra_idx.to_u32(), "block"),
-            UtirInst::InlineBlock(payload) => (payload.extra_idx.to_u32(), "inline_block"),
+        let name = match self.utir.instructions.get(idx) {
+            UtirInst::Block(_) => "block",
+            UtirInst::InlineBlock(_) => "inline_block",
             _ => unreachable!(),
         };
-        let block: Block = self.utir.extra_data.get_extra(ed_idx);
         write!(self, "%{} = {}({{\n", u32::from(idx), name)?;
 
         {
             self.indent();
 
-            for instr in 0..block.num_instrs {
-                let inst_idx = u32::from(ed_idx) + instr + 1;
-                let instr: UtirInstRef = self.utir.extra_data.get_extra(inst_idx.into());
-                self.write_expr(instr)?;
+            for instr in self.utir.get_block_body(idx) {
+                self.write_expr(*instr)?;
                 write!(self, "\n")?;
             }
 
@@ -438,15 +470,9 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             if subroutine_decl.params > 0 {
                 self.indent();
 
-                let param_base = u32::from(ed_idx) + SUBROUTINE_DECL_U32S as u32;
-                for param_num in 0..subroutine_decl.params {
+                for param in self.utir.get_subroutine_params(idx) {
                     write!(self, "\n")?;
-
-                    let param_offset = param_base + (param_num * INST_REF_U32S as u32);
-                    let param_ref: UtirInstRef =
-                        self.utir.extra_data.get_extra(param_offset.into());
-
-                    self.write_expr(param_ref)?;
+                    self.write_expr(*param)?;
                 }
                 write!(self, "\n")?;
 
@@ -496,17 +522,13 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         };
         let call: CallArgs = self.utir.extra_data.get_extra(ed_idx.to_u32());
 
-        let arg_base = u32::from(ed_idx) + CALL_ARGS_U32S as u32;
-
         write!(self, "%{} = call({}, {{", u32::from(idx), call.lhs)?;
         if call.num_args > 0 {
             self.indent();
             write!(self, "\n")?;
 
-            for arg_num in 0..call.num_args {
-                let arg_ed_idx = arg_base + arg_num;
-                let arg_idx: UtirInstRef = self.utir.extra_data.get_extra(Id::from(arg_ed_idx));
-                write!(self, "{},\n", arg_idx)?;
+            for arg in self.utir.get_call_args(idx) {
+                write!(self, "{},\n", arg)?;
             }
 
             self.deindent();
@@ -624,17 +646,8 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
             self.indent();
             write!(self, "\n")?;
 
-            let struct_field_base: ExtraIdx<FieldInit> =
-                (extra_idx + STRUCT_INIT_U32S).to_u32().from_u32();
-            for field_num in 0..struct_init.fields {
-                let field_offset = struct_field_base + (field_num * FIELD_INIT_U32S as u32);
-                let field_init: FieldInit = self.utir.get_extra(field_offset);
-                write!(
-                    self,
-                    ".{} = {}\n",
-                    field_init.name.as_str(),
-                    field_init.expr
-                )?;
+            for field in self.utir.get_struct_init_fields(idx) {
+                write!(self, ".{} = {}\n", field.name.as_str(), field.expr)?;
             }
 
             self.deindent();
