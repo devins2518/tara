@@ -1,3 +1,5 @@
 docs/asyn/*
 !docs/asyn/Asyn.tex
 /target
+/build
+/install
