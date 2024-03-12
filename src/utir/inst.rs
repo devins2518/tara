@@ -533,7 +533,7 @@ pub type UtirInstIdx<'a> = Id<UtirInst<'a>>;
 pub const INST_REF_U32S: usize = 1;
 #[repr(u32)]
 #[non_exhaustive]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum UtirInstRef {
     IntTypeU8 = 0,
     IntTypeU16 = 1,

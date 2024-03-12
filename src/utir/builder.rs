@@ -12,14 +12,14 @@ type AstResult = Result<UtirInstRef, Failure>;
 
 pub struct Builder<'ast> {
     // Underlying reference to ast used to create UTIR
-    ast: &'ast Ast<'ast>,
+    ast: &'ast Ast,
     instructions: Arena<UtirInst<'ast>>,
     extra_data: Arena<u32>,
     nodes: Arena<&'ast Node>,
 }
 
 impl<'ast> Builder<'ast> {
-    pub fn new(ast: &'ast Ast<'ast>) -> Self {
+    pub fn new(ast: &'ast Ast) -> Self {
         return Self {
             ast,
             instructions: Arena::new(),
@@ -710,7 +710,6 @@ impl<'ast> Builder<'ast> {
 impl<'ast> Into<Utir<'ast>> for Builder<'ast> {
     fn into(self) -> Utir<'ast> {
         return Utir {
-            ast: self.ast,
             instructions: self.instructions.into(),
             extra_data: self.extra_data.into(),
             nodes: self.nodes.into(),

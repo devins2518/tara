@@ -13,28 +13,46 @@ use crate::{
 };
 use std::collections::HashMap;
 
-pub struct Sema<'comp, 'utir, 'module, 'tir> {
+pub struct Sema<'comp, 'utir> {
     utir: &'utir Utir<'utir>,
-    module: &'comp mut Module<'module>,
-    instructions: Arena<TirInst<'tir>>,
+    module: &'comp mut Module<'comp>,
+    instructions: Arena<TirInst>,
     extra_data: Arena<u32>,
     utir_map: HashMap<UtirInstIdx<'utir>, TirInstRef>,
 }
 
 type SemaResult = Result<TirInstRef, Failure>;
 
-impl<'comp, 'utir, 'module, 'tir> Sema<'comp, 'utir, 'module, 'tir> {
-    pub fn new(module: &'comp mut Module<'module>, utir: &'utir Utir<'utir>) -> Self {
+impl<'comp, 'utir> Sema<'comp, 'utir> {
+    pub fn new(module: &'comp mut Module<'comp>, utir: &'utir Utir<'utir>) -> Self {
         return Self {
-            module,
             utir,
+            module,
             instructions: Arena::new(),
             extra_data: Arena::new(),
             utir_map: HashMap::new(),
         };
     }
 
-    pub fn analyze_body(&self, block: &mut Block, body: &[UtirInstRef]) -> Result<(), Failure> {
+    pub fn analyze_top(&self, top: UtirInstIdx<'utir>) -> Result<(), Failure> {
+        let module = match self.utir.get_inst(top) {
+            UtirInst::ModuleDecl(inner) => self.utir.get_extra(inner.extra_idx),
+            _ => return Err(Failure::TopNotModule),
+        };
+        self.analyze_module(top)?;
+        return Ok(());
+    }
+
+    pub fn analyze_module(&self, module: UtirInstIdx<'utir>) -> Result<(), Failure> {
+        let _ = self.resolve_module_layout(module)?;
+        unimplemented!()
+    }
+
+    pub fn resolve_module_layout(&self, module: UtirInstIdx<'utir>) -> Result<(), Failure> {
+        unimplemented!()
+    }
+
+    fn analyze_comb_body(&self, block: &mut Block, body: &[UtirInstRef]) -> Result<(), Failure> {
         let mut i = 0;
         let result = loop {
             let inst = body[i].to_inst().unwrap();
@@ -96,11 +114,11 @@ impl<'comp, 'utir, 'module, 'tir> Sema<'comp, 'utir, 'module, 'tir> {
         return Ok(());
     }
 
-    pub fn add_instruction(&self, inst: TirInst<'tir>) -> TirInstIdx<'tir> {
+    pub fn add_instruction(&self, inst: TirInst) -> TirInstIdx {
         return self.instructions.alloc(inst).into();
     }
 
-    pub fn get_instruction(&self, idx: TirInstIdx<'tir>) -> TirInst<'tir> {
+    pub fn get_instruction(&self, idx: TirInstIdx) -> TirInst {
         return self.instructions.get(idx);
     }
 
@@ -233,8 +251,8 @@ impl<'comp, 'utir, 'module, 'tir> Sema<'comp, 'utir, 'module, 'tir> {
     }
 }
 
-impl<'tir> From<Sema<'_, '_, '_, 'tir>> for Tir<'tir> {
-    fn from(value: Sema<'_, '_, '_, 'tir>) -> Self {
+impl From<Sema<'_, '_>> for Tir {
+    fn from(value: Sema<'_, '_>) -> Self {
         return Self {
             instructions: value.instructions,
             extra_data: value.extra_data,
@@ -242,16 +260,14 @@ impl<'tir> From<Sema<'_, '_, '_, 'tir>> for Tir<'tir> {
     }
 }
 
-pub struct Block<'parent, 'sema, 'comp, 'utir, 'module, 'tir> {
-    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'utir, 'module, 'tir>>,
-    pub sema: &'sema Sema<'comp, 'utir, 'module, 'tir>,
-    pub instructions: Arena<TirInstIdx<'tir>>,
+pub struct Block<'parent, 'sema, 'comp, 'utir> {
+    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'utir>>,
+    pub sema: &'sema Sema<'comp, 'utir>,
+    pub instructions: Arena<TirInstIdx>,
 }
 
-impl<'parent, 'sema, 'comp, 'utir, 'module, 'tir>
-    Block<'parent, 'sema, 'comp, 'utir, 'module, 'tir>
-{
-    pub fn new(sema: &'sema Sema<'comp, 'utir, 'module, 'tir>) -> Self {
+impl<'parent, 'sema, 'comp, 'utir> Block<'parent, 'sema, 'comp, 'utir> {
+    pub fn new(sema: &'sema Sema<'comp, 'utir>) -> Self {
         return Self {
             parent: None,
             sema,
@@ -267,7 +283,7 @@ impl<'parent, 'sema, 'comp, 'utir, 'module, 'tir>
         };
     }
 
-    pub fn add_instruction(&self, inst: TirInst<'tir>) -> TirInstRef {
+    pub fn add_instruction(&self, inst: TirInst) -> TirInstRef {
         let idx = self.sema.add_instruction(inst);
         self.instructions.alloc(idx);
         return idx.into();

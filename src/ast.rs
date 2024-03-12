@@ -395,20 +395,19 @@ impl Display for StructInit {
     }
 }
 
-pub struct Ast<'a> {
-    pub source: &'a SimpleFile<GlobalSymbol, OwnedString>,
+pub struct Ast {
     pub root: Node,
 }
 
-impl<'a> Ast<'a> {
-    pub fn parse(source: &'a SimpleFile<GlobalSymbol, OwnedString>) -> Result<Ast<'a>> {
-        let root = TaraParser::parse_source(source.source())?;
+impl Ast {
+    pub fn parse(source: &str) -> Result<Ast> {
+        let root = TaraParser::parse_source(source)?;
 
-        return Ok(Self { source, root });
+        return Ok(Self { root });
     }
 }
 
-impl Display for Ast<'_> {
+impl Display for Ast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.root))
     }

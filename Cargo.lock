@@ -708,6 +708,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 
 [[package]]
+name = "kioku"
+version = "0.3.1"
+source = "git+https://github.com/devins2518/kioku.git#8ff01fbc291deec99c3f1da18dc55e41c36cb76f"
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1342,6 +1347,7 @@ dependencies = [
  "anyhow",
  "codespan",
  "codespan-reporting",
+ "kioku",
  "lazy_static",
  "lit",
  "melior",

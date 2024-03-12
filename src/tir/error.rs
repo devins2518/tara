@@ -1,4 +1,7 @@
-use crate::ast::{Ast, Node};
+use crate::{
+    ast::{Ast, Node},
+    module::file::File,
+};
 use anyhow::Result;
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
@@ -65,7 +68,7 @@ impl Failure {
         }
     }
 
-    pub fn report(self, ast: &Ast) -> Result<()> {
+    pub fn report<'file, 'comp>(self, file: &'file File<'comp>) -> Result<()> {
         let diagnostic = Diagnostic::error()
             .with_message(self.message())
             .with_labels(self.labels())
@@ -74,7 +77,7 @@ impl Failure {
         let writer = StandardStream::stdout(ColorChoice::Always);
         let config = codespan_reporting::term::Config::default();
 
-        term::emit(&mut writer.lock(), &config, ast.source, &diagnostic)?;
+        term::emit(&mut writer.lock(), &config, file, &diagnostic)?;
         Ok(())
     }
 }

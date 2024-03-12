@@ -15,6 +15,7 @@ num-bigint = "0.4.4"
 num-traits = "0.2.18"
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
+kioku = "0.3.1"
 melior = { version = "0.16.2", features = ["llvm-trunk", "ods-dialects"], default-features = false }
 melior-macro = { version = "0.10.2", features = ["llvm-trunk"], default-features = false }
 tblgen = { version = "0.3.0", features = ["llvm-trunk"], default-features = false }
@@ -25,6 +26,7 @@ melior = { git = "https://github.com/mikeurbach/melior.git", package = "melior",
 melior-macro = { git = "https://github.com/mikeurbach/melior.git", package = "melior-macro", branch = "mikeurbach/latest-mlir" }
 tblgen = { git = "https://gitlab.com/mikeurbach/tblgen-rs.git", branch = "mikeurbach/latest-mlir" }
 mlir-sys = { git = "https://github.com/mikeurbach/mlir-sys.git", branch = "mikeurbach/latest-mlir" }
+kioku = { git = "https://github.com/devins2518/kioku.git" }
 
 [dev-dependencies]
 lit = "0.3.4"

@@ -1,57 +1,85 @@
-use crate::{ast::Ast, module::Module, tir::Tir, utils::slice::OwnedString, utir::Utir};
+use crate::{
+    ast::Ast,
+    codegen::Codegen,
+    module::{file::File, Module},
+    tir::Tir,
+    utils::slice::OwnedString,
+    utir::Utir,
+};
 use anyhow::Result;
-use codespan_reporting::files::SimpleFiles;
+use kioku::Arena;
+use std::io::prelude::*;
 use std::mem::MaybeUninit;
 use symbol_table::GlobalSymbol;
 
-pub struct Compilation<'module> {
-    files: SimpleFiles<GlobalSymbol, OwnedString>,
-    modules: Vec<Module<'module>>,
+pub struct Compilation {
+    arena: Arena,
 }
 
-impl<'module> Compilation<'module> {
+impl Compilation {
     pub fn new() -> Self {
         return Self {
-            files: SimpleFiles::new(),
-            modules: Vec::new(),
+            arena: Arena::new(),
         };
     }
 
     pub fn compile(&mut self) -> Result<()> {
         let options = CompilationOptions::from_args();
-        let contents = std::fs::read_to_string(options.top_file.as_str())?;
-        let file_id = self
-            .files
-            .add(options.top_file, OwnedString::from(contents));
+        let mut file = File::new(options.top_file.as_str());
+        let contents = {
+            let mut fp = std::fs::File::open(options.top_file.as_str())?;
+            let mut vec = Vec::new_in(&self.arena);
+            let len = fp.metadata()?.len() as usize;
+            vec.reserve(len);
+            unsafe {
+                vec.set_len(len);
+            }
+            fp.read_exact(vec.as_mut_slice())?;
+            // Leaking here is fine since the arena will clean it up later
+            let slice = vec.leak();
+            // Tara files don't necessarily need to be UTF-8 encoded
+            unsafe { std::str::from_utf8_unchecked(slice) }
+        };
+        file.add_source(contents);
 
-        self.modules.push(Module::new());
-        let module = &mut self.modules.last_mut().unwrap();
+        let mut module = Module::new(self);
+        module.compile_file(
+            &mut file,
+            options.exit_early,
+            options.dump_ast,
+            options.dump_utir,
+        )?;
 
-        let ast = Ast::parse(self.files.get(file_id)?)?;
         if options.dump_ast {
-            println!("{}", ast);
+            println!("{}", file.ast());
             if options.exit_early {
                 return Ok(());
             }
         }
 
-        let utir = match Utir::gen(&ast) {
-            Ok(utir) => utir,
-            Err(fail) => return fail.report(&ast),
-        };
         if options.dump_utir {
-            println!("{}", utir);
+            println!("{}", file.utir());
             if options.exit_early {
                 return Ok(());
             }
         }
 
-        let tir = match Tir::gen(module, &utir) {
-            Ok(tir) => tir,
-            Err(fail) => return fail.report(&ast),
-        };
+        /*
+        let mut codegen = Codegen::new(utir);
+        // match codegen.gen(&utir) {
+        //     Ok(_) => {}
+        //     Err(fail) => return fail.report(&ast),
+        // }
+        codegen.dump_module();
+        */
 
         return Ok(());
+    }
+
+    pub fn alloc<'comp, T>(&'comp self, val: T) -> &'comp mut T {
+        let memory = self.arena.alloc_raw(std::alloc::Layout::new::<T>()) as *mut MaybeUninit<T>;
+        let memory_ref = unsafe { memory.as_mut().unwrap() };
+        memory_ref.write(val)
     }
 }
 

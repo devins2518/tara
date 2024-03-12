@@ -1,4 +1,4 @@
-// RUN: @tara @file --dump-utir
+// RUN: @tara @file
 // CHECK:[0m[1m[38;5;9merror[0m[1m: Variable declaration shadows previous declaration[0m
 // CHECK:   [0m[34m┌─[0m tests/utir/detect_shadowing.t:14:1
 // CHECK:   [0m[34m│[0m  

@@ -13,14 +13,14 @@ use anyhow::Result;
 use self::sema::Block;
 
 // Typed IR
-pub struct Tir<'module> {
-    instructions: Arena<TirInst<'module>>,
+pub struct Tir {
+    instructions: Arena<TirInst>,
     extra_data: Arena<u32>,
 }
 
-impl<'module> Tir<'module> {
+impl Tir {
     pub fn gen<'comp, 'utir>(
-        module: &'comp mut Module<'module>,
+        module: &'comp mut Module<'comp>,
         utir: &'utir Utir<'utir>,
     ) -> Result<Self, Failure> {
         let sema = Sema::new(module, utir);
@@ -32,20 +32,9 @@ impl<'module> Tir<'module> {
             .ok_or(Failure::could_not_find_top())?;
 
         // Find Top.top
-        let top_top = top
-            .to_inst()
-            .ok_or(Failure::TopNotModule)
-            .map(|x| utir.get_decl(x, "top"))?
-            .ok_or(Failure::could_not_find_top())?;
+        let top_idx = top.to_inst().ok_or(Failure::TopNotModule)?;
 
-        // Get body of Top.top
-        let top_body_idxs = top_top
-            .to_inst()
-            .ok_or(Failure::TopTopNotComb)
-            .map(|x| utir.get_body(x))?
-            .ok_or(Failure::TopTopNotComb)?;
-
-        sema.analyze_body(&mut top_block, &top_body_idxs)?;
+        sema.analyze_top(top_idx)?;
 
         Ok(sema.into())
     }

@@ -1,10 +1,14 @@
+#![feature(allocator_api)]
+
 mod ast;
 mod auto_indenting_stream;
 mod builtin;
+mod circt;
+mod codegen;
 mod comp;
-mod intern;
 mod module;
 mod parser;
+mod tables;
 mod tir;
 mod types;
 mod utils;

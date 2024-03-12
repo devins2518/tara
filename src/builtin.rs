@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Mutability {
     Mutable,
     Immutable,
@@ -18,8 +18,8 @@ impl Display for Mutability {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u16)]
-#[derive(Copy, Clone)]
 pub enum Signedness {
     Unsigned,
     Signed,

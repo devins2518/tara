@@ -15,7 +15,6 @@ use std::fmt::{Display, Write};
 
 // Untyped IR
 pub struct Utir<'a> {
-    pub ast: &'a Ast<'a>,
     // TODO: make this private and force use of get_inst
     instructions: Arena<UtirInst<'a>>,
     extra_data: Arena<u32>,
