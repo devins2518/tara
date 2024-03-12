@@ -15,7 +15,7 @@ pub struct Builder<'ast> {
     ast: &'ast Ast<'ast>,
     instructions: Arena<UtirInst<'ast>>,
     extra_data: Arena<u32>,
-    nodes: Arena<&'ast Node<'ast>>,
+    nodes: Arena<&'ast Node>,
 }
 
 impl<'ast> Builder<'ast> {
@@ -128,11 +128,7 @@ impl<'ast> Builder<'ast> {
         return Ok(module_idx);
     }
 
-    fn gen_var_decl(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node<'ast>,
-    ) -> AstResult {
+    fn gen_var_decl(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> AstResult {
         let var_decl = match &node.kind {
             NodeKind::VarDecl(inner) => inner,
             _ => unreachable!(),
@@ -160,7 +156,7 @@ impl<'ast> Builder<'ast> {
         &self,
         inst: UtirInstRef,
         env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node<'ast>,
+        node: &'ast Node,
     ) -> Result<ExtraPayload<'ast, SubroutineDecl>, Failure> {
         let subroutine_decl = match &node.kind {
             NodeKind::SubroutineDecl(inner) => inner,
@@ -209,11 +205,7 @@ impl<'ast> Builder<'ast> {
         return Ok(subroutine_decl);
     }
 
-    fn gen_fn_decl(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node<'ast>,
-    ) -> AstResult {
+    fn gen_fn_decl(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> AstResult {
         let subroutine_idx = env.reserve_instruction();
         let subroutine_decl = self.gen_subroutine_decl(subroutine_idx, env, node)?;
         env.set_instruction(subroutine_idx, UtirInst::FunctionDecl(subroutine_decl));
@@ -221,11 +213,7 @@ impl<'ast> Builder<'ast> {
         return Ok(subroutine_idx);
     }
 
-    fn gen_comb_decl(
-        &self,
-        env: &mut Environment<'_, 'ast, '_>,
-        node: &'ast Node<'ast>,
-    ) -> AstResult {
+    fn gen_comb_decl(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> AstResult {
         let subroutine_idx = env.reserve_instruction();
         let subroutine_decl = self.gen_subroutine_decl(subroutine_idx, env, node)?;
         env.set_instruction(subroutine_idx, UtirInst::CombDecl(subroutine_decl));
@@ -810,9 +798,9 @@ where
     pub fn add_binding(
         &mut self,
         ident: GlobalSymbol,
-        node: &'inst Node<'inst>,
+        node: &'inst Node,
         inst: UtirInstRef,
-    ) -> Option<&'inst Node<'inst>> {
+    ) -> Option<&'inst Node> {
         let mut env = &*self;
         while let Some(parent) = env.parent {
             if let Some(prev) = parent.scope.bindings.get(&ident) {
@@ -916,7 +904,7 @@ struct Scope<'inst> {
     // Current bindings of symbols to nodes
     // TODO: This is currently insufficient for referencing variables defined later in the file
     // even at namespace scope
-    bindings: HashMap<GlobalSymbol, (&'inst Node<'inst>, UtirInstRef)>,
+    bindings: HashMap<GlobalSymbol, (&'inst Node, UtirInstRef)>,
 }
 
 impl<'inst> Scope<'inst> {
@@ -929,9 +917,9 @@ impl<'inst> Scope<'inst> {
     pub fn add_binding(
         &mut self,
         ident: GlobalSymbol,
-        node: &'inst Node<'inst>,
+        node: &'inst Node,
         inst: UtirInstRef,
-    ) -> Option<&'inst Node<'inst>> {
+    ) -> Option<&'inst Node> {
         if let Some(prev_inst) = self.bindings.get(&ident) {
             Some(prev_inst.0)
         } else {

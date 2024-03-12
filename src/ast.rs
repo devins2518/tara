@@ -7,13 +7,13 @@ use num_bigint::BigUint;
 use std::{fmt::Display, marker::PhantomData};
 use symbol_table::GlobalSymbol;
 
-pub struct Node<'a> {
+pub struct Node {
     pub span: Span,
-    pub kind: NodeKind<'a>,
+    pub kind: NodeKind,
 }
 
-impl<'a> Node<'a> {
-    pub fn new(kind: NodeKind<'a>, span: pest::Span) -> Self {
+impl Node {
+    pub fn new(kind: NodeKind, span: pest::Span) -> Self {
         return Self {
             span: Span::new(span.start() as u32, span.end() as u32),
             kind,
@@ -21,49 +21,49 @@ impl<'a> Node<'a> {
     }
 }
 
-impl Display for Node<'_> {
+impl Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.kind)?;
         return Ok(());
     }
 }
 
-pub enum NodeKind<'a> {
-    StructDecl(StructInner<'a>),
-    VarDecl(VarDecl<'a>),
-    ModuleDecl(ModuleInner<'a>),
-    LocalVarDecl(VarDecl<'a>),
-    Or(BinOp<'a>),
-    And(BinOp<'a>),
-    Lt(BinOp<'a>),
-    Gt(BinOp<'a>),
-    Lte(BinOp<'a>),
-    Gte(BinOp<'a>),
-    Eq(BinOp<'a>),
-    Neq(BinOp<'a>),
-    BitAnd(BinOp<'a>),
-    BitOr(BinOp<'a>),
-    BitXor(BinOp<'a>),
-    Add(BinOp<'a>),
-    Sub(BinOp<'a>),
-    Mul(BinOp<'a>),
-    Div(BinOp<'a>),
-    Access(BinOp<'a>),
-    Call(Call<'a>),
-    Negate(UnOp<'a>),
-    Deref(UnOp<'a>),
-    Return(UnOp<'a>),
+pub enum NodeKind {
+    StructDecl(StructInner),
+    VarDecl(VarDecl),
+    ModuleDecl(ModuleInner),
+    LocalVarDecl(VarDecl),
+    Or(BinOp),
+    And(BinOp),
+    Lt(BinOp),
+    Gt(BinOp),
+    Lte(BinOp),
+    Gte(BinOp),
+    Eq(BinOp),
+    Neq(BinOp),
+    BitAnd(BinOp),
+    BitOr(BinOp),
+    BitXor(BinOp),
+    Add(BinOp),
+    Sub(BinOp),
+    Mul(BinOp),
+    Div(BinOp),
+    Access(BinOp),
+    Call(Call),
+    Negate(UnOp),
+    Deref(UnOp),
+    Return(UnOp),
     Identifier(GlobalSymbol),
-    ReferenceTy(RefTy<'a>),
-    PointerTy(RefTy<'a>),
+    ReferenceTy(RefTy),
+    PointerTy(RefTy),
     NumberLiteral(BigUint),
     SizedNumberLiteral(SizedNumberLiteral),
-    IfExpr(IfExpr<'a>),
-    SubroutineDecl(SubroutineDecl<'a>),
-    StructInit(StructInit<'a>),
+    IfExpr(IfExpr),
+    SubroutineDecl(SubroutineDecl),
+    StructInit(StructInit),
 }
 
-impl Display for NodeKind<'_> {
+impl Display for NodeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NodeKind::StructDecl(struct_inner) => {
@@ -113,18 +113,18 @@ impl Display for NodeKind<'_> {
     }
 }
 
-pub struct StructInner<'a> {
-    pub fields: Vec<TypedName<'a>>,
-    pub members: Vec<Node<'a>>,
+pub struct StructInner {
+    pub fields: Vec<TypedName>,
+    pub members: Vec<Node>,
 }
 
-impl<'a> StructInner<'a> {
-    pub fn new(fields: Vec<TypedName<'a>>, members: Vec<Node<'a>>) -> Self {
+impl StructInner {
+    pub fn new(fields: Vec<TypedName>, members: Vec<Node>) -> Self {
         return Self { fields, members };
     }
 }
 
-impl Display for StructInner<'_> {
+impl Display for StructInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("struct_inner(")?;
         for field in &self.fields {
@@ -138,23 +138,18 @@ impl Display for StructInner<'_> {
     }
 }
 
-pub struct ModuleInner<'a> {
-    pub fields: Vec<TypedName<'a>>,
-    pub members: Vec<Node<'a>>,
-    _phantom: PhantomData<&'a Node<'a>>,
+pub struct ModuleInner {
+    pub fields: Vec<TypedName>,
+    pub members: Vec<Node>,
 }
 
-impl<'a> ModuleInner<'a> {
-    pub fn new(fields: Vec<TypedName<'a>>, members: Vec<Node<'a>>) -> Self {
-        return Self {
-            fields,
-            members,
-            _phantom: PhantomData,
-        };
+impl ModuleInner {
+    pub fn new(fields: Vec<TypedName>, members: Vec<Node>) -> Self {
+        return Self { fields, members };
     }
 }
 
-impl Display for ModuleInner<'_> {
+impl Display for ModuleInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("module_inner(")?;
         for field in &self.fields {
@@ -184,20 +179,15 @@ impl Display for Publicity {
     }
 }
 
-pub struct VarDecl<'a> {
+pub struct VarDecl {
     pub publicity: Publicity,
     pub ident: GlobalSymbol,
-    pub ty: Option<Box<Node<'a>>>,
-    pub expr: Box<Node<'a>>,
+    pub ty: Option<Box<Node>>,
+    pub expr: Box<Node>,
 }
 
-impl<'a> VarDecl<'a> {
-    pub fn new(
-        publicity: Publicity,
-        ident: GlobalSymbol,
-        ty: Option<Node<'a>>,
-        expr: Node<'a>,
-    ) -> Self {
+impl VarDecl {
+    pub fn new(publicity: Publicity, ident: GlobalSymbol, ty: Option<Node>, expr: Node) -> Self {
         return Self {
             publicity,
             ident,
@@ -207,7 +197,7 @@ impl<'a> VarDecl<'a> {
     }
 }
 
-impl Display for VarDecl<'_> {
+impl Display for VarDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.ty {
             Some(node) => f.write_fmt(format_args!(
@@ -228,13 +218,13 @@ impl Display for VarDecl<'_> {
     }
 }
 
-pub struct TypedName<'a> {
-    pub ty: Box<Node<'a>>,
+pub struct TypedName {
+    pub ty: Box<Node>,
     pub name: GlobalSymbol,
 }
 
-impl<'a> TypedName<'a> {
-    pub fn new(ty: Node<'a>, name: GlobalSymbol) -> Self {
+impl TypedName {
+    pub fn new(ty: Node, name: GlobalSymbol) -> Self {
         return Self {
             ty: Box::new(ty),
             name,
@@ -242,35 +232,35 @@ impl<'a> TypedName<'a> {
     }
 }
 
-pub struct BinOp<'a> {
-    pub lhs: Box<Node<'a>>,
-    pub rhs: Box<Node<'a>>,
+pub struct BinOp {
+    pub lhs: Box<Node>,
+    pub rhs: Box<Node>,
 }
 
-impl Display for BinOp<'_> {
+impl Display for BinOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}, {}", *self.lhs, *self.rhs))?;
         Ok(())
     }
 }
 
-pub struct UnOp<'a> {
-    pub lhs: Box<Node<'a>>,
+pub struct UnOp {
+    pub lhs: Box<Node>,
 }
 
-impl Display for UnOp<'_> {
+impl Display for UnOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", *self.lhs))?;
         Ok(())
     }
 }
 
-pub struct Call<'a> {
-    pub call: Box<Node<'a>>,
-    pub args: Vec<Node<'a>>,
+pub struct Call {
+    pub call: Box<Node>,
+    pub args: Vec<Node>,
 }
 
-impl Display for Call<'_> {
+impl Display for Call {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}, (", *self.call))?;
         for arg in &self.args {
@@ -293,13 +283,13 @@ impl Display for SizedNumberLiteral {
     }
 }
 
-pub struct RefTy<'a> {
+pub struct RefTy {
     pub mutability: Mutability,
-    pub ty: Box<Node<'a>>,
+    pub ty: Box<Node>,
 }
 
-impl<'a> RefTy<'a> {
-    pub fn new(mutability: Mutability, ty: Node<'a>) -> Self {
+impl RefTy {
+    pub fn new(mutability: Mutability, ty: Node) -> Self {
         return Self {
             mutability,
             ty: Box::new(ty),
@@ -307,20 +297,20 @@ impl<'a> RefTy<'a> {
     }
 }
 
-impl Display for RefTy<'_> {
+impl Display for RefTy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{} {}", self.mutability, *self.ty))?;
         Ok(())
     }
 }
 
-pub struct IfExpr<'a> {
-    pub cond: Box<Node<'a>>,
-    pub body: Box<Node<'a>>,
-    pub else_body: Box<Node<'a>>,
+pub struct IfExpr {
+    pub cond: Box<Node>,
+    pub body: Box<Node>,
+    pub else_body: Box<Node>,
 }
 
-impl Display for IfExpr<'_> {
+impl Display for IfExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "{}, {}, {}",
@@ -330,21 +320,21 @@ impl Display for IfExpr<'_> {
     }
 }
 
-pub struct SubroutineDecl<'a> {
+pub struct SubroutineDecl {
     pub publicity: Publicity,
     pub ident: GlobalSymbol,
-    pub params: Vec<TypedName<'a>>,
-    pub return_type: Box<Node<'a>>,
-    pub block: Vec<Node<'a>>,
+    pub params: Vec<TypedName>,
+    pub return_type: Box<Node>,
+    pub block: Vec<Node>,
 }
 
-impl<'a> SubroutineDecl<'a> {
+impl SubroutineDecl {
     pub fn new(
         publicity: Publicity,
         ident: GlobalSymbol,
-        params: Vec<TypedName<'a>>,
-        return_type: Node<'a>,
-        block: Vec<Node<'a>>,
+        params: Vec<TypedName>,
+        return_type: Node,
+        block: Vec<Node>,
     ) -> Self {
         return Self {
             publicity,
@@ -356,7 +346,7 @@ impl<'a> SubroutineDecl<'a> {
     }
 }
 
-impl Display for SubroutineDecl<'_> {
+impl Display for SubroutineDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{} {}(", self.publicity, self.ident))?;
         for param in &self.params {
@@ -371,26 +361,26 @@ impl Display for SubroutineDecl<'_> {
     }
 }
 
-pub struct StructInit<'a> {
-    pub ty: Option<Box<Node<'a>>>,
+pub struct StructInit {
+    pub ty: Option<Box<Node>>,
     // Technically not a typed name, but a named value but whatever
-    pub fields: Vec<TypedName<'a>>,
+    pub fields: Vec<TypedName>,
 }
 
-impl<'a> StructInit<'a> {
-    pub fn new_with_ty(ty: Node<'a>, fields: Vec<TypedName<'a>>) -> Self {
+impl StructInit {
+    pub fn new_with_ty(ty: Node, fields: Vec<TypedName>) -> Self {
         return Self {
             ty: Some(Box::new(ty)),
             fields,
         };
     }
 
-    pub fn new_anon(fields: Vec<TypedName<'a>>) -> Self {
+    pub fn new_anon(fields: Vec<TypedName>) -> Self {
         return Self { ty: None, fields };
     }
 }
 
-impl Display for StructInit<'_> {
+impl Display for StructInit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(expr) = &self.ty {
             f.write_fmt(format_args!("{}, (", expr))?;
@@ -407,7 +397,7 @@ impl Display for StructInit<'_> {
 
 pub struct Ast<'a> {
     pub source: &'a SimpleFile<GlobalSymbol, OwnedString>,
-    pub root: Node<'a>,
+    pub root: Node,
 }
 
 impl<'a> Ast<'a> {

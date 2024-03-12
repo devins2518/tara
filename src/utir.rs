@@ -19,7 +19,7 @@ pub struct Utir<'a> {
     // TODO: make this private and force use of get_inst
     instructions: Arena<UtirInst<'a>>,
     extra_data: Arena<u32>,
-    nodes: Arena<&'a Node<'a>>,
+    nodes: Arena<&'a Node>,
 }
 
 impl<'a> Utir<'a> {
@@ -142,7 +142,7 @@ impl<'a> Utir<'a> {
         return self.extra_data.slice(start, len);
     }
 
-    pub fn get_node(&self, node: NodeIdx<'a>) -> &'a Node<'a> {
+    pub fn get_node(&self, node: NodeIdx<'a>) -> &'a Node {
         return self.nodes.get(node);
     }
 }

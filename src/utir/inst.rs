@@ -675,7 +675,7 @@ impl Display for UtirInstRef {
 }
 
 // An index into `nodes`
-pub type NodeIdx<'a> = Id<&'a Node<'a>>;
+pub type NodeIdx<'a> = Id<&'a Node>;
 
 // A type for an index into `extra_data` which contains a T
 pub type ExtraIdx<T> = Id<T>;
