@@ -1,13 +1,13 @@
-use crate::utils::arena::Arena;
+use crate::utils::arena::IdArena;
 
 pub struct Tables {
-    extra: Arena<u32>,
+    extra: IdArena<u32>,
 }
 
 impl Tables {
     pub fn new() -> Self {
         return Self {
-            extra: Arena::new(),
+            extra: IdArena::new(),
         };
     }
 }

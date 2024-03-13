@@ -6,11 +6,11 @@ use std::{
     ops::Add,
 };
 
-pub struct Arena<T> {
+pub struct IdArena<T> {
     inner: UnsafeCell<Vec<T>>,
 }
 
-impl<T> Arena<T> {
+impl<T> IdArena<T> {
     pub fn new() -> Self {
         return Self {
             inner: UnsafeCell::new(Vec::new()),
@@ -66,7 +66,7 @@ impl<T> Arena<T> {
 
 pub trait ExtraArenaContainable<const N: usize>: From<[u32; N]> + Into<[u32; N]> {}
 
-impl Arena<u32> {
+impl IdArena<u32> {
     pub fn insert_extra<const N: usize, T: ExtraArenaContainable<N>>(&self, val: T) -> Id<T> {
         let slice: [u32; N] = val.into();
         let ret = self.reserve();
@@ -110,8 +110,8 @@ pub struct ArenaRef<T: Copy> {
     pub(super) data: Box<[T]>,
 }
 
-impl<T: Copy> From<Arena<T>> for ArenaRef<T> {
-    fn from(value: Arena<T>) -> Self {
+impl<T: Copy> From<IdArena<T>> for ArenaRef<T> {
+    fn from(value: IdArena<T>) -> Self {
         let data = value.inner.into_inner().into_boxed_slice();
         return Self { data };
     }

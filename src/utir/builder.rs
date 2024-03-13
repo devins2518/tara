@@ -1,7 +1,7 @@
 use crate::{
     ast::{Ast, Node, NodeKind, TypedName},
     builtin::{Mutability, Signedness},
-    utils::arena::{Arena, ArenaRef, ExtraArenaContainable},
+    utils::arena::{ArenaRef, ExtraArenaContainable, IdArena},
     utir::{error::*, inst::*, Utir},
 };
 use num_traits::cast::ToPrimitive;
@@ -13,18 +13,18 @@ type AstResult = Result<UtirInstRef, Failure>;
 pub struct Builder<'ast> {
     // Underlying reference to ast used to create UTIR
     ast: &'ast Ast,
-    instructions: Arena<UtirInst<'ast>>,
-    extra_data: Arena<u32>,
-    nodes: Arena<&'ast Node>,
+    instructions: IdArena<UtirInst<'ast>>,
+    extra_data: IdArena<u32>,
+    nodes: IdArena<&'ast Node>,
 }
 
 impl<'ast> Builder<'ast> {
     pub fn new(ast: &'ast Ast) -> Self {
         return Self {
             ast,
-            instructions: Arena::new(),
-            extra_data: Arena::new(),
-            nodes: Arena::new(),
+            instructions: IdArena::new(),
+            extra_data: IdArena::new(),
+            nodes: IdArena::new(),
         };
     }
 
@@ -726,7 +726,7 @@ where
     scope: Scope<'inst>,
     // List of arbitrary data which can be used to store temporary data before it is pushed to
     // `Builder.extra_data`
-    tmp_extra: Arena<u32>,
+    tmp_extra: IdArena<u32>,
     // Used to control whether instruction refs are added to `extra_data` or not
     instruction_scope: InstructionScope,
     // All enivironments share a builder
@@ -744,7 +744,7 @@ where
         return Self {
             parent: None,
             scope: Scope::new(),
-            tmp_extra: Arena::new(),
+            tmp_extra: IdArena::new(),
             instruction_scope: InstructionScope::Global,
             builder,
             block: None,
@@ -755,7 +755,7 @@ where
         return Self {
             parent: Some(self),
             scope: Scope::new(),
-            tmp_extra: Arena::new(),
+            tmp_extra: IdArena::new(),
             instruction_scope: self.instruction_scope,
             builder: self.builder,
             block: None,

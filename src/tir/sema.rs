@@ -5,7 +5,7 @@ use crate::{
         inst::{TirInst, TirInstIdx, TirInstRef},
         Tir,
     },
-    utils::arena::Arena,
+    utils::arena::IdArena,
     utir::{
         inst::{UtirInst, UtirInstIdx, UtirInstRef},
         Utir,
@@ -16,8 +16,8 @@ use std::collections::HashMap;
 pub struct Sema<'comp, 'utir> {
     utir: &'utir Utir<'utir>,
     module: &'comp mut Module<'comp>,
-    instructions: Arena<TirInst>,
-    extra_data: Arena<u32>,
+    instructions: IdArena<TirInst>,
+    extra_data: IdArena<u32>,
     utir_map: HashMap<UtirInstIdx<'utir>, TirInstRef>,
 }
 
@@ -28,8 +28,8 @@ impl<'comp, 'utir> Sema<'comp, 'utir> {
         return Self {
             utir,
             module,
-            instructions: Arena::new(),
-            extra_data: Arena::new(),
+            instructions: IdArena::new(),
+            extra_data: IdArena::new(),
             utir_map: HashMap::new(),
         };
     }
@@ -263,7 +263,7 @@ impl From<Sema<'_, '_>> for Tir {
 pub struct Block<'parent, 'sema, 'comp, 'utir> {
     pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'utir>>,
     pub sema: &'sema Sema<'comp, 'utir>,
-    pub instructions: Arena<TirInstIdx>,
+    pub instructions: IdArena<TirInstIdx>,
 }
 
 impl<'parent, 'sema, 'comp, 'utir> Block<'parent, 'sema, 'comp, 'utir> {
@@ -271,7 +271,7 @@ impl<'parent, 'sema, 'comp, 'utir> Block<'parent, 'sema, 'comp, 'utir> {
         return Self {
             parent: None,
             sema,
-            instructions: Arena::new(),
+            instructions: IdArena::new(),
         };
     }
 
@@ -279,7 +279,7 @@ impl<'parent, 'sema, 'comp, 'utir> Block<'parent, 'sema, 'comp, 'utir> {
         return Self {
             parent: Some(parent),
             sema: parent.sema,
-            instructions: Arena::new(),
+            instructions: IdArena::new(),
         };
     }
 
