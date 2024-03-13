@@ -1,7 +1,7 @@
 use crate::{
     ast::{Ast, Node, NodeKind, TypedName},
     builtin::{Mutability, Signedness},
-    utils::arena::{ArenaRef, ExtraArenaContainable, IdArena},
+    utils::id_arena::{ArenaRef, ExtraArenaContainable, IdArena},
     utir::{error::*, inst::*, Utir},
 };
 use num_traits::cast::ToPrimitive;

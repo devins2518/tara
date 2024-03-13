@@ -1,6 +1,6 @@
 use crate::{
     tir::sema::Sema,
-    utils::arena::{ExtraArenaContainable, Id},
+    utils::id_arena::{ExtraArenaContainable, Id},
 };
 use std::fmt::Display;
 

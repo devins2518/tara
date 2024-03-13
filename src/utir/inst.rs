@@ -1,7 +1,7 @@
 use crate::{
     ast::Node,
     builtin::{Mutability, Signedness},
-    utils::arena::{ExtraArenaContainable, Id},
+    utils::id_arena::{ExtraArenaContainable, Id},
 };
 use std::{fmt::Display, num::NonZeroU32};
 use symbol_table::GlobalSymbol;

@@ -5,7 +5,7 @@ mod sema;
 use crate::{
     module::Module,
     tir::{error::Failure, inst::TirInst, sema::Sema},
-    utils::arena::{Id, IdArena},
+    utils::id_arena::{Id, IdArena},
     utir::Utir,
 };
 use anyhow::Result;

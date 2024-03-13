@@ -6,7 +6,7 @@ use self::error::Failure;
 use crate::{
     ast::Node,
     auto_indenting_stream::AutoIndentingStream,
-    utils::arena::{ExtraArenaContainable, Id, IdArena},
+    utils::id_arena::{ExtraArenaContainable, Id, IdArena},
     utir::inst::*,
     Ast,
 };

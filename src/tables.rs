@@ -1,4 +1,4 @@
-use crate::utils::arena::IdArena;
+use crate::utils::id_arena::IdArena;
 
 pub struct Tables {
     extra: IdArena<u32>,

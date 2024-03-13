@@ -5,7 +5,7 @@ use crate::{
         inst::{TirInst, TirInstIdx, TirInstRef},
         Tir,
     },
-    utils::arena::IdArena,
+    utils::id_arena::IdArena,
     utir::{
         inst::{UtirInst, UtirInstIdx, UtirInstRef},
         Utir,
