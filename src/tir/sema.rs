@@ -13,9 +13,8 @@ use crate::{
 };
 use std::collections::HashMap;
 
-pub struct Sema<'comp, 'utir> {
+pub struct Sema<'utir> {
     utir: &'utir Utir<'utir>,
-    module: &'comp mut Module<'comp>,
     instructions: IdArena<TirInst>,
     extra_data: IdArena<u32>,
     utir_map: HashMap<UtirInstIdx<'utir>, TirInstRef>,
@@ -23,17 +22,17 @@ pub struct Sema<'comp, 'utir> {
 
 type SemaResult = Result<TirInstRef, Failure>;
 
-impl<'comp, 'utir> Sema<'comp, 'utir> {
-    pub fn new(module: &'comp mut Module<'comp>, utir: &'utir Utir<'utir>) -> Self {
+impl<'utir> Sema<'utir> {
+    pub fn new(utir: &'utir Utir<'utir>) -> Self {
         return Self {
             utir,
-            module,
             instructions: IdArena::new(),
             extra_data: IdArena::new(),
             utir_map: HashMap::new(),
         };
     }
 
+    /*
     pub fn analyze_top(&self, top: UtirInstIdx<'utir>) -> Result<(), Failure> {
         let module = match self.utir.get_inst(top) {
             UtirInst::ModuleDecl(inner) => self.utir.get_extra(inner.extra_idx),
@@ -249,10 +248,11 @@ impl<'comp, 'utir> Sema<'comp, 'utir> {
     pub fn utir_struct_init(&self, _block: &mut Block, _inst: UtirInstIdx) -> SemaResult {
         unimplemented!()
     }
+    */
 }
 
-impl From<Sema<'_, '_>> for Tir {
-    fn from(value: Sema<'_, '_>) -> Self {
+impl From<Sema<'_>> for Tir {
+    fn from(value: Sema<'_>) -> Self {
         return Self {
             instructions: value.instructions,
             extra_data: value.extra_data,
@@ -260,14 +260,14 @@ impl From<Sema<'_, '_>> for Tir {
     }
 }
 
-pub struct Block<'parent, 'sema, 'comp, 'utir> {
-    pub parent: Option<&'parent Block<'parent, 'sema, 'comp, 'utir>>,
-    pub sema: &'sema Sema<'comp, 'utir>,
+pub struct Block<'parent, 'sema, 'utir> {
+    pub parent: Option<&'parent Block<'parent, 'sema, 'utir>>,
+    pub sema: &'sema Sema<'utir>,
     pub instructions: IdArena<TirInstIdx>,
 }
 
-impl<'parent, 'sema, 'comp, 'utir> Block<'parent, 'sema, 'comp, 'utir> {
-    pub fn new(sema: &'sema Sema<'comp, 'utir>) -> Self {
+impl<'parent, 'sema, 'utir> Block<'parent, 'sema, 'utir> {
+    pub fn new(sema: &'sema Sema<'utir>) -> Self {
         return Self {
             parent: None,
             sema,
@@ -283,9 +283,11 @@ impl<'parent, 'sema, 'comp, 'utir> Block<'parent, 'sema, 'comp, 'utir> {
         };
     }
 
+    /*
     pub fn add_instruction(&self, inst: TirInst) -> TirInstRef {
         let idx = self.sema.add_instruction(inst);
         self.instructions.alloc(idx);
         return idx.into();
     }
+    */
 }

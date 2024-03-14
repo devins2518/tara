@@ -84,6 +84,7 @@ impl TirInstRef {
         }
     }
 
+    /*
     pub fn is_no_return<'sema>(&self, sema: &'sema Sema<'_, '_>) -> bool {
         if let Some(idx) = self.to_inst() {
             return sema.get_instruction(idx).is_no_return();
@@ -93,6 +94,7 @@ impl TirInstRef {
             }
         }
     }
+    */
 }
 
 impl From<TirInstRef> for u32 {

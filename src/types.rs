@@ -1,6 +1,6 @@
 use crate::module::structs::Struct;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Type<'module> {
     Bool,
     Void,

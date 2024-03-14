@@ -8,14 +8,14 @@ use std::{collections::HashMap, hash::Hash};
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct Decl<'module> {
-    name: &'module str,
-    ty: Option<Type<'module>>,
-    value: Option<Value<'module>>,
-    src_namespace: &'module Namespace<'module>,
-    src_scope: Option<&'module CaptureScope<'module>>,
-    utir_inst: UtirInstRef,
-    public: bool,
-    export: bool,
+    pub name: &'module str,
+    pub ty: Option<Type<'module>>,
+    pub value: Option<Value<'module>>,
+    pub src_namespace: &'module Namespace<'module>,
+    pub src_scope: Option<&'module CaptureScope<'module>>,
+    pub utir_inst: UtirInstRef,
+    pub public: bool,
+    pub export: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -55,7 +55,7 @@ enum DeclStatus {
 }
 
 #[derive(PartialEq, Eq)]
-struct CaptureScope<'module> {
+pub struct CaptureScope<'module> {
     parent: Option<&'module CaptureScope<'module>>,
     captures: HashMap<UtirInstRef, TypedValue<'module>>,
 }

@@ -138,7 +138,7 @@ impl<'a> Utir<'a> {
         start: ExtraIdx<T>,
         len: u32,
     ) -> &[T] {
-        return self.extra_data.slice(start, len);
+        return self.extra_data.slice_u32(start, len);
     }
 
     pub fn get_node(&self, node: NodeIdx<'a>) -> &'a Node {

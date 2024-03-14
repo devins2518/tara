@@ -62,6 +62,13 @@ impl<T> IdArena<T> {
     {
         return self.get_inner()[u32::from(id) as usize];
     }
+
+    pub fn slice(&self, start: Id<T>, len: u32) -> &[T] {
+        let vec = self.get_inner();
+        let start: u32 = start.into();
+        let end: u32 = start + (len * std::mem::size_of::<T>() as u32);
+        return &vec[start as usize..end as usize];
+    }
 }
 
 pub trait ExtraArenaContainable<const N: usize>: From<[u32; N]> + Into<[u32; N]> {}
@@ -91,7 +98,7 @@ impl IdArena<u32> {
         }
     }
 
-    pub fn slice<const N: usize, T: ExtraArenaContainable<N>>(
+    pub fn slice_u32<const N: usize, T: ExtraArenaContainable<N>>(
         &self,
         start: Id<T>,
         len: u32,

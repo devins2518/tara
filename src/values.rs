@@ -39,6 +39,7 @@ pub enum Value<'module> {
     Variable(&'module Variable<'module>),
     /// An instance of a struct.
     Struct(&'module [Value<'module>]),
+    // Struct(Vec<Value<'module>>),
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]

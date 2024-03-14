@@ -1,8 +1,9 @@
 use crate::{ast::Ast, module::decls::Decl, utir::Utir};
 use codespan_reporting::files::Files;
 
+#[derive(Copy, Clone)]
 pub struct File<'comp> {
-    path: &'comp str,
+    pub path: &'comp str,
     status: FileStatus,
     source: Option<&'comp str>,
     ast: Option<&'comp Ast>,
@@ -59,6 +60,7 @@ impl<'comp> File<'comp> {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum FileStatus {
     Unloaded,
     Loaded,
@@ -120,3 +122,14 @@ where
         Ok(line_start..next_line_start)
     }
 }
+
+impl PartialEq for File<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+    fn ne(&self, other: &Self) -> bool {
+        self.path != other.path
+    }
+}
+
+impl Eq for File<'_> {}
