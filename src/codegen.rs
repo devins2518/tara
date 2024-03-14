@@ -11,7 +11,7 @@ use crate::{
 use anyhow::Result;
 use kioku::Arena;
 use melior::{
-    ir::{BlockRef, Location, Module, Value},
+    ir::{Block, Location, Module},
     Context,
 };
 use std::collections::HashMap;

@@ -1,4 +1,4 @@
-use crate::{ast::Ast, module::file::File};
+use crate::module::file::File;
 use anyhow::Result;
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},

@@ -1,7 +1,4 @@
-use crate::{
-    module::decls::Decl,
-    utils::id_arena::{Id, IdArena},
-};
+use crate::utils::id_arena::{Id, IdArena};
 
 pub struct Tables {
     null_terminated_strings: IdArena<u8>,

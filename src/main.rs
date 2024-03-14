@@ -1,4 +1,5 @@
 #![feature(allocator_api)]
+#![allow(dead_code)]
 
 mod ast;
 mod auto_indenting_stream;

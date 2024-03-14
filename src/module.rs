@@ -21,10 +21,7 @@ use crate::{
 };
 use anyhow::Result;
 use kioku::Arena;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    mem::MaybeUninit,
-};
+use std::{collections::HashMap, mem::MaybeUninit};
 
 pub struct Module<'comp, 'arena> {
     comp: &'comp Compilation,

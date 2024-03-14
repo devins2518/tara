@@ -1,14 +1,6 @@
-use crate::{
-    ast::Ast,
-    codegen::{package::Package, Codegen},
-    module::{file::File, Module},
-    tir::Tir,
-    utils::slice::OwnedString,
-    utir::Utir,
-};
+use crate::codegen::Codegen;
 use anyhow::Result;
 use kioku::Arena;
-use std::io::prelude::*;
 use std::mem::MaybeUninit;
 use symbol_table::GlobalSymbol;
 

@@ -1,10 +1,8 @@
-use crate::utils::slice::OwnedString;
 use crate::{builtin::Mutability, parser::TaraParser};
 use anyhow::Result;
 use codespan::Span;
-use codespan_reporting::files::SimpleFile;
 use num_bigint::BigUint;
-use std::{fmt::Display, marker::PhantomData};
+use std::fmt::Display;
 use symbol_table::GlobalSymbol;
 
 pub struct Node {

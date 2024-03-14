@@ -1,15 +1,11 @@
 use crate::{
-    module::Module,
     tir::{
         error::Failure,
         inst::{TirInst, TirInstIdx, TirInstRef},
         Tir,
     },
     utils::id_arena::IdArena,
-    utir::{
-        inst::{UtirInst, UtirInstIdx, UtirInstRef},
-        Utir,
-    },
+    utir::{inst::UtirInstIdx, Utir},
 };
 use std::collections::HashMap;
 

@@ -88,7 +88,7 @@ where
 
     fn line_index(
         &self,
-        id: Self::FileId,
+        _: Self::FileId,
         byte_index: usize,
     ) -> Result<usize, codespan_reporting::files::Error> {
         let line_starts: Vec<usize> =

@@ -1,7 +1,4 @@
-use crate::{
-    tir::sema::Sema,
-    utils::id_arena::{ExtraArenaContainable, Id},
-};
+use crate::utils::id_arena::{ExtraArenaContainable, Id};
 use std::fmt::Display;
 
 #[derive(Copy, Clone)]

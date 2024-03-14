@@ -44,7 +44,7 @@ pub enum Value<'module> {
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(C)]
-struct IntInfo {
+pub struct IntInfo {
     sign: Signedness,
     width: u16,
 }
