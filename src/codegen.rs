@@ -22,14 +22,13 @@ use melior::{
     },
     Context,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, mem::MaybeUninit};
 
 pub struct Codegen<'arena, 'ctx> {
     arena: &'arena Arena,
     errors: Vec<Failure>,
     resolve_queue: Vec<Tld>,
     // builder: BlockRef<'ctx, 'ctx>, Get from module.body()
-    module: Module<'ctx>,
     import_table: HashMap<&'arena str, TType<'arena>>,
     types: HashMap<UtirInstRef, TypeId<'ctx>>,
     type_info: HashMap<TType<'arena>, TValue<'arena>>,
@@ -41,7 +40,6 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         arena: &'arena Arena,
         // Possibly relative path to main tara file
         main_pkg_path: &str,
-        context: Context,
         /* TODO: build_mode */
     ) -> Result<Self> {
         let import_table = HashMap::new();
@@ -92,11 +90,13 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
             }
         }
 
+        /*
         let context = Context::new();
         context.load_all_available_dialects();
         context.set_allow_unregistered_dialects(true);
         let loc = Location::new(&context, &self.main_pkg.full_path(), 0, 0);
         let module = Module::new(loc);
+        self.module = module;
         let utir = file.utir();
         self.analyze_top(
             utir,
@@ -105,6 +105,7 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
                 block: &module.body(),
             },
         );
+        */
 
         Ok(())
     }

@@ -14,24 +14,23 @@ use builder::Builder;
 use std::fmt::{Display, Write};
 
 // Untyped IR
-pub struct Utir<'a> {
+pub struct Utir {
     // TODO: make this private and force use of get_inst
-    instructions: IdArena<UtirInst<'a>>,
+    instructions: IdArena<UtirInst>,
     extra_data: IdArena<u32>,
-    nodes: IdArena<&'a Node>,
 }
 
-impl<'a> Utir<'a> {
-    pub fn gen(ast: &'a Ast) -> Result<Self, Failure> {
+impl Utir {
+    pub fn gen(ast: &Ast) -> Result<Self, Failure> {
         return Builder::new(ast).build();
     }
 
-    pub fn get_inst(&self, inst: UtirInstIdx<'a>) -> UtirInst<'a> {
+    pub fn get_inst(&self, inst: UtirInstIdx) -> UtirInst {
         return self.instructions.get(inst);
     }
 
     // Returns the instruction of decl.name
-    pub fn get_decl(&self, decl: UtirInstIdx<'a>, name: &str) -> Option<UtirInstRef> {
+    pub fn get_decl(&self, decl: UtirInstIdx, name: &str) -> Option<UtirInstRef> {
         let extra_idx = match self.get_inst(decl) {
             UtirInst::StructDecl(payload) => payload.extra_idx,
             UtirInst::ModuleDecl(payload) => payload.extra_idx,
@@ -50,7 +49,7 @@ impl<'a> Utir<'a> {
         return None;
     }
 
-    pub fn get_body(&self, decl: UtirInstIdx<'a>) -> Option<&[UtirInstRef]> {
+    pub fn get_body(&self, decl: UtirInstIdx) -> Option<&[UtirInstRef]> {
         let extra_idx = match self.get_inst(decl) {
             UtirInst::FunctionDecl(payload) => payload.extra_idx,
             UtirInst::CombDecl(payload) => payload.extra_idx,
@@ -61,7 +60,7 @@ impl<'a> Utir<'a> {
         return Some(self.get_block_body(body_ref.to_inst().unwrap()));
     }
 
-    pub fn get_block_body(&self, block: UtirInstIdx<'a>) -> &[UtirInstRef] {
+    pub fn get_block_body(&self, block: UtirInstIdx) -> &[UtirInstRef] {
         let extra_idx = match self.get_inst(block) {
             UtirInst::Block(payload) => payload.extra_idx,
             UtirInst::InlineBlock(payload) => payload.extra_idx,
@@ -72,7 +71,7 @@ impl<'a> Utir<'a> {
         return self.slice(body_start, block.num_instrs);
     }
 
-    pub fn get_container_decl_fields(&self, decl: UtirInstIdx<'a>) -> &[ContainerField] {
+    pub fn get_container_decl_fields(&self, decl: UtirInstIdx) -> &[ContainerField] {
         let extra_idx = match self.get_inst(decl) {
             UtirInst::StructDecl(inner) => inner.extra_idx,
             UtirInst::ModuleDecl(inner) => inner.extra_idx,
@@ -83,7 +82,7 @@ impl<'a> Utir<'a> {
         return self.slice(start, container_decl.fields);
     }
 
-    pub fn get_container_decl_decls(&self, decl: UtirInstIdx<'a>) -> &[ContainerMember] {
+    pub fn get_container_decl_decls(&self, decl: UtirInstIdx) -> &[ContainerMember] {
         let extra_idx = match self.get_inst(decl) {
             UtirInst::StructDecl(inner) => inner.extra_idx,
             UtirInst::ModuleDecl(inner) => inner.extra_idx,
@@ -98,7 +97,7 @@ impl<'a> Utir<'a> {
         return self.slice(start, container_decl.decls);
     }
 
-    pub fn get_struct_init_fields(&self, struct_init: UtirInstIdx<'a>) -> &[FieldInit] {
+    pub fn get_struct_init_fields(&self, struct_init: UtirInstIdx) -> &[FieldInit] {
         let extra_idx = match self.get_inst(struct_init) {
             UtirInst::StructInit(inner) => inner.extra_idx,
             _ => unreachable!(),
@@ -108,7 +107,7 @@ impl<'a> Utir<'a> {
         return self.slice(start, container_decl.fields);
     }
 
-    pub fn get_subroutine_params(&self, subroutine: UtirInstIdx<'a>) -> &[UtirInstRef] {
+    pub fn get_subroutine_params(&self, subroutine: UtirInstIdx) -> &[UtirInstRef] {
         let extra_idx = match self.get_inst(subroutine) {
             UtirInst::FunctionDecl(inner) => inner.extra_idx,
             UtirInst::CombDecl(inner) => inner.extra_idx,
@@ -119,7 +118,7 @@ impl<'a> Utir<'a> {
         return self.slice(start, subroutine_decl.params);
     }
 
-    pub fn get_call_args(&self, call: UtirInstIdx<'a>) -> &[UtirInstRef] {
+    pub fn get_call_args(&self, call: UtirInstIdx) -> &[UtirInstRef] {
         let extra_idx = match self.get_inst(call) {
             UtirInst::Call(inner) => inner.extra_idx,
             _ => unreachable!(),
@@ -140,19 +139,15 @@ impl<'a> Utir<'a> {
     ) -> &[T] {
         return self.extra_data.slice_u32(start, len);
     }
-
-    pub fn get_node(&self, node: NodeIdx<'a>) -> &'a Node {
-        return self.nodes.get(node);
-    }
 }
 
-struct UtirWriter<'a, 'b, 'c, 'd> {
-    utir: &'a Utir<'b>,
-    stream: AutoIndentingStream<'c, 'd>,
+struct UtirWriter<'a, 'b, 'c> {
+    utir: &'a Utir,
+    stream: AutoIndentingStream<'b, 'c>,
 }
 
-impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
-    pub fn new(utir: &'a Utir<'b>, stream: AutoIndentingStream<'c, 'd>) -> Self {
+impl<'a, 'b, 'c> UtirWriter<'a, 'b, 'c> {
+    pub fn new(utir: &'a Utir, stream: AutoIndentingStream<'b, 'c>) -> Self {
         return Self { utir, stream };
     }
     fn indent(&mut self) {
@@ -167,7 +162,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_container_decl(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_container_decl(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let (ed_idx, name) = match self.utir.instructions.get(idx) {
             UtirInst::StructDecl(payload) => (payload.extra_idx.to_u32(), "struct_decl"),
             UtirInst::ModuleDecl(payload) => (payload.extra_idx.to_u32(), "module_decl"),
@@ -260,7 +255,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_param(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_param(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let param = match self.utir.instructions.get(idx) {
             UtirInst::Param(inner) => inner.val,
             _ => unreachable!(),
@@ -277,7 +272,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_bin_op(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_bin_op(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let instr = self.utir.instructions.get(idx);
         let (payload, name) = match instr {
             UtirInst::Alloc(payload) => (
@@ -382,7 +377,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_un_op(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_un_op(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let instr = self.utir.instructions.get(idx);
         let (payload, name) = match instr {
             UtirInst::Negate(payload) => (payload, "negate"),
@@ -429,7 +424,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_block(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_block(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let name = match self.utir.instructions.get(idx) {
             UtirInst::Block(_) => "block",
             UtirInst::InlineBlock(_) => "inline_block",
@@ -452,7 +447,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         Ok(())
     }
 
-    fn write_subroutine_decl(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_subroutine_decl(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let ed_idx = match self.utir.instructions.get(idx) {
             UtirInst::FunctionDecl(payload) | UtirInst::CombDecl(payload) => {
                 payload.extra_idx.to_u32()
@@ -490,7 +485,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_ref_ty(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_ref_ty(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let instr = self.utir.instructions.get(idx);
         let (ref_ty, name): (RefTy, &'static str) = match instr {
             UtirInst::RefTy(payload) => (
@@ -514,7 +509,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_call(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_call(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let ed_idx = match self.utir.instructions.get(idx) {
             UtirInst::Call(payload) => payload.extra_idx,
             _ => unreachable!(),
@@ -536,7 +531,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_int_literal(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_int_literal(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let number = match self.utir.instructions.get(idx) {
             UtirInst::IntLiteral(num) => num,
             _ => unreachable!(),
@@ -545,7 +540,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_int_type(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_int_type(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let int_type = match self.utir.instructions.get(idx) {
             UtirInst::IntType(num) => num.val,
             _ => unreachable!(),
@@ -560,7 +555,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_branch(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_branch(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let extra_idx = match self.utir.instructions.get(idx) {
             UtirInst::Branch(payload) => payload.extra_idx.to_u32(),
             _ => unreachable!(),
@@ -589,7 +584,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_access(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_access(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let extra_idx = match self.utir.instructions.get(idx) {
             UtirInst::Access(access) => access.extra_idx,
             _ => unreachable!(),
@@ -605,7 +600,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_ret_implicit_void(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_ret_implicit_void(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         write!(self, "%{} = ret_implicit_void()", u32::from(idx))?;
         return Ok(());
     }
@@ -615,7 +610,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_make_alloc_const(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_make_alloc_const(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let ptr = match self.utir.instructions.get(idx) {
             UtirInst::MakeAllocConst(ptr) => ptr,
             _ => unreachable!(),
@@ -624,7 +619,7 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
         return Ok(());
     }
 
-    fn write_struct_init(&mut self, idx: UtirInstIdx<'b>) -> std::fmt::Result {
+    fn write_struct_init(&mut self, idx: UtirInstIdx) -> std::fmt::Result {
         let extra_idx = match self.utir.instructions.get(idx) {
             UtirInst::StructInit(inner) => inner.extra_idx,
             _ => unreachable!(),
@@ -657,14 +652,14 @@ impl<'a, 'b, 'c, 'd> UtirWriter<'a, 'b, 'c, 'd> {
     }
 }
 
-impl Write for UtirWriter<'_, '_, '_, '_> {
+impl Write for UtirWriter<'_, '_, '_> {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
         write!(self.stream, "{}", s)?;
         Ok(())
     }
 }
 
-impl Display for Utir<'_> {
+impl Display for Utir {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let stream = AutoIndentingStream::new(f);
         let mut writer = UtirWriter::new(self, stream);

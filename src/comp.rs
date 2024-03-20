@@ -1,6 +1,7 @@
 use crate::codegen::Codegen;
 use anyhow::Result;
 use kioku::Arena;
+use melior::Context;
 use std::mem::MaybeUninit;
 use symbol_table::GlobalSymbol;
 

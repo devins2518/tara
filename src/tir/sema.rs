@@ -10,16 +10,16 @@ use crate::{
 use std::collections::HashMap;
 
 pub struct Sema<'utir> {
-    utir: &'utir Utir<'utir>,
+    utir: &'utir Utir,
     instructions: IdArena<TirInst>,
     extra_data: IdArena<u32>,
-    utir_map: HashMap<UtirInstIdx<'utir>, TirInstRef>,
+    utir_map: HashMap<UtirInstIdx, TirInstRef>,
 }
 
 type SemaResult = Result<TirInstRef, Failure>;
 
 impl<'utir> Sema<'utir> {
-    pub fn new(utir: &'utir Utir<'utir>) -> Self {
+    pub fn new(utir: &'utir Utir) -> Self {
         return Self {
             utir,
             instructions: IdArena::new(),

@@ -7,7 +7,7 @@ pub struct File<'comp> {
     status: FileStatus,
     source: Option<&'comp str>,
     ast: Option<&'comp Ast>,
-    utir: Option<&'comp Utir<'comp>>,
+    utir: Option<&'comp Utir>,
     pub root_decl: Option<&'comp Decl<'comp>>,
 }
 
@@ -47,10 +47,10 @@ impl<'comp> File<'comp> {
         self.status = FileStatus::ParseFailed;
     }
 
-    pub fn utir(&self) -> &'comp Utir<'comp> {
+    pub fn utir(&self) -> &'comp Utir {
         self.utir.unwrap()
     }
-    pub fn add_utir(&mut self, utir: &'comp Utir<'comp>) {
+    pub fn add_utir(&mut self, utir: &'comp Utir) {
         self.utir = Some(utir);
         self.status = FileStatus::UtirSucceed;
     }

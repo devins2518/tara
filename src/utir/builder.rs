@@ -4,6 +4,7 @@ use crate::{
     utils::id_arena::{ArenaRef, ExtraArenaContainable, IdArena},
     utir::{error::*, inst::*, Utir},
 };
+use codespan::Span;
 use num_traits::cast::ToPrimitive;
 use std::{collections::HashMap, mem::MaybeUninit};
 use symbol_table::GlobalSymbol;
@@ -13,9 +14,8 @@ type AstResult = Result<UtirInstRef, Failure>;
 pub struct Builder<'ast> {
     // Underlying reference to ast used to create UTIR
     ast: &'ast Ast,
-    instructions: IdArena<UtirInst<'ast>>,
+    instructions: IdArena<UtirInst>,
     extra_data: IdArena<u32>,
-    nodes: IdArena<&'ast Node>,
 }
 
 impl<'ast> Builder<'ast> {
@@ -24,11 +24,10 @@ impl<'ast> Builder<'ast> {
             ast,
             instructions: IdArena::new(),
             extra_data: IdArena::new(),
-            nodes: IdArena::new(),
         };
     }
 
-    pub fn build(self) -> Result<Utir<'ast>, Failure> {
+    pub fn build(self) -> Result<Utir, Failure> {
         match self.gen_root() {
             Ok(_) => {}
             Err(e) => return Err(e),
@@ -48,7 +47,7 @@ impl<'ast> Builder<'ast> {
         };
         let struct_idx = env.reserve_instruction();
 
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
         let mut struct_env = env.derive();
 
@@ -80,7 +79,7 @@ impl<'ast> Builder<'ast> {
         let extra_idx = env.add_extra(ContainerDecl { fields, decls });
         struct_env.finish();
 
-        env.set_instruction(struct_idx, UtirInst::struct_decl(extra_idx, node_idx));
+        env.set_instruction(struct_idx, UtirInst::struct_decl(extra_idx, span));
         return Ok(struct_idx);
     }
 
@@ -91,7 +90,7 @@ impl<'ast> Builder<'ast> {
         };
         let module_idx = env.reserve_instruction();
 
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
         let mut module_env = env.derive();
 
@@ -124,7 +123,7 @@ impl<'ast> Builder<'ast> {
         let extra_idx = env.add_extra(ContainerDecl { fields, decls });
         module_env.finish();
 
-        env.set_instruction(module_idx, UtirInst::module_decl(extra_idx, node_idx));
+        env.set_instruction(module_idx, UtirInst::module_decl(extra_idx, span));
         return Ok(module_idx);
     }
 
@@ -157,13 +156,13 @@ impl<'ast> Builder<'ast> {
         inst: UtirInstRef,
         env: &mut Environment<'_, 'ast, '_>,
         node: &'ast Node,
-    ) -> Result<ExtraPayload<'ast, SubroutineDecl>, Failure> {
+    ) -> Result<ExtraPayload<SubroutineDecl>, Failure> {
         let subroutine_decl = match &node.kind {
             NodeKind::SubroutineDecl(inner) => inner,
             _ => unreachable!(),
         };
 
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
         let ident = subroutine_decl.ident;
 
@@ -177,7 +176,7 @@ impl<'ast> Builder<'ast> {
         let return_type = self.gen_type_expr(&mut subroutine_env, &*subroutine_decl.return_type)?;
 
         let body = {
-            let mut body_env = subroutine_env.make_block(InstructionScope::Block, node_idx);
+            let mut body_env = subroutine_env.make_block(InstructionScope::Block, span);
             let body_inst = body_env.block.unwrap();
 
             for instr in &subroutine_decl.block {
@@ -196,7 +195,7 @@ impl<'ast> Builder<'ast> {
         });
         subroutine_env.finish();
 
-        let subroutine_decl = ExtraPayload::new(extra_idx, node_idx);
+        let subroutine_decl = ExtraPayload::new(extra_idx, span);
 
         if let Some(prev_inst) = env.add_binding(ident, node, inst) {
             return Err(Failure::shadow(node, prev_inst));
@@ -223,9 +222,9 @@ impl<'ast> Builder<'ast> {
 
     fn gen_param(&self, env: &mut Environment<'_, 'ast, '_>, param: &'ast TypedName) -> AstResult {
         let type_expr = self.gen_type_expr(env, &*param.ty)?;
-        let node_idx = self.add_node(&*param.ty);
+        let span = param.ty.span;
 
-        let inst_ref = env.add_instruction(UtirInst::param(type_expr, node_idx));
+        let inst_ref = env.add_instruction(UtirInst::param(type_expr, span));
 
         if let Some(prev_inst) = env.add_binding(param.name, &*param.ty, inst_ref) {
             return Err(Failure::shadow(&*param.ty, prev_inst));
@@ -310,9 +309,9 @@ impl<'ast> Builder<'ast> {
             env.add_extra(init_expr);
         }
 
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
-        let inst = env.add_instruction(UtirInst::struct_init(extra_idx, node_idx));
+        let inst = env.add_instruction(UtirInst::struct_init(extra_idx, span));
 
         return Ok(inst);
     }
@@ -326,7 +325,7 @@ impl<'ast> Builder<'ast> {
             NodeKind::LocalVarDecl(inner) => inner,
             _ => unreachable!(),
         };
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
         let ident = local_var_decl.ident;
 
@@ -344,7 +343,7 @@ impl<'ast> Builder<'ast> {
                 rhs: init_expr,
             };
             let extra_idx = env.add_extra(bin_op);
-            init_expr = env.add_instruction(UtirInst::as_instr(extra_idx, node_idx));
+            init_expr = env.add_instruction(UtirInst::as_instr(extra_idx, span));
         }
 
         let ptr_inst = env.add_instruction(UtirInst::MakeAllocConst(init_expr));
@@ -370,8 +369,8 @@ impl<'ast> Builder<'ast> {
         if let Some(inst_ref) = UtirInstRef::from_str(symbol.as_str()) {
             return Ok(inst_ref);
         }
-        let node_idx = self.add_node(node);
-        if let Some(inst) = UtirInst::maybe_primitive(symbol.as_str(), node_idx) {
+        let span = node.span;
+        if let Some(inst) = UtirInst::maybe_primitive(symbol.as_str(), span) {
             return Ok(env.add_instruction(inst));
         }
         let inst = env
@@ -407,21 +406,21 @@ impl<'ast> Builder<'ast> {
             _ => unreachable!(),
         };
         if let Some(int) = sized_number_literal.literal.to_u64() {
-            let node_idx = self.add_node(node);
+            let span = node.span;
 
             let int_inst = env.add_instruction(UtirInst::int_literal(int));
             let type_inst = env.add_instruction(UtirInst::int_type(
                 Signedness::Unsigned,
                 sized_number_literal.size,
-                node_idx,
+                span,
             ));
 
             let bin_op = BinOp::new(type_inst, int_inst);
             let extra_idx = env.add_extra(bin_op);
 
-            let node_idx = self.add_node(node);
+            let span = node.span;
 
-            let as_instr = env.add_instruction(UtirInst::as_instr(extra_idx, node_idx));
+            let as_instr = env.add_instruction(UtirInst::as_instr(extra_idx, span));
             return Ok(as_instr);
         } else {
             unimplemented!("large sized number literal")
@@ -471,9 +470,9 @@ impl<'ast> Builder<'ast> {
         if env.instruction_scope == InstructionScope::InlineBlock {
             return self.gen_inline_expr(env, node);
         } else {
-            let node_idx = self.add_node(node);
+            let span = node.span;
 
-            let mut inline_block_env = env.make_block(InstructionScope::InlineBlock, node_idx);
+            let mut inline_block_env = env.make_block(InstructionScope::InlineBlock, span);
             let inline_block = inline_block_env.block.unwrap();
 
             let return_expr = self.gen_inline_block(&mut inline_block_env, node)?;
@@ -528,9 +527,9 @@ impl<'ast> Builder<'ast> {
         let bin_op = BinOp::new(lhs_idx, rhs_idx);
 
         let ed_idx = env.add_extra(bin_op);
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
-        let payload = ExtraPayload::new(ed_idx, node_idx);
+        let payload = ExtraPayload::new(ed_idx, span);
 
         let inst = match node.kind {
             NodeKind::Or(_) => UtirInst::Or(payload),
@@ -561,9 +560,9 @@ impl<'ast> Builder<'ast> {
         };
 
         let lhs_idx = self.gen_expr(env, &*inner.lhs)?;
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
-        let un_op = UnOp::new(lhs_idx, node_idx);
+        let un_op = UnOp::new(lhs_idx, span);
 
         let inst = match node.kind {
             NodeKind::Negate(_) => UtirInst::Negate(un_op),
@@ -590,9 +589,9 @@ impl<'ast> Builder<'ast> {
         let ref_ty = RefTy::new(mutability, type_expr);
         let extra_idx = env.add_extra(ref_ty);
 
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
-        let payload = ExtraPayload::new(extra_idx, node_idx);
+        let payload = ExtraPayload::new(extra_idx, span);
 
         let inst = match node.kind {
             NodeKind::ReferenceTy(_) => UtirInst::RefTy(payload),
@@ -627,8 +626,8 @@ impl<'ast> Builder<'ast> {
             env.add_extra(arg);
         }
 
-        let node_idx = self.add_node(node);
-        let call_inst = env.add_instruction(UtirInst::call(extra_idx, node_idx));
+        let span = node.span;
+        let call_inst = env.add_instruction(UtirInst::call(extra_idx, span));
 
         return Ok(call_inst);
     }
@@ -646,9 +645,9 @@ impl<'ast> Builder<'ast> {
         let old_scope = env.instruction_scope;
         env.set_instruction_scope(InstructionScope::Global);
         let true_block = {
-            let true_node = self.add_node(&*if_expr.body);
+            let true_span = if_expr.body.span;
 
-            let mut true_env = env.make_block(InstructionScope::InlineBlock, true_node);
+            let mut true_env = env.make_block(InstructionScope::InlineBlock, true_span);
             let true_block = true_env.block.unwrap();
 
             let break_val = self.gen_expr(&mut true_env, &*if_expr.body)?;
@@ -659,9 +658,9 @@ impl<'ast> Builder<'ast> {
         };
 
         let false_block = {
-            let false_node = self.add_node(&*if_expr.else_body);
+            let false_span = if_expr.else_body.span;
 
-            let mut false_env = env.make_block(InstructionScope::InlineBlock, false_node);
+            let mut false_env = env.make_block(InstructionScope::InlineBlock, false_span);
             let false_block = false_env.block.unwrap();
 
             let break_val = self.gen_expr(&mut false_env, &*if_expr.else_body)?;
@@ -678,9 +677,9 @@ impl<'ast> Builder<'ast> {
             false_block,
         });
 
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
-        env.set_instruction(branch_instr, UtirInst::branch(extra_idx, node_idx));
+        env.set_instruction(branch_instr, UtirInst::branch(extra_idx, span));
         return Ok(branch_instr);
     }
 
@@ -697,22 +696,17 @@ impl<'ast> Builder<'ast> {
         };
 
         let extra_idx = env.add_extra(Access { lhs, rhs });
-        let node_idx = self.add_node(node);
+        let span = node.span;
 
-        return Ok(env.add_instruction(UtirInst::access(extra_idx, node_idx)));
-    }
-
-    fn add_node(&self, node: &'ast Node) -> NodeIdx<'ast> {
-        return self.nodes.alloc(node);
+        return Ok(env.add_instruction(UtirInst::access(extra_idx, span)));
     }
 }
 
-impl<'ast> Into<Utir<'ast>> for Builder<'ast> {
-    fn into(self) -> Utir<'ast> {
+impl<'ast> Into<Utir> for Builder<'ast> {
+    fn into(self) -> Utir {
         return Utir {
             instructions: self.instructions.into(),
             extra_data: self.extra_data.into(),
-            nodes: self.nodes.into(),
         };
     }
 }
@@ -762,7 +756,7 @@ where
         };
     }
 
-    pub fn make_block(&'parent self, scope: InstructionScope, node_idx: NodeIdx<'inst>) -> Self {
+    pub fn make_block(&'parent self, scope: InstructionScope, span: Span) -> Self {
         let mut env = self.derive();
         env.instruction_scope = scope;
 
@@ -772,8 +766,8 @@ where
         };
 
         let block = match scope {
-            InstructionScope::Block => UtirInst::block(extra_idx, node_idx),
-            InstructionScope::InlineBlock => UtirInst::inline_block(extra_idx, node_idx),
+            InstructionScope::Block => UtirInst::block(extra_idx, span),
+            InstructionScope::InlineBlock => UtirInst::inline_block(extra_idx, span),
             _ => unreachable!(),
         };
         let block_inst = self.add_instruction(block);
@@ -825,7 +819,7 @@ where
         return maybe_binding;
     }
 
-    pub fn add_instruction(&self, inst: UtirInst<'inst>) -> UtirInstRef {
+    pub fn add_instruction(&self, inst: UtirInst) -> UtirInstRef {
         let inst_idx = self.builder.instructions.alloc(inst);
         let inst_ref = UtirInstRef::from(inst_idx);
         match self.instruction_scope {
@@ -841,7 +835,7 @@ where
         return id;
     }
 
-    pub fn set_instruction(&self, inst: UtirInstRef, val: UtirInst<'inst>) {
+    pub fn set_instruction(&self, inst: UtirInstRef, val: UtirInst) {
         self.builder.instructions.set(inst.to_inst().unwrap(), val);
     }
 
@@ -858,8 +852,8 @@ where
             });
 
             let block = match self.builder.instructions.get(block_idx) {
-                UtirInst::Block(inner) => UtirInst::block(block_extra, inner.node_idx),
-                UtirInst::InlineBlock(inner) => UtirInst::inline_block(block_extra, inner.node_idx),
+                UtirInst::Block(inner) => UtirInst::block(block_extra, inner.span),
+                UtirInst::InlineBlock(inner) => UtirInst::inline_block(block_extra, inner.span),
                 _ => unreachable!(),
             };
 
