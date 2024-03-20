@@ -125,17 +125,6 @@ impl<'comp, 'arena> Module<'comp, 'arena> {
         let struct_val = Value::Type(struct_ty);
         let ty_ty = Value::TypeType;
         let namespace = Namespace::new(*file, struct_ty);
-        // struct_obj.fields = Vec::new();
-        // struct_obj.namespace = namespace;
-        /*
-        *struct_obj = Struct {
-            owner_decl: todo!(),
-            fields: Vec::new(),
-            namespace,
-            utir_ref: todo!(),
-            status: todo!(),
-        };
-        */
     }
 
     fn allocate_decl(

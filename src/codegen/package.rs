@@ -11,10 +11,18 @@ impl<'arena> Package<'arena> {
         let src_dir = arena.copy_str(src_dir);
         let src_path = arena.copy_str(src_path);
         let pkg_path = arena.copy_str(pkg_path);
-        return Self {
+        Self {
             src_dir,
             src_path,
             pkg_path,
-        };
+        }
+    }
+
+    pub fn full_path(&self) -> String {
+        let mut s = String::new();
+        s.push_str(self.src_dir);
+        s.push_str(std::path::MAIN_SEPARATOR_STR);
+        s.push_str(self.src_path);
+        s
     }
 }

@@ -17,50 +17,10 @@ impl Compilation {
 
     pub fn compile(&mut self) -> Result<()> {
         let options = CompilationOptions::from_args();
-        /*
-        let mut file = File::new(options.top_file.as_str());
-        let contents = {
-            let mut fp = std::fs::File::open(options.top_file.as_str())?;
-            let mut vec = Vec::new_in(&self.arena);
-            let len = fp.metadata()?.len() as usize;
-            vec.reserve(len);
-            unsafe {
-                vec.set_len(len);
-            }
-            fp.read_exact(vec.as_mut_slice())?;
-            // Leaking here is fine since the arena will clean it up later
-            let slice = vec.leak();
-            // Tara files don't necessarily need to be UTF-8 encoded
-            unsafe { std::str::from_utf8_unchecked(slice) }
-        };
-        file.add_source(contents);
-        */
 
-        // let codegen_arena = Arena::new();
-        // let mut codegen = Codegen::new(&codegen_arena, options.top_file.as_str())?;
-        // codegen.analyze_root();
-
-        let module_arena = Arena::new();
-        let package = {
-            let resolved_main_pkg_path = std::fs::canonicalize(options.top_file.as_str())?;
-            // Get directory itself
-            let src_dir = resolved_main_pkg_path.parent().unwrap().to_str().unwrap();
-            // Get file itself
-            let src_path = resolved_main_pkg_path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap();
-            let pkg_path = "root";
-            Package::new_in(&module_arena, src_dir, src_path, pkg_path)
-        };
-        let mut module = Module::new(self, &module_arena);
-        module.analyze_pkg(
-            &package,
-            options.exit_early,
-            options.dump_ast,
-            options.dump_utir,
-        )?;
+        let codegen_arena = Arena::new();
+        let mut codegen = Codegen::new(&codegen_arena, options.top_file.as_str())?;
+        codegen.analyze_root(options.exit_early, options.dump_ast, options.dump_utir)?;
 
         return Ok(());
     }

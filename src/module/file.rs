@@ -35,7 +35,7 @@ impl<'comp> File<'comp> {
         self.status = FileStatus::Loaded;
     }
 
-    pub fn ast(&self) -> &Ast {
+    pub fn ast(&self) -> &'comp Ast {
         self.ast.unwrap()
     }
     pub fn add_ast(&mut self, ast: &'comp Ast) {
