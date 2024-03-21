@@ -20,8 +20,19 @@ impl Compilation {
         let options = CompilationOptions::from_args();
 
         let codegen_arena = Arena::new();
-        let mut codegen = Codegen::new(&codegen_arena, options.top_file.as_str())?;
-        codegen.analyze_root(options.exit_early, options.dump_ast, options.dump_utir)?;
+        let context = {
+            let ctx = Context::new();
+            ctx.load_all_available_dialects();
+            ctx.set_allow_unregistered_dialects(true);
+            ctx
+        };
+        let mut codegen = Codegen::new(&codegen_arena, options.top_file.as_str(), &context)?;
+        codegen.analyze_root(
+            options.exit_early,
+            options.dump_ast,
+            options.dump_utir,
+            options.dump_mlir,
+        )?;
 
         return Ok(());
     }
@@ -54,6 +65,10 @@ impl CompilationOptions {
                 "--dump-utir" => dump_utir = true,
                 "--dump-mlir" => dump_mlir = true,
                 _ => {
+                    if arg.starts_with("--") {
+                        println!("[ERROR] Unknown argument {}", arg);
+                        std::process::exit(1);
+                    }
                     if found_top {
                         println!("[ERROR] Found multiple top files in arguments");
                         std::process::exit(1);

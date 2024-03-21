@@ -4,35 +4,60 @@ mod tld;
 
 use crate::{
     ast::Ast,
+    circt,
+    circt::{hw::module as hw_module, hw::HWModuleOperationBuilder},
     codegen::{error::Failure, package::Package, tld::Tld},
     module::file::File,
     types::Type as TType,
     utir::{
-        inst::{ContainerMember, UtirInstIdx, UtirInstRef},
+        inst::{ContainerMember, UtirInst, UtirInstIdx, UtirInstRef},
         Utir,
     },
     values::Value as TValue,
 };
-use anyhow::Result;
+use anyhow::{bail, Result};
 use kioku::Arena;
 use melior::{
     ir::{
+        attribute::StringAttribute,
         r#type::{IntegerType, TypeId, TypeLike},
-        Block, Location, Module, Operation, Type,
+        Block, Location, Module, Operation, Region, Type,
     },
     Context,
 };
-use std::{collections::HashMap, mem::MaybeUninit};
+use std::{collections::HashMap, error::Error, fmt, mem::MaybeUninit};
+
+#[derive(Debug)]
+enum FailKind {
+    ParseFail,
+    AstFail,
+    UtirFail,
+}
+
+impl fmt::Display for FailKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for FailKind {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
 
 pub struct Codegen<'arena, 'ctx> {
     arena: &'arena Arena,
+    ctx: &'ctx Context,
     errors: Vec<Failure>,
     resolve_queue: Vec<Tld>,
     // builder: BlockRef<'ctx, 'ctx>, Get from module.body()
+    module: Module<'ctx>,
     import_table: HashMap<&'arena str, TType<'arena>>,
     types: HashMap<UtirInstRef, TypeId<'ctx>>,
     type_info: HashMap<TType<'arena>, TValue<'arena>>,
     main_pkg: Package<'arena>,
+    // curr_module: Option<>
 }
 
 impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
@@ -40,8 +65,11 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         arena: &'arena Arena,
         // Possibly relative path to main tara file
         main_pkg_path: &str,
+        ctx: &'ctx Context,
         /* TODO: build_mode */
     ) -> Result<Self> {
+        let loc = Location::unknown(ctx);
+        let module = Module::new(loc);
         let import_table = HashMap::new();
         let main_pkg = {
             let resolved_main_pkg_path = std::fs::canonicalize(main_pkg_path)?;
@@ -55,12 +83,14 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         };
         Ok(Self {
             arena,
+            module,
             errors: Vec::new(),
             resolve_queue: Vec::new(),
             import_table,
             types: HashMap::new(),
             type_info: HashMap::new(),
             main_pkg,
+            ctx,
         })
     }
 
@@ -69,6 +99,7 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         exit_early: bool,
         dump_ast: bool,
         dump_utir: bool,
+        dump_mlir: bool,
     ) -> Result<()> {
         let mut file = File::new(self.main_pkg.src_dir);
 
@@ -77,35 +108,28 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         self.parse(&mut file)?;
         if dump_ast {
             println!("{}", file.ast());
-            if exit_early {
+            if exit_early || !(dump_utir || dump_mlir) {
                 return Ok(());
             }
         }
 
-        self.gen_utir(&mut file)?;
+        match self.gen_utir(&mut file) {
+            Ok(_) => {}
+            Err(_) => return Ok(()),
+        }
         if dump_utir {
             println!("{}", file.utir());
-            if exit_early {
+            if exit_early || !dump_mlir {
                 return Ok(());
             }
         }
 
-        /*
-        let context = Context::new();
-        context.load_all_available_dialects();
-        context.set_allow_unregistered_dialects(true);
-        let loc = Location::new(&context, &self.main_pkg.full_path(), 0, 0);
-        let module = Module::new(loc);
-        self.module = module;
         let utir = file.utir();
-        self.analyze_top(
-            utir,
-            CtxBlock {
-                ctx: &context,
-                block: &module.body(),
-            },
-        );
-        */
+        self.analyze_top(utir);
+        debug_assert!(self.module.as_operation().verify());
+        if dump_mlir {
+            self.module.as_operation().dump();
+        }
 
         Ok(())
     }
@@ -153,7 +177,7 @@ impl<'arena> Codegen<'arena, '_> {
             Err(fail) => {
                 file.fail_utir();
                 fail.report(&file)?;
-                return Ok(());
+                bail!(FailKind::UtirFail);
             }
         };
         file.add_utir(utir);
@@ -161,34 +185,65 @@ impl<'arena> Codegen<'arena, '_> {
     }
 }
 
-#[derive(Copy, Clone)]
-struct CtxBlock<'ctx, 'b> {
-    ctx: &'ctx Context,
-    block: &'b Block<'ctx>,
-}
-
 // Codegen related methods
-impl<'ctx, 'b, 'arena> Codegen<'arena, 'ctx> {
+impl<'ctx, 'arena> Codegen<'arena, 'ctx> {
     // Analyze the root of the tara file. This will always be Utir index 0.
-    fn analyze_top(&mut self, utir: &Utir, ctx_block: CtxBlock<'ctx, 'b>) {
+    fn analyze_top(&mut self, utir: &Utir) {
         let root_idx = UtirInstIdx::from(0);
         let top_level_decls = utir.get_container_decl_decls(root_idx);
-        self.analyze_top_level_decls(top_level_decls, ctx_block);
+        self.analyze_top_level_decls(utir, top_level_decls);
     }
 
-    fn analyze_top_level_decls(
-        &mut self,
-        decls: &[ContainerMember],
-        ctx_block: CtxBlock<'ctx, 'b>,
-    ) {
+    fn analyze_top_level_decls(&mut self, utir: &Utir, decls: &[ContainerMember]) {
         for decl in decls {
             match decl.inst_ref {
                 UtirInstRef::IntTypeU8 => {
-                    let int_type = IntegerType::unsigned(ctx_block.ctx, 8);
+                    let int_type = IntegerType::unsigned(&self.ctx, 8);
                     self.types.insert(decl.inst_ref, int_type.id());
                 }
-                _ => unimplemented!(),
+                UtirInstRef::IntTypeU8 => {
+                    let int_type = IntegerType::unsigned(&self.ctx, 8);
+                    self.types.insert(decl.inst_ref, int_type.id());
+                }
+                _ => {
+                    let idx = decl.inst_ref.to_inst().unwrap();
+                    match utir.get_inst(idx) {
+                        UtirInst::ModuleDecl(_) => {
+                            self.generate_module(utir, idx, decl.name.as_str());
+                        }
+                        UtirInst::CombDecl(_) => {
+                            self.generate_comb(utir, idx, decl.name.as_str());
+                        }
+                        _ => {
+                            println!("unhandled {}: {}", decl.name, decl.inst_ref);
+                            unimplemented!()
+                        }
+                    }
+                }
             }
         }
+    }
+
+    fn generate_module(&mut self, utir: &Utir, idx: UtirInstIdx, name: &str) {
+        let fields = utir.get_container_decl_fields(idx);
+        let decls = utir.get_container_decl_decls(idx);
+        println!(
+            "generting %{} module {} fields {} decls",
+            u32::from(idx),
+            fields.len(),
+            decls.len()
+        );
+        self.analyze_top_level_decls(utir, decls);
+        let region = Region::new();
+        let module_builder = {
+            let loc = Location::unknown(self.ctx);
+            HWModuleOperationBuilder::new(self.ctx, loc)
+                .sym_name(StringAttribute::new(self.ctx, name))
+        };
+        // TODO: generate fields
+    }
+
+    fn generate_comb(&mut self, utir: &Utir, idx: UtirInstIdx, name: &str) {
+        unimplemented!()
     }
 }

@@ -1,3 +1,7 @@
+use melior::dialect::{DialectHandle, DialectRegistry};
+use melior::Context;
+use mlir_sys::MlirDialectHandle;
+
 melior_macro::dialect! {
     name: "arc",
     table_gen: r#"include "circt/Dialect/Arc/Arc.td""#
@@ -104,4 +108,67 @@ melior_macro::dialect! {
 melior_macro::dialect! {
     name: "verif",
     table_gen: r#"include "circt/Dialect/Verif/Verif.td""#
+}
+
+extern "C" {
+    fn mlirGetDialectHandle__arc__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__calyx__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__comb__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__dc__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__esi__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__emit__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__firrtl__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__fsm__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__hw__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__hwarith__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__handshake__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__ibis__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__interop__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__llhd__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__ltl__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__loopschedule__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__msft__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__moore__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__om__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__pipeline__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__ssp__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__sv__() -> MlirDialectHandle;
+    // fn mlirGetDialectHandle__seq__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__sim__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__systemc__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__verif__() -> MlirDialectHandle;
+}
+
+// TODO: Link against CIRCT libraries
+pub fn register_all_dialects(ctx: &Context) {
+    let registry = DialectRegistry::new();
+    unsafe {
+        DialectHandle::from_raw(mlirGetDialectHandle__arc__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__calyx__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__comb__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__dc__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__esi__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__emit__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__firrtl__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__fsm__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__hw__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__hwarith__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__handshake__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__ibis__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__interop__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__llhd__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__ltl__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__loopschedule__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__msft__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__moore__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__om__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__pipeline__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__ssp__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__sv__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__seq__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__sim__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__systemc__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__verif__()).insert_dialect(&registry);
+    }
+    ctx.append_dialect_registry(&registry);
 }
