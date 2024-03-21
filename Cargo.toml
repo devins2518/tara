@@ -29,3 +29,6 @@ mlir-sys = { git = "https://github.com/mikeurbach/mlir-sys.git", branch = "mikeu
 
 [dev-dependencies]
 lit = "0.3.4"
+
+[build-dependencies]
+bindgen = "0.69.4"

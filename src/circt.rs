@@ -1,3 +1,5 @@
+pub mod sys;
+
 use melior::dialect::{DialectHandle, DialectRegistry};
 use melior::Context;
 use mlir_sys::MlirDialectHandle;
