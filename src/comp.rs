@@ -1,40 +1,33 @@
-use crate::codegen::Codegen;
+use crate::module::Module;
 use anyhow::Result;
 use kioku::Arena;
-use melior::Context;
 use std::mem::MaybeUninit;
 use symbol_table::GlobalSymbol;
 
 pub struct Compilation {
-    arena: Arena,
+    pub arena: Arena,
 }
 
 impl Compilation {
     pub fn new() -> Self {
-        return Self {
+        Self {
             arena: Arena::new(),
-        };
+        }
     }
 
     pub fn compile(&mut self) -> Result<()> {
         let options = CompilationOptions::from_args();
 
-        let codegen_arena = Arena::new();
-        let context = {
-            let ctx = Context::new();
-            ctx.load_all_available_dialects();
-            ctx.set_allow_unregistered_dialects(true);
-            ctx
-        };
-        let mut codegen = Codegen::new(&codegen_arena, options.top_file.as_str(), &context)?;
-        codegen.analyze_root(
+        let mut module = Module::new(self);
+        module.analyze_main_pkg(
+            options.top_file.as_str(),
             options.exit_early,
             options.dump_ast,
             options.dump_utir,
             options.dump_mlir,
         )?;
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn alloc<'comp, T>(&'comp self, val: T) -> &'comp mut T {

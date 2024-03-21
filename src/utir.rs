@@ -4,7 +4,6 @@ pub(super) mod inst;
 
 use self::error::Failure;
 use crate::{
-    ast::Node,
     auto_indenting_stream::AutoIndentingStream,
     utils::id_arena::{ExtraArenaContainable, Id, IdArena},
     utir::inst::*,

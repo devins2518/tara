@@ -9,47 +9,83 @@ use crate::{
     ast::Ast,
     codegen::package::Package,
     comp::Compilation,
-    module::{
-        decls::{CaptureScope, Decl},
-        file::File,
-        namespace::Namespace,
-        structs::Struct,
-    },
+    module::{file::File, namespace::Namespace, structs::Struct},
     types::Type,
     utils::RRC,
-    utir::{inst::UtirInstRef, Utir},
+    utir::Utir,
     values::Value,
 };
-use anyhow::Result;
+use anyhow::{bail, Result};
+use core::fmt;
 use kioku::Arena;
-use std::{borrow::Borrow, collections::HashMap, mem::MaybeUninit};
+use std::{collections::HashMap, error::Error};
 
-pub struct Module<'comp, 'arena> {
-    comp: &'comp Compilation,
-    arena: &'arena Arena,
+#[derive(Debug)]
+enum FailKind {
+    ParseFail,
+    AstFail,
+    UtirFail,
+}
+
+impl fmt::Display for FailKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for FailKind {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+pub struct Module<'comp> {
+    arena: &'comp Arena,
     // Keys are fully resolved paths
     pub import_table: HashMap<String, RRC<File>>,
 }
 
-impl<'comp, 'arena> Module<'comp, 'arena> {
-    pub fn new(comp: &'comp Compilation, arena: &'arena Arena) -> Self {
+impl<'comp> Module<'comp> {
+    pub fn new(comp: &'comp Compilation) -> Self {
         Self {
-            comp,
-            arena,
+            arena: &comp.arena,
             import_table: HashMap::new(),
         }
     }
 
-    pub fn analyze_pkg(
+    pub fn analyze_main_pkg(
         &mut self,
-        pkg: &'arena Package,
+        main_pkg_path: &str,
         exit_early: bool,
-        compile_ast: bool,
-        compile_utir: bool,
+        dump_ast: bool,
+        dump_utir: bool,
+        dump_mlir: bool,
     ) -> Result<()> {
-        let file = self.import_pkg(pkg)?.file;
-        self.analyze_file(file, exit_early, compile_ast, compile_utir)?;
-        // self.import_table.insert(&pkg.full_path(), file);
+        let main_pkg = {
+            let resolved_main_pkg_path = std::fs::canonicalize(main_pkg_path)?;
+            // Get directory itself
+            let src_dir = resolved_main_pkg_path
+                .parent()
+                .unwrap()
+                .to_path_buf()
+                .into_os_string()
+                .into_string()
+                .unwrap();
+            // Get file itself
+            let src_path = resolved_main_pkg_path
+                .file_name()
+                .unwrap()
+                .to_os_string()
+                .into_string()
+                .unwrap();
+            Package {
+                src_dir,
+                src_path,
+                pkg_path: "root".to_string(),
+            }
+        };
+        let file = self.import_pkg(&main_pkg)?.file;
+        self.analyze_file(file, exit_early, dump_ast, dump_utir, dump_mlir)?;
         Ok(())
     }
 
@@ -57,56 +93,38 @@ impl<'comp, 'arena> Module<'comp, 'arena> {
         &mut self,
         file: RRC<File>,
         exit_early: bool,
-        compile_ast: bool,
-        compile_utir: bool,
+        dump_ast: bool,
+        dump_utir: bool,
+        dump_mlir: bool,
     ) -> Result<()> {
         {
-            let mut f = file.borrow_mut();
-            let contents = {
-                use std::io::prelude::*;
-                let mut fp = std::fs::File::open(&f.path)?;
-                let mut string = String::new();
-                fp.read_to_string(&mut string)?;
-                string
-            };
-            f.add_source(contents);
+            let f = &mut file.borrow_mut();
+            self.load_file(f)?;
 
-            if exit_early && !compile_ast && !compile_utir {
-                return Ok(());
-            }
-
-            let source = f.source();
-            let ast = match Ast::parse(source) {
-                Ok(ast) => {
-                    f.add_ast(ast);
-                    f.ast()
-                }
-                Err(_) => {
-                    f.fail_ast();
-                    return Ok(());
-                }
-            };
-            if compile_ast {
+            self.parse(f)?;
+            if dump_ast {
                 println!("{}", f.ast());
-            }
-
-            if exit_early && !compile_utir {
-                return Ok(());
-            }
-
-            let utir = match Utir::gen(&ast) {
-                Ok(utir) => {
-                    f.add_utir(utir);
-                    f.utir()
-                }
-                Err(fail) => {
-                    f.fail_utir();
-                    fail.report(&f)?;
+                if exit_early || !(dump_utir || dump_mlir) {
                     return Ok(());
                 }
-            };
-            if compile_utir {
+            }
+
+            match self.gen_utir(f) {
+                Ok(_) => {}
+                Err(_) => return Ok(()),
+            }
+            if dump_utir {
                 println!("{}", f.utir());
+                if exit_early || !dump_mlir {
+                    return Ok(());
+                }
+            }
+
+            let utir = f.utir();
+            // self.analyze_top(utir);
+            // debug_assert!(self.module.as_operation().verify());
+            if dump_mlir {
+                // self.module.as_operation().dump();
             }
         }
 
@@ -127,13 +145,8 @@ impl<'comp, 'arena> Module<'comp, 'arena> {
         let namespace = Namespace::new(file, struct_ty);
     }
 
-    fn alloc_uninit<T>(&self) -> &'arena mut T {
-        self.arena
-            .alloc_no_copy(unsafe { MaybeUninit::uninit().assume_init() })
-    }
-
     // This is pretty dumb and expensive, rework packages to be cheaper
-    fn import_pkg(&mut self, pkg: &'arena Package) -> Result<ImportResult> {
+    fn import_pkg(&mut self, pkg: &Package) -> Result<ImportResult> {
         let full_path = pkg.full_path();
         let new = self.import_table.contains_key(&full_path);
         let file = self
@@ -148,4 +161,44 @@ impl<'comp, 'arena> Module<'comp, 'arena> {
 struct ImportResult {
     file: RRC<File>,
     new: bool,
+}
+
+// File related methods
+impl Module<'_> {
+    fn load_file(&self, file: &mut File) -> Result<()> {
+        let contents = {
+            use std::io::prelude::*;
+            let mut fp = std::fs::File::open(&file.path)?;
+            let mut string = String::new();
+            fp.read_to_string(&mut string)?;
+            string
+        };
+        file.add_source(contents);
+        Ok(())
+    }
+
+    fn parse(&self, file: &mut File) -> Result<()> {
+        let source = file.source();
+        let ast = match Ast::parse(source) {
+            Ok(ast) => file.add_ast(ast),
+            Err(_) => {
+                file.fail_ast();
+                return Ok(());
+            }
+        };
+        Ok(())
+    }
+
+    fn gen_utir(&self, file: &mut File) -> Result<()> {
+        let ast = file.ast();
+        let utir = match Utir::gen(ast) {
+            Ok(utir) => file.add_utir(utir),
+            Err(fail) => {
+                file.fail_utir();
+                fail.report(&file)?;
+                bail!(FailKind::UtirFail);
+            }
+        };
+        Ok(())
+    }
 }

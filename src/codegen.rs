@@ -3,10 +3,8 @@ pub mod package;
 mod tld;
 
 use crate::{
-    ast::Ast,
     circt::hw::HWModuleOperationBuilder,
     codegen::{error::Failure, package::Package, tld::Tld},
-    module::file::File,
     types::Type as TaraType,
     utir::{
         inst::{ContainerMember, UtirInst, UtirInstIdx, UtirInstRef},
@@ -14,36 +12,17 @@ use crate::{
     },
     values::Value as TaraValue,
 };
-use anyhow::{bail, Result};
+use anyhow::Result;
 use kioku::Arena;
 use melior::{
     ir::{
         attribute::StringAttribute,
         r#type::{IntegerType, TypeId, TypeLike},
-        Block, Location, Module, Operation, Region, Type,
+        Location, Module, Region,
     },
     Context,
 };
-use std::{collections::HashMap, error::Error, fmt};
-
-#[derive(Debug)]
-enum FailKind {
-    ParseFail,
-    AstFail,
-    UtirFail,
-}
-
-impl fmt::Display for FailKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Error for FailKind {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
+use std::collections::HashMap;
 
 pub struct Codegen<'arena, 'ctx> {
     arena: &'arena Arena,
@@ -106,6 +85,7 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         })
     }
 
+    /*
     pub fn analyze_root(
         &mut self,
         exit_early: bool,
@@ -145,46 +125,7 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
 
         Ok(())
     }
-}
-
-// File related methods
-impl<'arena> Codegen<'arena, '_> {
-    fn load_file(&self, file: &mut File) -> Result<()> {
-        let contents = {
-            use std::io::prelude::*;
-            let mut fp = std::fs::File::open(&file.path)?;
-            let mut string = String::new();
-            fp.read_to_string(&mut string)?;
-            string
-        };
-        file.add_source(contents);
-        Ok(())
-    }
-
-    fn parse(&self, file: &mut File) -> Result<()> {
-        let source = file.source();
-        let ast = match Ast::parse(source) {
-            Ok(ast) => file.add_ast(ast),
-            Err(_) => {
-                file.fail_ast();
-                return Ok(());
-            }
-        };
-        Ok(())
-    }
-
-    fn gen_utir(&self, file: &mut File) -> Result<()> {
-        let ast = file.ast();
-        let utir = match Utir::gen(ast) {
-            Ok(utir) => file.add_utir(utir),
-            Err(fail) => {
-                file.fail_utir();
-                fail.report(&file)?;
-                bail!(FailKind::UtirFail);
-            }
-        };
-        Ok(())
-    }
+    */
 }
 
 // Codegen related methods
@@ -203,8 +144,8 @@ impl<'ctx, 'arena> Codegen<'arena, 'ctx> {
                     let int_type = IntegerType::unsigned(&self.ctx, 8);
                     self.types.insert(decl.inst_ref, int_type.id());
                 }
-                UtirInstRef::IntTypeU8 => {
-                    let int_type = IntegerType::unsigned(&self.ctx, 8);
+                UtirInstRef::IntTypeU16 => {
+                    let int_type = IntegerType::unsigned(&self.ctx, 16);
                     self.types.insert(decl.inst_ref, int_type.id());
                 }
                 _ => {
