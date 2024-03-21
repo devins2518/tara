@@ -4,16 +4,15 @@ mod tld;
 
 use crate::{
     ast::Ast,
-    circt,
-    circt::{hw::module as hw_module, hw::HWModuleOperationBuilder},
+    circt::hw::HWModuleOperationBuilder,
     codegen::{error::Failure, package::Package, tld::Tld},
     module::file::File,
-    types::Type as TType,
+    types::Type as TaraType,
     utir::{
         inst::{ContainerMember, UtirInst, UtirInstIdx, UtirInstRef},
         Utir,
     },
-    values::Value as TValue,
+    values::Value as TaraValue,
 };
 use anyhow::{bail, Result};
 use kioku::Arena;
@@ -25,7 +24,7 @@ use melior::{
     },
     Context,
 };
-use std::{collections::HashMap, error::Error, fmt, mem::MaybeUninit};
+use std::{collections::HashMap, error::Error, fmt};
 
 #[derive(Debug)]
 enum FailKind {
@@ -53,10 +52,10 @@ pub struct Codegen<'arena, 'ctx> {
     resolve_queue: Vec<Tld>,
     // builder: BlockRef<'ctx, 'ctx>, Get from module.body()
     module: Module<'ctx>,
-    import_table: HashMap<&'arena str, TType<'arena>>,
+    import_table: HashMap<&'arena str, TaraType>,
     types: HashMap<UtirInstRef, TypeId<'ctx>>,
-    type_info: HashMap<TType<'arena>, TValue<'arena>>,
-    main_pkg: Package<'arena>,
+    type_info: HashMap<TaraType, TaraValue>,
+    main_pkg: Package,
     // curr_module: Option<>
 }
 
@@ -73,12 +72,25 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         let import_table = HashMap::new();
         let main_pkg = {
             let resolved_main_pkg_path = std::fs::canonicalize(main_pkg_path)?;
-            let src_dir = arena.copy_str(resolved_main_pkg_path.to_str().unwrap());
-            let src_path = arena.copy_str(resolved_main_pkg_path.to_str().unwrap());
+            // Get directory itself
+            let src_dir = resolved_main_pkg_path
+                .parent()
+                .unwrap()
+                .to_path_buf()
+                .into_os_string()
+                .into_string()
+                .unwrap();
+            // Get file itself
+            let src_path = resolved_main_pkg_path
+                .file_name()
+                .unwrap()
+                .to_os_string()
+                .into_string()
+                .unwrap();
             Package {
                 src_dir,
                 src_path,
-                pkg_path: "root",
+                pkg_path: "root".to_string(),
             }
         };
         Ok(Self {
@@ -101,7 +113,7 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
         dump_utir: bool,
         dump_mlir: bool,
     ) -> Result<()> {
-        let mut file = File::new(self.main_pkg.src_dir);
+        let mut file = File::new(self.main_pkg.full_path());
 
         self.load_file(&mut file)?;
 
@@ -137,50 +149,40 @@ impl<'arena, 'ctx> Codegen<'arena, 'ctx> {
 
 // File related methods
 impl<'arena> Codegen<'arena, '_> {
-    fn load_file(&self, file: &mut File<'arena>) -> Result<()> {
+    fn load_file(&self, file: &mut File) -> Result<()> {
         let contents = {
             use std::io::prelude::*;
-            let mut fp = std::fs::File::open(file.path)?;
-            let mut vec = Vec::new_in(self.arena);
-            let len = fp.metadata()?.len() as usize;
-            vec.reserve(len);
-            unsafe {
-                vec.set_len(len);
-            }
-            fp.read_exact(vec.as_mut_slice())?;
-            // Leaking here is fine since the arena will clean it up later
-            let slice = vec.leak();
-            // Tara files don't necessarily need to be UTF-8 encoded
-            unsafe { std::str::from_utf8_unchecked(slice) }
+            let mut fp = std::fs::File::open(&file.path)?;
+            let mut string = String::new();
+            fp.read_to_string(&mut string)?;
+            string
         };
         file.add_source(contents);
         Ok(())
     }
 
-    fn parse(&self, file: &mut File<'arena>) -> Result<()> {
+    fn parse(&self, file: &mut File) -> Result<()> {
         let source = file.source();
         let ast = match Ast::parse(source) {
-            Ok(ast) => self.arena.alloc_no_copy(ast),
-            Err(e) => {
+            Ok(ast) => file.add_ast(ast),
+            Err(_) => {
                 file.fail_ast();
-                return Err(e);
+                return Ok(());
             }
         };
-        file.add_ast(ast);
         Ok(())
     }
 
-    fn gen_utir(&self, file: &mut File<'arena>) -> Result<()> {
+    fn gen_utir(&self, file: &mut File) -> Result<()> {
         let ast = file.ast();
         let utir = match Utir::gen(ast) {
-            Ok(utir) => self.arena.alloc_no_copy(utir),
+            Ok(utir) => file.add_utir(utir),
             Err(fail) => {
                 file.fail_utir();
                 fail.report(&file)?;
                 bail!(FailKind::UtirFail);
             }
         };
-        file.add_utir(utir);
         Ok(())
     }
 }

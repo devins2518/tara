@@ -1,18 +1,19 @@
 use crate::{
     module::namespace::Namespace,
     types::Type,
+    utils::{RRC, WRC},
     utir::inst::UtirInstRef,
     values::{TypedValue, Value},
 };
 use std::{collections::HashMap, hash::Hash};
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct Decl<'module> {
-    pub name: &'module str,
-    pub ty: Option<Type<'module>>,
-    pub value: Option<Value<'module>>,
-    pub src_namespace: &'module Namespace<'module>,
-    pub src_scope: Option<&'module CaptureScope<'module>>,
+#[derive(Hash)]
+pub struct Decl {
+    pub name: String,
+    pub ty: Option<Type>,
+    pub value: Option<Value>,
+    pub src_namespace: RRC<Namespace>,
+    pub src_scope: Option<RRC<CaptureScope>>,
     pub utir_inst: UtirInstRef,
     pub public: bool,
     pub export: bool,
@@ -20,47 +21,28 @@ pub struct Decl<'module> {
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum DeclStatus {
-    /// This Decl corresponds to an AST Node that has not been referenced yet, and therefore
-    /// because of Zig's lazy declaration analysis, it will remain unanalyzed until referenced.
+    // This Decl corresponds to an AST Node that has not been referenced yet
     Unreferenced,
-    /// Semantic analysis for this Decl is running right now.
-    /// This state detects dependency loops.
+    // Semantic analysis for this Decl is running right now. This state is used to detect
+    // dependency loops
     InProgress,
-    /// The file corresponding to this Decl had a parse error or ZIR error.
-    /// There will be a corresponding ErrorMsg in Module.failed_files.
+    // The file corresponding to this Decl had a parse error or UTIR error
     FileFailure,
-    /// This Decl might be OK but it depends on another one which did not successfully complete
-    /// semantic analysis.
+    // This Decl might be OK but it depends on another one which did not successfully complete
+    // semantic analysis
     DependencyFailure,
-    /// Semantic analysis failure.
-    /// There will be a corresponding ErrorMsg in Module.failed_decls.
+    /// Semantic analysis failure
     SemaFailure,
-    /// There will be a corresponding ErrorMsg in Module.failed_decls.
-    /// This indicates the failure was something like running out of disk space,
-    /// and attempting semantic analysis again may succeed.
-    SemaFailureRetryable,
-    /// There will be a corresponding ErrorMsg in Module.failed_decls.
-    CodegenFailure,
-    /// There will be a corresponding ErrorMsg in Module.failed_decls.
-    /// This indicates the failure was something like running out of disk space,
-    /// and attempting codegen again may succeed.
-    CodegenFailureRetryable,
-    /// Everything is done. During an update, this Decl may be out of date, depending
-    /// on its dependencies. The `generation` field can be used to determine if this
-    /// completion status occurred before or after a given update.
+    // Everything is done
     Complete,
-    /// A Module update is in progress, and this Decl has been flagged as being known
-    /// to require re-analysis.
-    Outdated,
 }
 
-#[derive(PartialEq, Eq)]
-pub struct CaptureScope<'module> {
-    parent: Option<&'module CaptureScope<'module>>,
-    captures: HashMap<UtirInstRef, TypedValue<'module>>,
+pub struct CaptureScope {
+    parent: Option<WRC<CaptureScope>>,
+    captures: HashMap<UtirInstRef, TypedValue>,
 }
 
-impl<'module> Hash for CaptureScope<'module> {
+impl Hash for CaptureScope {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.parent.hash(state)
     }

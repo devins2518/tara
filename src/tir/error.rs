@@ -65,7 +65,7 @@ impl Failure {
         }
     }
 
-    pub fn report<'file, 'comp>(self, file: &'file File<'comp>) -> Result<()> {
+    pub fn report(&self, file: &File) -> Result<()> {
         let diagnostic = Diagnostic::error()
             .with_message(self.message())
             .with_labels(self.labels())

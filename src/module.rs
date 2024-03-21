@@ -16,18 +16,19 @@ use crate::{
         structs::Struct,
     },
     types::Type,
+    utils::RRC,
     utir::{inst::UtirInstRef, Utir},
     values::Value,
 };
 use anyhow::Result;
 use kioku::Arena;
-use std::{collections::HashMap, mem::MaybeUninit};
+use std::{borrow::Borrow, collections::HashMap, mem::MaybeUninit};
 
 pub struct Module<'comp, 'arena> {
     comp: &'comp Compilation,
     arena: &'arena Arena,
     // Keys are fully resolved paths
-    pub import_table: HashMap<&'arena str, File<'arena>>,
+    pub import_table: HashMap<String, RRC<File>>,
 }
 
 impl<'comp, 'arena> Module<'comp, 'arena> {
@@ -41,73 +42,72 @@ impl<'comp, 'arena> Module<'comp, 'arena> {
 
     pub fn analyze_pkg(
         &mut self,
-        pkg: &'arena Package<'arena>,
+        pkg: &'arena Package,
         exit_early: bool,
         compile_ast: bool,
         compile_utir: bool,
     ) -> Result<()> {
-        let mut file = self.import_pkg(pkg)?.file;
-        self.analyze_file(&mut file, exit_early, compile_ast, compile_utir)?;
-        self.import_table.insert(pkg.src_dir, file);
+        let file = self.import_pkg(pkg)?.file;
+        self.analyze_file(file, exit_early, compile_ast, compile_utir)?;
+        // self.import_table.insert(&pkg.full_path(), file);
         Ok(())
     }
 
     fn analyze_file(
         &mut self,
-        file: &mut File<'arena>,
+        file: RRC<File>,
         exit_early: bool,
         compile_ast: bool,
         compile_utir: bool,
     ) -> Result<()> {
-        let contents = {
-            use std::io::prelude::*;
-            let mut fp = std::fs::File::open(file.path)?;
-            let mut vec = Vec::new_in(self.arena);
-            let len = fp.metadata()?.len() as usize;
-            vec.reserve(len);
-            unsafe {
-                vec.set_len(len);
-            }
-            fp.read_exact(vec.as_mut_slice())?;
-            // Leaking here is fine since the arena will clean it up later
-            let slice = vec.leak();
-            // Tara files don't necessarily need to be UTF-8 encoded
-            unsafe { std::str::from_utf8_unchecked(slice) }
-        };
-        file.add_source(contents);
+        {
+            let mut f = file.borrow_mut();
+            let contents = {
+                use std::io::prelude::*;
+                let mut fp = std::fs::File::open(&f.path)?;
+                let mut string = String::new();
+                fp.read_to_string(&mut string)?;
+                string
+            };
+            f.add_source(contents);
 
-        if exit_early && !compile_ast && !compile_utir {
-            return Ok(());
-        }
-
-        let source = file.source();
-        let ast = match Ast::parse(source) {
-            Ok(ast) => self.arena.alloc_no_copy(ast),
-            Err(_) => {
-                file.fail_ast();
+            if exit_early && !compile_ast && !compile_utir {
                 return Ok(());
             }
-        };
-        file.add_ast(ast);
-        if compile_ast {
-            println!("{}", file.ast());
-        }
 
-        if exit_early && !compile_utir {
-            return Ok(());
-        }
+            let source = f.source();
+            let ast = match Ast::parse(source) {
+                Ok(ast) => {
+                    f.add_ast(ast);
+                    f.ast()
+                }
+                Err(_) => {
+                    f.fail_ast();
+                    return Ok(());
+                }
+            };
+            if compile_ast {
+                println!("{}", f.ast());
+            }
 
-        let utir = match Utir::gen(ast) {
-            Ok(utir) => self.arena.alloc_no_copy(utir),
-            Err(fail) => {
-                file.fail_utir();
-                fail.report(&file)?;
+            if exit_early && !compile_utir {
                 return Ok(());
             }
-        };
-        file.add_utir(utir);
-        if compile_utir {
-            println!("{}", file.utir());
+
+            let utir = match Utir::gen(&ast) {
+                Ok(utir) => {
+                    f.add_utir(utir);
+                    f.utir()
+                }
+                Err(fail) => {
+                    f.fail_utir();
+                    fail.report(&f)?;
+                    return Ok(());
+                }
+            };
+            if compile_utir {
+                println!("{}", f.utir());
+            }
         }
 
         self.sema_file(file);
@@ -115,34 +115,16 @@ impl<'comp, 'arena> Module<'comp, 'arena> {
         Ok(())
     }
 
-    fn sema_file(&self, file: &File<'arena>) {
-        if file.root_decl.is_some() {
+    fn sema_file(&self, file: RRC<File>) {
+        if file.borrow().root_decl.is_some() {
             return;
         }
 
-        let struct_obj: &mut Struct = self.alloc_uninit();
-        let struct_ty = Type::Struct(struct_obj);
-        let struct_val = Value::Type(struct_ty);
+        let struct_obj: RRC<Struct> = RRC::new_uninit();
+        let struct_ty = RRC::new(Type::Struct(struct_obj));
+        let struct_val = Value::Type(struct_ty.clone());
         let ty_ty = Value::TypeType;
-        let namespace = Namespace::new(*file, struct_ty);
-    }
-
-    fn allocate_decl(
-        &self,
-        name: &'arena str,
-        namespace: &'arena Namespace<'arena>,
-        src_scope: Option<&'arena CaptureScope<'arena>>,
-    ) -> &'arena Decl {
-        self.arena.alloc_no_copy(Decl {
-            name,
-            ty: None,
-            value: None,
-            src_namespace: namespace,
-            src_scope,
-            utir_inst: UtirInstRef::from(UtirInstRef::None as u32 + 1),
-            public: false,
-            export: false,
-        })
+        let namespace = Namespace::new(file, struct_ty);
     }
 
     fn alloc_uninit<T>(&self) -> &'arena mut T {
@@ -150,29 +132,20 @@ impl<'comp, 'arena> Module<'comp, 'arena> {
             .alloc_no_copy(unsafe { MaybeUninit::uninit().assume_init() })
     }
 
-    // If changing the returned file, remember to update it by reinserting it
-    fn import_pkg(&mut self, pkg: &'arena Package) -> Result<ImportResult<'arena>> {
-        let resolved_path = std::fs::canonicalize(pkg.src_dir)?.join(pkg.src_path);
-        let resolved_str = resolved_path.to_str().unwrap();
-        match self.import_table.get(resolved_str) {
-            Some(file) => Ok(ImportResult {
-                file: *file,
-                new: false,
-            }),
-            None => {
-                let arena_str = self.arena.copy_str(resolved_str);
-                let file = File::new(arena_str);
-                self.import_table.insert(arena_str, file);
-                Ok(ImportResult {
-                    file: *self.import_table.get(arena_str).unwrap(),
-                    new: true,
-                })
-            }
-        }
+    // This is pretty dumb and expensive, rework packages to be cheaper
+    fn import_pkg(&mut self, pkg: &'arena Package) -> Result<ImportResult> {
+        let full_path = pkg.full_path();
+        let new = self.import_table.contains_key(&full_path);
+        let file = self
+            .import_table
+            .entry(full_path.clone()) // TODO: Don't clone here
+            .or_insert(RRC::new(File::new(full_path)))
+            .clone();
+        Ok(ImportResult { file, new })
     }
 }
 
-struct ImportResult<'arena> {
-    file: File<'arena>,
+struct ImportResult {
+    file: RRC<File>,
     new: bool,
 }

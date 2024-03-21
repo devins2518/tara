@@ -1,8 +1,8 @@
-use crate::{module::decls::Decl, values::Value};
+use crate::{module::decls::Decl, utils::RRC, values::Value};
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct Variable<'module> {
-    init: Value<'module>,
-    owner_decl: &'module Decl<'module>,
+#[derive(Hash)]
+pub struct Variable {
+    init: Value,
+    owner_decl: RRC<Decl>,
     mutable: bool,
 }

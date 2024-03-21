@@ -1,14 +1,15 @@
 use crate::{
     module::{decls::Decl, namespace::Namespace},
     types::Type,
+    utils::RRC,
     utir::inst::UtirInstRef,
 };
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct Struct<'module> {
-    pub owner_decl: &'module Decl<'module>,
-    pub fields: Vec<Field<'module>>,
-    pub namespace: Namespace<'module>,
+#[derive(Hash)]
+pub struct Struct {
+    pub owner_decl: RRC<Decl>,
+    pub fields: Vec<Field>,
+    pub namespace: Namespace,
     pub utir_ref: UtirInstRef,
     pub status: StructStatus,
 }
@@ -25,8 +26,8 @@ pub enum StructStatus {
 }
 
 // TODO: default values
-#[derive(PartialEq, Eq, Hash)]
-pub struct Field<'module> {
-    ty: Type<'module>,
+#[derive(Hash)]
+pub struct Field {
+    ty: Type,
     offset: Option<u32>,
 }

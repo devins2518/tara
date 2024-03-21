@@ -1,9 +1,9 @@
-use crate::{module::decls::Decl, utir::inst::UtirInstRef, values::TypedValue};
+use crate::{module::decls::Decl, utils::RRC, utir::inst::UtirInstRef, values::TypedValue};
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct Function<'module> {
-    owner_decl: &'module Decl<'module>,
-    comptime_args: Option<Vec<TypedValue<'module>>>,
+#[derive(Hash)]
+pub struct Function {
+    owner_decl: RRC<Decl>,
+    comptime_args: Option<Vec<TypedValue>>,
     utir_inst: UtirInstRef,
     analysis: FunctionAnalysis,
 }

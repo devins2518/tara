@@ -1,18 +1,18 @@
+use crate::utils::RRC;
 use crate::{ast::Ast, module::decls::Decl, utir::Utir};
 use codespan_reporting::files::Files;
 
-#[derive(Copy, Clone)]
-pub struct File<'comp> {
-    pub path: &'comp str,
+pub struct File {
+    pub path: String,
     status: FileStatus,
-    source: Option<&'comp str>,
-    ast: Option<&'comp Ast>,
-    utir: Option<&'comp Utir>,
-    pub root_decl: Option<&'comp Decl<'comp>>,
+    source: Option<String>,
+    ast: Option<Ast>,
+    utir: Option<Utir>,
+    pub root_decl: Option<RRC<Decl>>,
 }
 
-impl<'comp> File<'comp> {
-    pub fn new(path: &'comp str) -> Self {
+impl File {
+    pub fn new(path: String) -> Self {
         return Self {
             path,
             status: FileStatus::Unloaded,
@@ -24,21 +24,18 @@ impl<'comp> File<'comp> {
     }
 
     // Asserts that source is loaded
-    pub fn source<'source>(&self) -> &'source str
-    where
-        'comp: 'source,
-    {
-        self.source.unwrap()
+    pub fn source(&self) -> &str {
+        self.source.as_ref().unwrap()
     }
-    pub fn add_source(&mut self, source: &'comp str) {
+    pub fn add_source(&mut self, source: String) {
         self.source = Some(source);
         self.status = FileStatus::Loaded;
     }
 
-    pub fn ast(&self) -> &'comp Ast {
-        self.ast.unwrap()
+    pub fn ast(&self) -> &Ast {
+        self.ast.as_ref().unwrap()
     }
-    pub fn add_ast(&mut self, ast: &'comp Ast) {
+    pub fn add_ast(&mut self, ast: Ast) {
         self.ast = Some(ast);
         self.status = FileStatus::ParseSucceed;
     }
@@ -47,10 +44,10 @@ impl<'comp> File<'comp> {
         self.status = FileStatus::ParseFailed;
     }
 
-    pub fn utir(&self) -> &'comp Utir {
-        self.utir.unwrap()
+    pub fn utir(&self) -> &Utir {
+        self.utir.as_ref().unwrap()
     }
-    pub fn add_utir(&mut self, utir: &'comp Utir) {
+    pub fn add_utir(&mut self, utir: Utir) {
         self.utir = Some(utir);
         self.status = FileStatus::UtirSucceed;
     }
@@ -70,20 +67,20 @@ enum FileStatus {
     UtirSucceed,
 }
 
-impl<'comp, 'file> Files<'file> for File<'comp>
-where
-    'comp: 'file,
-{
+impl<'file> Files<'file> for File {
     type FileId = ();
     type Name = &'file str;
     type Source = &'file str;
 
-    fn name(&self, _: Self::FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
-        Ok(self.path)
+    fn name(&'file self, _: Self::FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
+        Ok(&self.path)
     }
 
-    fn source(&self, _: Self::FileId) -> Result<Self::Source, codespan_reporting::files::Error> {
-        Ok(self.source())
+    fn source(
+        &'file self,
+        _: Self::FileId,
+    ) -> Result<Self::Source, codespan_reporting::files::Error> {
+        Ok(&self.source())
     }
 
     fn line_index(
@@ -123,7 +120,7 @@ where
     }
 }
 
-impl PartialEq for File<'_> {
+impl PartialEq for File {
     fn eq(&self, other: &Self) -> bool {
         self.path == other.path
     }
@@ -132,4 +129,4 @@ impl PartialEq for File<'_> {
     }
 }
 
-impl Eq for File<'_> {}
+impl Eq for File {}

@@ -2,10 +2,11 @@ use crate::{
     builtin::Signedness,
     module::{function::Function, variable::Variable},
     types::Type,
+    utils::RRC,
 };
 
-#[derive(PartialEq, Eq, Hash)]
-pub enum Value<'module> {
+#[derive(Hash)]
+pub enum Value {
     U1Type,
     U8Type,
     I8Type,
@@ -33,12 +34,12 @@ pub enum Value<'module> {
     BoolTrue,
     BoolFalse,
 
-    Type(Type<'module>),
+    Type(RRC<Type>),
     IntType(IntInfo),
-    Function(&'module Function<'module>),
-    Variable(&'module Variable<'module>),
+    Function(RRC<Function>),
+    Variable(RRC<Variable>),
     /// An instance of a struct.
-    Struct(&'module [Value<'module>]),
+    Struct(RRC<Vec<Value>>),
     // Struct(Vec<Value<'module>>),
 }
 
@@ -49,8 +50,8 @@ pub struct IntInfo {
     width: u16,
 }
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct TypedValue<'module> {
-    ty: Type<'module>,
-    value: Value<'module>,
+#[derive(Hash)]
+pub struct TypedValue {
+    ty: Type,
+    value: Value,
 }
