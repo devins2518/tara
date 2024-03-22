@@ -7,18 +7,24 @@ pub mod variable;
 
 use crate::{
     ast::Ast,
-    codegen::package::Package,
+    codegen::{package::Package, Codegen},
     comp::Compilation,
-    module::{file::File, namespace::Namespace, structs::Struct},
+    module::{
+        decls::{Decl, DeclStatus},
+        file::File,
+        namespace::Namespace,
+        structs::{Struct, StructStatus},
+    },
     types::Type,
-    utils::RRC,
-    utir::Utir,
+    utils::{init_field, RRC},
+    utir::{inst::UtirInstIdx, Utir},
     values::Value,
 };
 use anyhow::{bail, Result};
 use core::fmt;
 use kioku::Arena;
-use std::{collections::HashMap, error::Error};
+use melior::Context;
+use std::{collections::HashMap, error::Error, path::PathBuf};
 
 #[derive(Debug)]
 enum FailKind {
@@ -42,7 +48,7 @@ impl Error for FailKind {
 pub struct Module<'comp> {
     arena: &'comp Arena,
     // Keys are fully resolved paths
-    pub import_table: HashMap<String, RRC<File>>,
+    pub import_table: HashMap<PathBuf, RRC<File>>,
 }
 
 impl<'comp> Module<'comp> {
@@ -64,13 +70,7 @@ impl<'comp> Module<'comp> {
         let main_pkg = {
             let resolved_main_pkg_path = std::fs::canonicalize(main_pkg_path)?;
             // Get directory itself
-            let src_dir = resolved_main_pkg_path
-                .parent()
-                .unwrap()
-                .to_path_buf()
-                .into_os_string()
-                .into_string()
-                .unwrap();
+            let src_dir = resolved_main_pkg_path.parent().unwrap().to_path_buf();
             // Get file itself
             let src_path = resolved_main_pkg_path
                 .file_name()
@@ -78,13 +78,13 @@ impl<'comp> Module<'comp> {
                 .to_os_string()
                 .into_string()
                 .unwrap();
-            Package {
+            RRC::new(Package {
                 src_dir,
                 src_path,
                 pkg_path: "root".to_string(),
-            }
+            })
         };
-        let file = self.import_pkg(&main_pkg)?.file;
+        let file = self.import_pkg(main_pkg)?.file;
         self.analyze_file(file, exit_early, dump_ast, dump_utir, dump_mlir)?;
         Ok(())
     }
@@ -138,21 +138,62 @@ impl<'comp> Module<'comp> {
             return;
         }
 
-        let struct_obj: RRC<Struct> = RRC::new_uninit();
-        let struct_ty = RRC::new(Type::Struct(struct_obj));
+        let (struct_obj, struct_obj_uninit) = RRC::<Struct>::new_uninit();
+        let struct_ty = RRC::new(Type::Struct(struct_obj.clone()));
         let struct_val = Value::Type(struct_ty.clone());
-        let ty_ty = Value::TypeType;
-        let namespace = Namespace::new(file, struct_ty);
+        let ty_ty = Type::TypeType;
+        let namespace = RRC::new(Namespace::new(file.clone(), struct_ty));
+
+        let main_idx = UtirInstIdx::from(0);
+
+        let decl_name = file.borrow().fully_qualified_path();
+        let decl = RRC::new(Decl::new(
+            decl_name,
+            namespace.clone(),
+            main_idx.into(),
+            None,
+        ));
+        file.borrow_mut().root_decl = Some(decl.clone());
+
+        // Initialize struct_obj
+        {
+            let mut uninit = struct_obj_uninit.borrow_mut();
+            init_field!(uninit, owner_decl, decl.clone());
+            init_field!(uninit, fields, Vec::new());
+            init_field!(uninit, namespace, namespace.clone());
+            init_field!(uninit, status, StructStatus::None);
+            init_field!(uninit, utir_ref, UtirInstIdx::from(0).into());
+            drop(uninit);
+            struct_obj_uninit.init();
+        }
+
+        // Setup decl
+        {
+            let mut decl = decl.borrow_mut();
+            decl.public = true;
+            decl.ty = Some(ty_ty);
+            decl.value = Some(struct_val);
+            decl.status = DeclStatus::InProgress;
+        }
+
+        let file = file.borrow();
+        let utir = file.utir();
+        let context = Context::new();
+        let mut codegen = Codegen::new(&context, utir);
+        codegen.analyze_struct_decl(decl, main_idx, struct_obj);
     }
 
     // This is pretty dumb and expensive, rework packages to be cheaper
-    fn import_pkg(&mut self, pkg: &Package) -> Result<ImportResult> {
-        let full_path = pkg.full_path();
+    fn import_pkg(&mut self, pkg: RRC<Package>) -> Result<ImportResult> {
+        let full_path = pkg.borrow().full_path();
         let new = self.import_table.contains_key(&full_path);
         let file = self
             .import_table
             .entry(full_path.clone()) // TODO: Don't clone here
-            .or_insert(RRC::new(File::new(full_path)))
+            .or_insert(RRC::new(File::new(
+                PathBuf::from(&pkg.borrow().src_path),
+                pkg.clone(),
+            )))
             .clone();
         Ok(ImportResult { file, new })
     }
@@ -168,7 +209,7 @@ impl Module<'_> {
     fn load_file(&self, file: &mut File) -> Result<()> {
         let contents = {
             use std::io::prelude::*;
-            let mut fp = std::fs::File::open(&file.path)?;
+            let mut fp = std::fs::File::open(file.pkg.borrow().full_path())?;
             let mut string = String::new();
             fp.read_to_string(&mut string)?;
             string

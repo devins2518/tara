@@ -9,7 +9,7 @@ use crate::{
 pub struct Struct {
     pub owner_decl: RRC<Decl>,
     pub fields: Vec<Field>,
-    pub namespace: Namespace,
+    pub namespace: RRC<Namespace>,
     pub utir_ref: UtirInstRef,
     pub status: StructStatus,
 }

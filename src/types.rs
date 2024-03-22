@@ -16,6 +16,7 @@ pub enum Type {
     IntSigned { width: u16 },
     IntUnsigned { width: u16 },
     Struct(RRC<Struct>),
+    TypeType,
 }
 
 impl Hash for Type {

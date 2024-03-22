@@ -26,13 +26,24 @@ pub mod slice;
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct RRC<T>(Rc<RefCell<T>>);
 
+macro_rules! init_field {
+    ($struct:ident, $field:ident, $val:expr) => {{
+        use std::ptr::addr_of_mut;
+        unsafe {
+            addr_of_mut!((*$struct.as_mut_ptr()).$field).write($val);
+        }
+    }};
+}
+pub(crate) use init_field;
+
 impl<T> RRC<T> {
     pub fn new(t: T) -> Self {
         Self(Rc::new(RefCell::new(t)))
     }
 
-    pub fn new_uninit() -> Self {
-        Self::new(unsafe { MaybeUninit::uninit().assume_init() })
+    pub fn new_uninit() -> (Self, RRC<MaybeUninit<T>>) {
+        let rrc = RRC::new(MaybeUninit::uninit());
+        (rrc.clone().init(), rrc)
     }
 
     pub fn borrow(&self) -> Ref<'_, T> {
@@ -41,6 +52,12 @@ impl<T> RRC<T> {
 
     pub fn borrow_mut(&self) -> RefMut<'_, T> {
         self.0.borrow_mut()
+    }
+}
+
+impl<T> RRC<MaybeUninit<T>> {
+    pub fn init(self) -> RRC<T> {
+        unsafe { std::mem::transmute(self) }
     }
 }
 

@@ -1,26 +1,31 @@
+use crate::codegen::package::Package;
 use crate::utils::RRC;
 use crate::{ast::Ast, module::decls::Decl, utir::Utir};
 use codespan_reporting::files::Files;
+use std::path::PathBuf;
 
 pub struct File {
-    pub path: String,
+    // Relative to main package
+    pub path: PathBuf,
     status: FileStatus,
     source: Option<String>,
     ast: Option<Ast>,
     utir: Option<Utir>,
     pub root_decl: Option<RRC<Decl>>,
+    pub pkg: RRC<Package>,
 }
 
 impl File {
-    pub fn new(path: String) -> Self {
-        return Self {
+    pub fn new(path: PathBuf, pkg: RRC<Package>) -> Self {
+        Self {
             path,
             status: FileStatus::Unloaded,
             source: None,
             ast: None,
             utir: None,
             root_decl: None,
-        };
+            pkg,
+        }
     }
 
     // Asserts that source is loaded
@@ -55,6 +60,15 @@ impl File {
     pub fn fail_utir(&mut self) {
         self.status = FileStatus::UtirFailed;
     }
+
+    pub fn fully_qualified_path(&self) -> String {
+        self.path
+            .with_extension("")
+            .into_os_string()
+            .into_string()
+            .unwrap()
+            .replace(std::path::MAIN_SEPARATOR_STR, ".")
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -69,11 +83,17 @@ enum FileStatus {
 
 impl<'file> Files<'file> for File {
     type FileId = ();
-    type Name = &'file str;
+    type Name = String;
     type Source = &'file str;
 
     fn name(&'file self, _: Self::FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
-        Ok(&self.path)
+        Ok(self
+            .pkg
+            .borrow()
+            .full_path()
+            .into_os_string()
+            .into_string()
+            .unwrap())
     }
 
     fn source(

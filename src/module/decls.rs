@@ -17,10 +17,32 @@ pub struct Decl {
     pub utir_inst: UtirInstRef,
     pub public: bool,
     pub export: bool,
+    pub status: DeclStatus,
+}
+
+impl Decl {
+    pub fn new(
+        name: String,
+        src_namespace: RRC<Namespace>,
+        utir_inst: UtirInstRef,
+        src_scope: Option<RRC<CaptureScope>>,
+    ) -> Self {
+        Self {
+            name,
+            ty: None,
+            value: None,
+            src_namespace,
+            src_scope,
+            utir_inst,
+            public: false,
+            export: false,
+            status: DeclStatus::Unreferenced,
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-enum DeclStatus {
+pub enum DeclStatus {
     // This Decl corresponds to an AST Node that has not been referenced yet
     Unreferenced,
     // Semantic analysis for this Decl is running right now. This state is used to detect
