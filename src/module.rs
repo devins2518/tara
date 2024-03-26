@@ -119,21 +119,13 @@ impl<'comp> Module<'comp> {
                     return Ok(());
                 }
             }
-
-            let utir = f.utir();
-            // self.analyze_top(utir);
-            // debug_assert!(self.module.as_operation().verify());
-            if dump_mlir {
-                // self.module.as_operation().dump();
-            }
         }
 
-        self.sema_file(file);
-
+        self.codegen_file(file, dump_mlir);
         Ok(())
     }
 
-    fn sema_file(&self, file: RRC<File>) {
+    fn codegen_file(&self, file: RRC<File>, dump_mlir: bool) {
         if file.borrow().root_decl.is_some() {
             return;
         }
@@ -180,7 +172,17 @@ impl<'comp> Module<'comp> {
         let utir = file.utir();
         let context = Context::new();
         let mut codegen = Codegen::new(&context, utir);
-        codegen.analyze_struct_decl(decl, main_idx, struct_obj);
+        match codegen.analyze_struct_decl(decl.clone(), main_idx, struct_obj) {
+            Ok(_) => {
+                decl.borrow_mut().status = DeclStatus::Complete;
+                if dump_mlir {
+                    codegen.module.as_operation().dump();
+                }
+            }
+            Err(_) => {
+                decl.borrow_mut().status = DeclStatus::CodegenFailure;
+            }
+        }
     }
 
     // This is pretty dumb and expensive, rework packages to be cheaper
@@ -220,7 +222,7 @@ impl Module<'_> {
 
     fn parse(&self, file: &mut File) -> Result<()> {
         let source = file.source();
-        let ast = match Ast::parse(source) {
+        match Ast::parse(source) {
             Ok(ast) => file.add_ast(ast),
             Err(_) => {
                 file.fail_ast();
@@ -232,7 +234,7 @@ impl Module<'_> {
 
     fn gen_utir(&self, file: &mut File) -> Result<()> {
         let ast = file.ast();
-        let utir = match Utir::gen(ast) {
+        match Utir::gen(ast) {
             Ok(utir) => file.add_utir(utir),
             Err(fail) => {
                 file.fail_utir();

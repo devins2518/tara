@@ -54,7 +54,7 @@ pub enum DeclStatus {
     // semantic analysis
     DependencyFailure,
     /// Semantic analysis failure
-    SemaFailure,
+    CodegenFailure,
     // Everything is done
     Complete,
 }
