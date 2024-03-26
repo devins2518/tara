@@ -5,7 +5,7 @@ mod tld;
 use crate::{
     circt::hw::HWModuleOperationBuilder,
     codegen::error::Failure,
-    module::{decls::Decl, structs::Struct},
+    module::{decls::Decl, function::Function, structs::Struct},
     types::Type as TaraType,
     utils::RRC,
     utir::{
@@ -14,18 +14,20 @@ use crate::{
     },
     values::Value as TaraValue,
 };
+use anyhow::Result;
 use melior::{
-    ir::{attribute::StringAttribute, Location, Module, Region},
+    ir::{attribute::StringAttribute, Location, Module as MlirModule, Region},
     Context,
 };
 use std::collections::HashMap;
 
 pub struct Codegen<'cg> {
-    ctx: &'cg Context,
-    errors: Vec<Failure>,
-    module: Module<'cg>,
-    type_info: HashMap<TaraType, TaraValue>,
-    utir: &'cg Utir,
+    pub ctx: &'cg Context,
+    pub errors: Vec<Failure>,
+    pub module: MlirModule<'cg>,
+    pub type_info: HashMap<TaraType, TaraValue>,
+    pub utir: &'cg Utir,
+    pub func: Option<RRC<Function>>,
 }
 
 impl<'ctx> Codegen<'ctx> {
@@ -35,13 +37,14 @@ impl<'ctx> Codegen<'ctx> {
         /* TODO: build_mode */
     ) -> Self {
         let loc = Location::unknown(ctx);
-        let module = Module::new(loc);
+        let module = MlirModule::new(loc);
         Self {
             ctx,
             module,
             errors: Vec::new(),
             type_info: HashMap::new(),
             utir,
+            func: None,
         }
     }
 
@@ -50,7 +53,7 @@ impl<'ctx> Codegen<'ctx> {
         decl: RRC<Decl>,
         utir_idx: UtirInstIdx,
         struct_obj: RRC<Struct>,
-    ) {
+    ) -> Result<()> {
         unimplemented!()
     }
 }
