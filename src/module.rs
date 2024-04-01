@@ -109,10 +109,7 @@ impl<'comp> Module<'comp> {
                 }
             }
 
-            match self.gen_utir(f) {
-                Ok(_) => {}
-                Err(_) => return Ok(()),
-            }
+            self.gen_utir(f)?;
             if dump_utir {
                 println!("{}", f.utir());
                 if exit_early || !dump_mlir {
@@ -224,9 +221,9 @@ impl Module<'_> {
         let source = file.source();
         match Ast::parse(source) {
             Ok(ast) => file.add_ast(ast),
-            Err(_) => {
+            Err(e) => {
                 file.fail_ast();
-                return Ok(());
+                return Err(e);
             }
         };
         Ok(())
