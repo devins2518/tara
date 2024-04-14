@@ -52,6 +52,6 @@ pub struct IntInfo {
 
 #[derive(Hash)]
 pub struct TypedValue {
-    ty: Type,
-    value: Value,
+    pub ty: Type,
+    pub value: Value,
 }

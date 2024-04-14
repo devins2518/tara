@@ -1,6 +1,10 @@
-use crate::{module::structs::Struct, utils::RRC};
+use crate::{
+    module::{structs::Struct, tmodule::TModule},
+    utils::RRC,
+};
 use std::hash::Hash;
 
+#[derive(Clone)]
 pub enum Type {
     Bool,
     Void,
@@ -16,6 +20,7 @@ pub enum Type {
     IntSigned { width: u16 },
     IntUnsigned { width: u16 },
     Struct(RRC<Struct>),
+    Module(RRC<TModule>),
     TypeType,
 }
 
@@ -26,6 +31,7 @@ impl Hash for Type {
             Type::IntSigned { width } => state.write_u16(*width),
             Type::IntUnsigned { width } => state.write_u16(*width),
             Type::Struct(s) => (*s).hash(state),
+            Type::Module(m) => (*m).hash(state),
             _ => {}
         }
     }

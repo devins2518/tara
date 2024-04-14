@@ -22,6 +22,8 @@ use comp::Compilation;
 use std::pin::Pin;
 
 fn main() -> Result<()> {
+    simple_logger::init_with_level(log::Level::Debug).unwrap();
+
     let args: Vec<_> = std::env::args().collect();
     if args.len() < 2 {
         println!("[ERROR] Expected ./prog <filename>");

@@ -117,6 +117,16 @@ impl Utir {
         return self.slice(start, subroutine_decl.params);
     }
 
+    pub fn get_subroutine_block(&self, subroutine: UtirInstIdx) -> UtirInstRef {
+        let extra_idx: Id<SubroutineDecl> = match self.get_inst(subroutine) {
+            UtirInst::FunctionDecl(inner) => inner.extra_idx,
+            UtirInst::CombDecl(inner) => inner.extra_idx,
+            _ => unreachable!(),
+        };
+        let subroutine_decl = self.get_extra(extra_idx);
+        subroutine_decl.body
+    }
+
     pub fn get_call_args(&self, call: UtirInstIdx) -> &[UtirInstRef] {
         let extra_idx = match self.get_inst(call) {
             UtirInst::Call(inner) => inner.extra_idx,

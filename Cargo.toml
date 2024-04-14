@@ -20,6 +20,8 @@ melior = { version = "0.16.2", features = ["llvm-trunk", "ods-dialects"], defaul
 melior-macro = { version = "0.10.2", features = ["llvm-trunk"], default-features = false }
 tblgen = { version = "0.3.0", features = ["llvm-trunk"], default-features = false }
 mlir-sys = { version = "0.2.1", features = ["llvm-trunk"], default-features = false }
+log = "0.4.21"
+simple_logger = "4.3.3"
 
 [patch.crates-io]
 melior = { git = "https://github.com/mikeurbach/melior.git", package = "melior", branch = "mikeurbach/latest-mlir" }

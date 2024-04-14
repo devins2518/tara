@@ -1,5 +1,5 @@
 use crate::{
-    module::namespace::Namespace,
+    module::{file::File, namespace::Namespace},
     types::Type,
     utils::{RRC, WRC},
     utir::inst::UtirInstRef,
@@ -39,6 +39,10 @@ impl Decl {
             status: DeclStatus::Unreferenced,
         }
     }
+
+    pub fn file_scope(&self) -> RRC<File> {
+        self.src_namespace.borrow().file.clone()
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -60,8 +64,17 @@ pub enum DeclStatus {
 }
 
 pub struct CaptureScope {
-    parent: Option<WRC<CaptureScope>>,
+    parent: Option<RRC<CaptureScope>>,
     captures: HashMap<UtirInstRef, TypedValue>,
+}
+
+impl CaptureScope {
+    pub fn new(parent: Option<RRC<CaptureScope>>) -> Self {
+        Self {
+            parent,
+            captures: HashMap::new(),
+        }
+    }
 }
 
 impl Hash for CaptureScope {

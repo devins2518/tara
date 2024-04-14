@@ -18,7 +18,7 @@ impl Compilation {
     pub fn compile(&mut self) -> Result<()> {
         let options = CompilationOptions::from_args();
 
-        let mut module = Module::new(self);
+        let mut module = Module::new();
         module.analyze_main_pkg(
             options.top_file.as_str(),
             options.exit_early,
