@@ -33,7 +33,6 @@ use melior::{
     },
     Context,
 };
-use symbol_table::GlobalSymbol;
 
 pub struct AstCodegen<'a, 'ast, 'ctx> {
     ast: &'ast Ast,
@@ -52,14 +51,6 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
             builder: Builder::new(module.body()),
             table: Table::new(),
         }
-    }
-
-    fn define_name(&mut self, ident: GlobalSymbol, node: &'ast Node) -> Result<()> {
-        self.table.define_name(ident, node)
-    }
-
-    fn define_symbol(&mut self, ident: GlobalSymbol, value: MlirValue<'ctx, '_>) {
-        self.table.define_symbol(ident, value)
     }
 
     fn create<'blk, T: Into<MlirOperation<'ctx>> + Clone>(
@@ -116,8 +107,8 @@ where
         // Members will be either a VarDecl or a SubroutineDecl
         for member in members {
             match &member.kind {
-                NodeKind::VarDecl(v_d) => self.define_name(v_d.ident, member)?,
-                NodeKind::SubroutineDecl(s_d) => self.define_name(s_d.ident, member)?,
+                NodeKind::VarDecl(v_d) => self.table.define_name(v_d.ident, member)?,
+                NodeKind::SubroutineDecl(s_d) => self.table.define_name(s_d.ident, member)?,
                 _ => unreachable!(),
             }
         }
@@ -187,12 +178,13 @@ where
 
             let mut param_types = Vec::new();
             for param in &fn_decl.params {
-                self.define_name(param.name, &param.ty)?;
+                self.table.define_name(param.name, &param.ty)?;
                 let param_type = self.gen_type(&param.ty)?;
                 param_types.push(param_type);
 
                 let arg = block.add_argument(param_type, param.ty.loc(self.ctx));
-                self.define_symbol(param.name, arg);
+                self.table.define_symbol(param.name, arg);
+                self.table.define_value(node, arg);
             }
 
             let region = MlirRegion::new();
@@ -285,13 +277,14 @@ where
         block: MlirBlockRef<'ctx, 'blk>,
         node: &'ast Node,
     ) -> Result<MlirValue<'ctx, 'blk>> {
-        self.gen_expr(block, node)?.ok_or_else(|| {
+        let value = self.gen_expr(block, node)?.ok_or_else(|| {
             Error::new(
                 node.span,
                 "Expected reachable value, control flow unexpectedly diverted".to_string(),
             )
-            .into()
-        })
+        })?;
+        self.table.define_value(node, value);
+        Ok(value)
     }
 
     fn gen_bin_op(
@@ -335,8 +328,8 @@ where
             | NodeKind::Div(bin) => bin,
             _ => unreachable!(),
         };
-        let lhs = self.gen_expr_reachable(block, &bin_op.lhs)?;
-        let rhs = self.gen_expr_reachable(block, &bin_op.rhs)?;
+        self.gen_expr_reachable(block, &bin_op.lhs)?;
+        self.gen_expr_reachable(block, &bin_op.rhs)?;
 
         match &node.kind {
             NodeKind::Or(_)
@@ -346,12 +339,12 @@ where
             | NodeKind::Lte(_)
             | NodeKind::Gte(_)
             | NodeKind::Eq(_)
-            | NodeKind::Neq(_) => self.gen_cmp(block, node, lhs, rhs),
+            | NodeKind::Neq(_) => self.gen_cmp(block, node),
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_) => {
-                self.gen_bitwise(block, node, lhs, rhs)
+                self.gen_bitwise(block, node)
             }
             NodeKind::Add(_) | NodeKind::Sub(_) | NodeKind::Mul(_) | NodeKind::Div(_) => {
-                self.gen_arith(block, node, lhs, rhs)
+                self.gen_arith(block, node)
             }
             _ => unreachable!(),
         }
@@ -361,8 +354,6 @@ where
         &mut self,
         block: MlirBlockRef<'ctx, 'blk>,
         node: &'ast Node,
-        lhs: MlirValue<'ctx, 'blk>,
-        rhs: MlirValue<'ctx, 'blk>,
     ) -> Result<MlirValue<'ctx, 'blk>> {
         matches!(
             node.kind,
@@ -375,8 +366,22 @@ where
                 | NodeKind::Neq(_)
         );
         let loc = node.loc(self.ctx);
+        let (lhs_node, rhs_node) = match &node.kind {
+            NodeKind::Or(binop)
+            | NodeKind::And(binop)
+            | NodeKind::Lt(binop)
+            | NodeKind::Gt(binop)
+            | NodeKind::Lte(binop)
+            | NodeKind::Eq(binop)
+            | NodeKind::Neq(binop) => (&binop.lhs, &binop.rhs),
+            _ => unreachable!(),
+        };
+        let lhs = self.table.get_value(lhs_node);
+        let rhs = self.table.get_value(rhs_node);
+
         let i64 = MlirIntegerType::new(self.ctx, 64).into();
         let ret_type = MlirIntegerType::new(self.ctx, 1).into();
+
         match node.kind {
             NodeKind::Or(_) => {
                 // TODO: Type check that lhs and rhs are bools
@@ -464,14 +469,22 @@ where
         &mut self,
         block: MlirBlockRef<'ctx, 'blk>,
         node: &'ast Node,
-        lhs: MlirValue<'ctx, 'blk>,
-        rhs: MlirValue<'ctx, 'blk>,
     ) -> Result<MlirValue<'ctx, 'blk>> {
         matches!(
             node.kind,
             NodeKind::Add(_) | NodeKind::Sub(_) | NodeKind::Mul(_) | NodeKind::Div(_)
         );
         let loc = node.loc(self.ctx);
+        let (lhs_node, rhs_node) = match &node.kind {
+            NodeKind::Add(binop)
+            | NodeKind::Sub(binop)
+            | NodeKind::Mul(binop)
+            | NodeKind::Div(binop) => (&binop.lhs, &binop.rhs),
+            _ => unreachable!(),
+        };
+        let lhs = self.table.get_value(lhs_node);
+        let rhs = self.table.get_value(rhs_node);
+
         match node.kind {
             NodeKind::Add(_) => {
                 let built = AddIOperation::builder(self.ctx, loc)
@@ -508,14 +521,21 @@ where
         &mut self,
         block: MlirBlockRef<'ctx, 'blk>,
         node: &'ast Node,
-        lhs: MlirValue<'ctx, 'blk>,
-        rhs: MlirValue<'ctx, 'blk>,
     ) -> Result<MlirValue<'ctx, 'blk>> {
         matches!(
             node.kind,
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_)
         );
         let loc = node.loc(self.ctx);
+        let (lhs_node, rhs_node) = match &node.kind {
+            NodeKind::BitAnd(binop) | NodeKind::BitOr(binop) | NodeKind::BitXor(binop) => {
+                (&binop.lhs, &binop.rhs)
+            }
+            _ => unreachable!(),
+        };
+        let lhs = self.table.get_value(lhs_node);
+        let rhs = self.table.get_value(rhs_node);
+
         match node.kind {
             NodeKind::BitAnd(_) => {
                 let built = AndIOperation::builder(self.ctx, loc)

@@ -21,6 +21,7 @@ pub struct Table<'ctx, 'ast> {
     symbol_table: ScopeMap<GlobalSymbol, MlirValue<'ctx, 'ctx>>,
     // TODO: store params for type checking
     fn_table: ScopeMap<GlobalSymbol, MlirStringAttribute<'ctx>>,
+    value_table: HashMap<*const Node, MlirValue<'ctx, 'ctx>>,
     type_table: HashMap<*const Node, TaraType>,
     type_conversion_table: HashMap<TaraType, MlirType<'ctx>>,
 }
@@ -31,6 +32,7 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
             name_table: ScopeMap::new(),
             symbol_table: ScopeMap::new(),
             fn_table: ScopeMap::new(),
+            value_table: HashMap::new(),
             type_table: HashMap::new(),
             type_conversion_table: HashMap::new(),
         }
@@ -61,9 +63,23 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.type_table.insert(node, ty);
     }
 
-    pub fn get_type(&mut self, node: &'ast Node) -> TaraType {
+    pub fn define_value(&mut self, node: &Node, value: MlirValue<'ctx, '_>) {
+        let ptr: *const Node = node;
+        println!("defining value for node {:?}", ptr);
+        let raw_value = value.to_raw();
+        self.value_table
+            .insert(ptr, unsafe { MlirValue::from_raw(raw_value) });
+    }
+
+    pub fn get_type(&mut self, node: &Node) -> TaraType {
         let ptr: *const Node = node;
         self.type_table.get(&ptr).unwrap().to_owned()
+    }
+
+    pub fn get_value(&mut self, node: &Node) -> MlirValue<'ctx, 'ctx> {
+        let ptr: *const Node = node;
+        println!("want value for node {:?}", ptr);
+        self.value_table.get(&ptr).unwrap().to_owned()
     }
 
     pub fn get_mlir_type(&mut self, ctx: &'ctx Context, node: &'ast Node) -> MlirType<'ctx> {
