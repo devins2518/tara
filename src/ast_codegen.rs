@@ -1,8 +1,9 @@
 mod error;
+mod table;
 
 use crate::{
     ast::{Node, NodeKind},
-    ast_codegen::error::Error,
+    ast_codegen::{error::Error, table::Table},
     Ast,
 };
 use anyhow::Result;
@@ -32,7 +33,6 @@ use melior::{
     },
     Context,
 };
-use quickscope::ScopeMap;
 use symbol_table::GlobalSymbol;
 
 pub struct AstCodegen<'a, 'ast, 'ctx> {
@@ -40,11 +40,7 @@ pub struct AstCodegen<'a, 'ast, 'ctx> {
     ctx: &'ctx Context,
     module: &'a MlirModule<'ctx>,
     builder: Builder<'ctx, 'a>,
-    name_table: ScopeMap<GlobalSymbol, &'ast Node>,
-    // TODO: add publicity to this
-    symbol_table: ScopeMap<GlobalSymbol, MlirValue<'ctx, 'a>>,
-    // TODO: store params for type checking
-    fn_table: ScopeMap<GlobalSymbol, MlirStringAttribute<'ctx>>,
+    table: Table<'ctx, 'ast>,
 }
 
 impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
@@ -54,27 +50,16 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
             ctx,
             module,
             builder: Builder::new(module.body()),
-            name_table: ScopeMap::new(),
-            symbol_table: ScopeMap::new(),
-            fn_table: ScopeMap::new(),
+            table: Table::new(),
         }
     }
 
     fn define_name(&mut self, ident: GlobalSymbol, node: &'ast Node) -> Result<()> {
-        if self.name_table.contains_key(&ident) {
-            // TODO: proper error
-            anyhow::bail!("shadowing detected")
-        }
-        self.name_table.define(ident, node);
-        Ok(())
+        self.table.define_name(ident, node)
     }
 
-    fn define_symbol(&mut self, ident: GlobalSymbol, value: MlirValue<'ctx, '_>) -> Result<()> {
-        let raw_value = value.to_raw();
-        assert!(self.name_table.contains_key(&ident));
-        self.symbol_table
-            .define(ident, unsafe { MlirValue::from_raw(raw_value) });
-        Ok(())
+    fn define_symbol(&mut self, ident: GlobalSymbol, value: MlirValue<'ctx, '_>) {
+        self.table.define_symbol(ident, value)
     }
 
     fn create<'blk, T: Into<MlirOperation<'ctx>> + Clone>(
@@ -93,18 +78,14 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
         Ok(unsafe { MlirValue::from_raw(raw_value) })
     }
 
-    // Pushes a layer on to the name table and symbol table
+    // Pushes a layer onto all tables
     fn push(&mut self) {
-        self.name_table.push_layer();
-        self.symbol_table.push_layer();
-        self.fn_table.push_layer();
+        self.table.push();
     }
 
-    // Pops a layer from the name table and symbol table
+    // Pops a layer from all tables
     fn pop(&mut self) {
-        self.name_table.pop_layer();
-        self.symbol_table.pop_layer();
-        self.fn_table.pop_layer();
+        self.table.pop();
     }
 }
 
@@ -145,7 +126,7 @@ where
             match &member.kind {
                 NodeKind::VarDecl(v_d) => {
                     let val = self.gen_var_decl(&member)?;
-                    self.symbol_table.define(v_d.ident, val);
+                    self.table.define_symbol(v_d.ident, val);
                 }
                 NodeKind::SubroutineDecl(s_d) => {
                     let val = subroutine_gen(self, &member)?;
@@ -211,7 +192,7 @@ where
                 param_types.push(param_type);
 
                 let arg = block.add_argument(param_type, param.ty.loc(self.ctx));
-                self.define_symbol(param.name, arg)?;
+                self.define_symbol(param.name, arg);
             }
 
             let region = MlirRegion::new();
@@ -234,7 +215,7 @@ where
 
         self.pop();
 
-        self.fn_table.define(fn_decl.ident, fn_name);
+        self.table.define_fn(fn_decl.ident, fn_name);
 
         Ok(())
     }
@@ -597,15 +578,7 @@ where
         _: MlirBlockRef,
         node: &'ast Node,
     ) -> Result<MlirValue<'ctx, 'blk>> {
-        matches!(node.kind, NodeKind::Identifier(_));
-        let ident = match node.kind {
-            NodeKind::Identifier(i) => i,
-            _ => unreachable!(),
-        };
-        self.symbol_table
-            .get(&ident)
-            .ok_or_else(|| Error::new(node.span, "Unknown identifier".to_string()).into())
-            .copied()
+        self.table.get_identifier(node)
     }
 }
 
