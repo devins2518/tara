@@ -9,6 +9,7 @@ pub mod variable;
 
 use crate::{
     ast::Ast,
+    ast_codegen::AstCodegen,
     codegen::{package::Package, Codegen},
     comp::Compilation,
     module::{
@@ -27,7 +28,12 @@ use crate::{
 };
 use anyhow::{bail, Result};
 use core::fmt;
-use melior::Context;
+use melior::{
+    dialect::DialectRegistry,
+    ir::{Location, Module as MlirModule},
+    utility::register_all_dialects,
+    Context,
+};
 use std::{collections::HashMap, error::Error, path::PathBuf};
 
 #[derive(Debug)]
@@ -120,68 +126,31 @@ impl Module {
             }
         }
 
-        self.codegen_file(file, dump_mlir);
+        self.codegen_file(file, dump_mlir)?;
         Ok(())
     }
 
-    fn codegen_file(&self, file: RRC<File>, dump_mlir: bool) {
+    fn codegen_file(&self, file: RRC<File>, dump_mlir: bool) -> Result<()> {
         if file.borrow().root_decl.is_some() {
-            return;
-        }
-
-        let (struct_obj, struct_obj_uninit) = RRC::<Struct>::new_uninit();
-        let struct_ty = RRC::new(Type::Struct(struct_obj.clone()));
-        let struct_val = Value::Type(struct_ty.clone());
-        let ty_ty = Type::TypeType;
-        let namespace = RRC::new(Namespace::new(file.clone(), struct_ty));
-
-        let main_idx = UtirInstIdx::from(0);
-
-        let decl_name = file.borrow().fully_qualified_path();
-        let decl = RRC::new(Decl::new(
-            decl_name,
-            namespace.clone(),
-            main_idx.into(),
-            None,
-        ));
-        file.borrow_mut().root_decl = Some(decl.clone());
-
-        // Initialize struct_obj
-        {
-            let mut uninit = struct_obj_uninit.borrow_mut();
-            init_field!(uninit, owner_decl, decl.clone());
-            init_field!(uninit, fields, Vec::new());
-            init_field!(uninit, namespace, namespace.clone());
-            init_field!(uninit, status, StructStatus::None);
-            init_field!(uninit, utir_ref, UtirInstIdx::from(0).into());
-            drop(uninit);
-            struct_obj_uninit.init();
-        }
-
-        // Setup decl
-        {
-            let mut decl = decl.borrow_mut();
-            decl.public = true;
-            decl.ty = Some(ty_ty);
-            decl.value = Some(struct_val);
-            decl.status = DeclStatus::InProgress;
+            return Ok(());
         }
 
         let file = file.borrow();
-        let utir = file.utir();
+        let ast = file.ast();
+
         let context = Context::new();
-        let mut codegen = Codegen::new(self, &context, utir);
-        match codegen.analyze_struct_decl(decl.clone()) {
-            Ok(_) => {
-                decl.borrow_mut().status = DeclStatus::Complete;
-                if dump_mlir {
-                    codegen.mlir_module.as_operation().dump();
-                }
-            }
-            Err(_) => {
-                decl.borrow_mut().status = DeclStatus::CodegenFailure;
-            }
+        let registry = DialectRegistry::new();
+        register_all_dialects(&registry);
+        context.append_dialect_registry(&registry);
+        context.load_all_available_dialects();
+        context.set_allow_unregistered_dialects(true);
+        let module = MlirModule::new(Location::unknown(&context));
+        let codegen = AstCodegen::new(&ast, &context, &module);
+        codegen.gen_root()?;
+        if dump_mlir {
+            module.as_operation().dump();
         }
+        Ok(())
     }
 
     // This is pretty dumb and expensive, rework packages to be cheaper

@@ -1,6 +1,7 @@
 use crate::{builtin::Mutability, parser::TaraParser};
 use anyhow::Result;
 use codespan::Span;
+use melior::{ir::Location, Context};
 use num_bigint::BigUint;
 use std::fmt::Display;
 use symbol_table::GlobalSymbol;
@@ -16,6 +17,10 @@ impl Node {
             span: Span::new(span.start() as u32, span.end() as u32),
             kind,
         };
+    }
+
+    pub fn loc<'c>(&self, ctx: &'c Context) -> Location<'c> {
+        Location::new(ctx, "", self.span.start().into(), self.span.end().into())
     }
 }
 

@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 mod ast;
+mod ast_codegen;
 mod auto_indenting_stream;
 mod builtin;
 mod circt;

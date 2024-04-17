@@ -694,6 +694,16 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "indexmap"
+version = "1.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
+dependencies = [
+ "autocfg",
+ "hashbrown 0.12.3",
+]
+
+[[package]]
+name = "indexmap"
 version = "2.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b0b929d511467233429c45a44ac1dcaa21ba0f5ba11e4879e6ed28ddb4f9df4"
@@ -1053,7 +1063,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5699cc8a63d1aa2b1ee8e12b9ad70ac790d65788cd36101fa37f87ea46c4cef"
 dependencies = [
  "base64 0.21.7",
- "indexmap",
+ "indexmap 2.2.5",
  "line-wrap",
  "quick-xml",
  "serde",
@@ -1092,6 +1102,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1004a344b30a54e2ee58d66a71b32d2db2feb0a31f9a2d302bf0536f15de2a33"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "quickscope"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d47bcfc3e13850589cf9338a02b6dfb5aebb3748a0f93a392e8df91d6193b6b"
+dependencies = [
+ "indexmap 1.9.3",
+ "smallvec",
 ]
 
 [[package]]
@@ -1390,6 +1410,7 @@ dependencies = [
  "num-traits",
  "pest",
  "pest_consume",
+ "quickscope",
  "simple_logger",
  "symbol_table",
  "tblgen",

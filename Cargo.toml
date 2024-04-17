@@ -22,6 +22,7 @@ tblgen = { version = "0.3.0", features = ["llvm-trunk"], default-features = fals
 mlir-sys = { version = "0.2.1", features = ["llvm-trunk"], default-features = false }
 log = "0.4.21"
 simple_logger = "4.3.3"
+quickscope = "0.2.0"
 
 [patch.crates-io]
 melior = { git = "https://github.com/mikeurbach/melior.git", package = "melior", branch = "mikeurbach/latest-mlir" }
