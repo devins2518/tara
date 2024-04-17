@@ -4,10 +4,15 @@ use crate::{
     types::Type as TaraType,
 };
 use anyhow::Result;
-use melior::ir::{
-    attribute::StringAttribute as MlirStringAttribute, Value as MlirValue, ValueLike,
+use melior::{
+    ir::{
+        attribute::StringAttribute as MlirStringAttribute, Type as MlirType, Value as MlirValue,
+        ValueLike,
+    },
+    Context,
 };
 use quickscope::ScopeMap;
+use std::collections::HashMap;
 use symbol_table::GlobalSymbol;
 
 pub struct Table<'ctx, 'ast> {
@@ -16,7 +21,8 @@ pub struct Table<'ctx, 'ast> {
     symbol_table: ScopeMap<GlobalSymbol, MlirValue<'ctx, 'ctx>>,
     // TODO: store params for type checking
     fn_table: ScopeMap<GlobalSymbol, MlirStringAttribute<'ctx>>,
-    type_table: ScopeMap<*const Node, TaraType>,
+    type_table: HashMap<*const Node, TaraType>,
+    type_conversion_table: HashMap<TaraType, MlirType<'ctx>>,
 }
 
 impl<'ctx, 'ast> Table<'ctx, 'ast> {
@@ -25,7 +31,8 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
             name_table: ScopeMap::new(),
             symbol_table: ScopeMap::new(),
             fn_table: ScopeMap::new(),
-            type_table: ScopeMap::new(),
+            type_table: HashMap::new(),
+            type_conversion_table: HashMap::new(),
         }
     }
 
@@ -50,12 +57,28 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.fn_table.define(ident, fn_name);
     }
 
+    pub fn define_type(&mut self, node: &'ast Node, ty: TaraType) {
+        self.type_table.insert(node, ty);
+    }
+
+    pub fn get_type(&mut self, node: &'ast Node) -> TaraType {
+        let ptr: *const Node = node;
+        self.type_table.get(&ptr).unwrap().to_owned()
+    }
+
+    pub fn get_mlir_type(&mut self, ctx: &'ctx Context, node: &'ast Node) -> MlirType<'ctx> {
+        let ty = self.get_type(node);
+        *self
+            .type_conversion_table
+            .entry(ty.clone())
+            .or_insert_with(|| ty.to_mlir_type(ctx))
+    }
+
     // Pushes a layer onto all tables
     pub fn push(&mut self) {
         self.name_table.push_layer();
         self.symbol_table.push_layer();
         self.fn_table.push_layer();
-        self.type_table.push_layer();
     }
 
     // Pops a layer from all tables
@@ -63,7 +86,6 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.name_table.pop_layer();
         self.symbol_table.pop_layer();
         self.fn_table.pop_layer();
-        self.type_table.pop_layer();
     }
 
     pub fn get_identifier(&self, node: &'ast Node) -> Result<MlirValue<'ctx, 'ctx>> {

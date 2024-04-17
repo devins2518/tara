@@ -339,7 +339,6 @@ impl<'cg> Codegen<'cg> {
                 decl.borrow().src_namespace.clone(),
             ));
             let mut decl = decl.borrow_mut();
-            decl.ty = Some(TaraType::Module(module_obj));
         }
 
         self.analyze_module_decl(decl.clone())?;

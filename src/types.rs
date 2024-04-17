@@ -2,9 +2,10 @@ use crate::{
     module::{structs::Struct, tmodule::TModule},
     utils::RRC,
 };
+use melior::{ir::Type as MlirType, Context};
 use std::hash::Hash;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
     Void,
@@ -19,8 +20,9 @@ pub enum Type {
     Pointer,
     IntSigned { width: u16 },
     IntUnsigned { width: u16 },
-    Struct(RRC<Struct>),
-    Module(RRC<TModule>),
+    // TODO: Struct and module layouts
+    Struct,
+    Module,
     TypeType,
 }
 
@@ -30,9 +32,13 @@ impl Hash for Type {
         match self {
             Type::IntSigned { width } => state.write_u16(*width),
             Type::IntUnsigned { width } => state.write_u16(*width),
-            Type::Struct(s) => (*s).hash(state),
-            Type::Module(m) => (*m).hash(state),
             _ => {}
         }
+    }
+}
+
+impl<'ctx> Type {
+    pub fn to_mlir_type(&self, ctx: &'ctx Context) -> MlirType<'ctx> {
+        unimplemented!()
     }
 }
