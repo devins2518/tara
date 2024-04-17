@@ -5,14 +5,17 @@ use crate::{
 use anyhow::{anyhow, Result};
 use codespan::Span;
 use melior::{
-    dialect::ods::{
-        arith::{AndIOperation, OrIOperation, XOrIOperation},
+    dialect::{arith::CmpiPredicate, ods::{
+        arith::{
+            AddIOperation, AndIOperation, CmpIOperation, MulIOperation,
+            OrIOperation, SubIOperation, XOrIOperation,
+        },
         func::{r#return, FuncOperation, ReturnOperation},
-    },
+    }},
     ir::{
         attribute::{
             FlatSymbolRefAttribute, StringAttribute as MlirStringAttribute,
-            TypeAttribute as MlirTypeAttribute,
+            TypeAttribute as MlirTypeAttribute, IntegerAttribute as MlirIntegerAttribute
         },
         operation::{
             Operation as MlirOperation, OperationBuilder, OperationRef as MlirOperationRef,
@@ -351,6 +354,7 @@ where
                 | NodeKind::Lt(_)
                 | NodeKind::Gt(_)
                 | NodeKind::Lte(_)
+                | NodeKind::Gte(_)
                 | NodeKind::Eq(_)
                 | NodeKind::Neq(_)
                 | NodeKind::BitAnd(_)
@@ -367,6 +371,7 @@ where
             | NodeKind::Lt(bin)
             | NodeKind::Gt(bin)
             | NodeKind::Lte(bin)
+            | NodeKind::Gte(bin)
             | NodeKind::Eq(bin)
             | NodeKind::Neq(bin)
             | NodeKind::BitAnd(bin)
@@ -387,6 +392,7 @@ where
             | NodeKind::Lt(_)
             | NodeKind::Gt(_)
             | NodeKind::Lte(_)
+            | NodeKind::Gte(_)
             | NodeKind::Eq(_)
             | NodeKind::Neq(_) => self.gen_cmp(block, node, lhs, rhs),
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_) => {
@@ -401,22 +407,149 @@ where
 
     fn gen_cmp(
         &mut self,
-        block: MlirBlockRef,
+        block: MlirBlockRef<'ctx, 'blk>,
         node: &'ast Node,
         lhs: MlirValue<'ctx, 'blk>,
         rhs: MlirValue<'ctx, 'blk>,
     ) -> Result<MlirValue<'ctx, 'blk>> {
-        unimplemented!()
+        matches!(
+            node.kind,
+            NodeKind::Or(_)
+                | NodeKind::And(_)
+                | NodeKind::Lt(_)
+                | NodeKind::Gt(_)
+                | NodeKind::Lte(_)
+                | NodeKind::Eq(_)
+                | NodeKind::Neq(_)
+        );
+        let loc = node.loc(self.ctx);
+        let i64 = MlirIntegerType::new(self.ctx,64).into();
+        let ret_type = MlirIntegerType::new(self.ctx, 1).into();
+        match node.kind {
+            NodeKind::Or(_) => {
+                // TODO: Type check that lhs and rhs are bools
+                let built = OrIOperation::builder(self.ctx, loc)
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::And(_) => {
+                // TODO: Type check that lhs and rhs are bools
+                let built = AndIOperation::builder(self.ctx, loc)
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Lt(_) => {
+                let built = CmpIOperation::builder(self.ctx, loc)
+                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Gt(_) => {
+                let built = CmpIOperation::builder(self.ctx, loc)
+                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Lte(_) => {
+                let built = CmpIOperation::builder(self.ctx, loc)
+                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Gte(_) => {
+                let built = CmpIOperation::builder(self.ctx, loc)
+                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Eq(_) => {
+                let built = CmpIOperation::builder(self.ctx, loc)
+                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Neq(_) => {
+                let built = CmpIOperation::builder(self.ctx, loc)
+                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn gen_arith(
         &mut self,
-        block: MlirBlockRef,
+        block: MlirBlockRef<'ctx, 'blk>,
         node: &'ast Node,
         lhs: MlirValue<'ctx, 'blk>,
         rhs: MlirValue<'ctx, 'blk>,
     ) -> Result<MlirValue<'ctx, 'blk>> {
-        unimplemented!()
+        matches!(
+            node.kind,
+            NodeKind::Add(_) | NodeKind::Sub(_) | NodeKind::Mul(_) | NodeKind::Div(_)
+        );
+        let loc = node.loc(self.ctx);
+        match node.kind {
+            NodeKind::Add(_) => {
+                let built = AddIOperation::builder(self.ctx, loc)
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Sub(_) => {
+                let built = SubIOperation::builder(self.ctx, loc)
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Mul(_) => {
+                let built = MulIOperation::builder(self.ctx, loc)
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            NodeKind::Div(_) => {
+                unimplemented!("Signed and unsigned division")
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn gen_bitwise(
