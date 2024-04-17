@@ -1,21 +1,26 @@
+mod error;
+
 use crate::{
     ast::{Node, NodeKind},
+    ast_codegen::error::Error,
     Ast,
 };
-use anyhow::{anyhow, Result};
-use codespan::Span;
+use anyhow::Result;
 use melior::{
-    dialect::{arith::CmpiPredicate, ods::{
-        arith::{
-            AddIOperation, AndIOperation, CmpIOperation, MulIOperation,
-            OrIOperation, SubIOperation, XOrIOperation,
+    dialect::{
+        arith::CmpiPredicate,
+        ods::{
+            arith::{
+                AddIOperation, AndIOperation, CmpIOperation, MulIOperation, OrIOperation,
+                SubIOperation, XOrIOperation,
+            },
+            func::{r#return, FuncOperation, ReturnOperation},
         },
-        func::{r#return, FuncOperation, ReturnOperation},
-    }},
+    },
     ir::{
         attribute::{
-            FlatSymbolRefAttribute, StringAttribute as MlirStringAttribute,
-            TypeAttribute as MlirTypeAttribute, IntegerAttribute as MlirIntegerAttribute
+            IntegerAttribute as MlirIntegerAttribute, StringAttribute as MlirStringAttribute,
+            TypeAttribute as MlirTypeAttribute,
         },
         operation::{
             Operation as MlirOperation, OperationBuilder, OperationRef as MlirOperationRef,
@@ -28,41 +33,7 @@ use melior::{
     Context,
 };
 use quickscope::ScopeMap;
-use std::{
-    error::Error,
-    fmt::{Debug, Display},
-    ops::Deref,
-};
 use symbol_table::GlobalSymbol;
-
-struct AstCodegenError {
-    span: Span,
-    reason: String,
-}
-
-impl Error for AstCodegenError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
-
-impl Display for AstCodegenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.reason)
-    }
-}
-
-impl Debug for AstCodegenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl AstCodegenError {
-    pub fn new(span: Span, reason: String) -> Self {
-        Self { span, reason }
-    }
-}
 
 pub struct AstCodegen<'a, 'ast, 'ctx> {
     ast: &'ast Ast,
@@ -334,7 +305,7 @@ where
         node: &'ast Node,
     ) -> Result<MlirValue<'ctx, 'blk>> {
         self.gen_expr(block, node)?.ok_or_else(|| {
-            AstCodegenError::new(
+            Error::new(
                 node.span,
                 "Expected reachable value, control flow unexpectedly diverted".to_string(),
             )
@@ -423,7 +394,7 @@ where
                 | NodeKind::Neq(_)
         );
         let loc = node.loc(self.ctx);
-        let i64 = MlirIntegerType::new(self.ctx,64).into();
+        let i64 = MlirIntegerType::new(self.ctx, 64).into();
         let ret_type = MlirIntegerType::new(self.ctx, 1).into();
         match node.kind {
             NodeKind::Or(_) => {
@@ -633,7 +604,7 @@ where
         };
         self.symbol_table
             .get(&ident)
-            .ok_or_else(|| AstCodegenError::new(node.span, "Unknown identifier".to_string()).into())
+            .ok_or_else(|| Error::new(node.span, "Unknown identifier".to_string()).into())
             .copied()
     }
 }
