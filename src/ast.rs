@@ -55,7 +55,7 @@ pub enum NodeKind {
     Call(Call),
     Negate(UnOp),
     Deref(UnOp),
-    Return(UnOp),
+    Return(Option<UnOp>),
     Identifier(GlobalSymbol),
     ReferenceTy(RefTy),
     PointerTy(RefTy),
@@ -99,7 +99,8 @@ impl Display for NodeKind {
             }
             NodeKind::Negate(expr) => f.write_fmt(format_args!("neg({})", expr))?,
             NodeKind::Deref(expr) => f.write_fmt(format_args!("deref({})", expr))?,
-            NodeKind::Return(expr) => f.write_fmt(format_args!("return({})", expr))?,
+            NodeKind::Return(Some(expr)) => f.write_fmt(format_args!("return({})", expr))?,
+            NodeKind::Return(None) => f.write_fmt(format_args!("return(void)"))?,
             NodeKind::ReferenceTy(expr) => f.write_fmt(format_args!("reference_ty({})", expr))?,
             NodeKind::PointerTy(expr) => f.write_fmt(format_args!("pointer_ty({})", expr))?,
             NodeKind::NumberLiteral(num) => f.write_fmt(format_args!("number({})", num))?,

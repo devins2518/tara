@@ -222,17 +222,19 @@ where
 
     fn gen_return(&mut self, block: MlirBlockRef<'ctx, 'blk>, node: &'ast Node) -> Result<()> {
         matches!(node.kind, NodeKind::Return(_));
-        let expr = match &node.kind {
-            NodeKind::Return(e) => &e.lhs,
+        let loc = node.loc(self.ctx);
+        let return_op = match &node.kind {
+            NodeKind::Return(Some(e)) => {
+                let return_value = self.gen_expr_reachable(block, &e.lhs)?;
+                ReturnOperation::builder(self.ctx, loc)
+                    .operands(&[return_value])
+                    .build()
+            }
+            NodeKind::Return(None) => ReturnOperation::builder(self.ctx, loc)
+                .operands(&[])
+                .build(),
             _ => unreachable!(),
         };
-
-        let return_value = self.gen_expr_reachable(block, &expr)?;
-
-        let loc = node.loc(self.ctx);
-        let return_op = ReturnOperation::builder(self.ctx, loc)
-            .operands(&[return_value])
-            .build();
 
         block.append_operation(return_op.into());
         Ok(())

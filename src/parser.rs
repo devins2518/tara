@@ -410,8 +410,11 @@ impl TaraParser {
             input.into_children();
             [expr(expr)] => {
                 let un_op = UnOp{lhs: Box::new(expr)};
-                Node::new(NodeKind::Return(un_op), span)
+                Node::new(NodeKind::Return(Some(un_op)), span)
             },
+            [] => {
+                Node::new(NodeKind::Return(None), span)
+            }
         ))
     }
 

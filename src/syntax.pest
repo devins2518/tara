@@ -65,7 +65,7 @@ field_init_name = ${ "." ~ identifier }
 
 parened_expr = { "(" ~ expr ~ ")" }
 
-return_expr = { "return" ~ expr }
+return_expr = { "return" ~ expr? }
 
 if_expr = { "if" ~ "(" ~ expr ~ ")" ~ expr ~ "else" ~ expr }
 

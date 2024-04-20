@@ -117,6 +117,7 @@ impl Module {
                 }
             }
 
+            /*
             self.gen_utir(f)?;
             if dump_utir {
                 println!("{}", f.utir());
@@ -124,6 +125,7 @@ impl Module {
                     return Ok(());
                 }
             }
+            */
         }
 
         self.codegen_file(file, dump_mlir)?;

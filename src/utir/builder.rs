@@ -555,7 +555,9 @@ impl<'ast> Builder<'ast> {
 
     fn gen_un_op(&self, env: &mut Environment<'_, 'ast, '_>, node: &'ast Node) -> AstResult {
         let inner = match &node.kind {
-            NodeKind::Negate(inner) | NodeKind::Deref(inner) | NodeKind::Return(inner) => inner,
+            NodeKind::Negate(inner) | NodeKind::Deref(inner) | NodeKind::Return(Some(inner)) => {
+                inner
+            }
             _ => unreachable!(),
         };
 
