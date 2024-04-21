@@ -4,6 +4,7 @@ mod table;
 use crate::{
     ast::{Node, NodeKind},
     ast_codegen::{error::Error, table::Table},
+    types::Type as TaraType,
     Ast,
 };
 use anyhow::Result;
@@ -12,8 +13,8 @@ use melior::{
         arith::CmpiPredicate,
         ods::{
             arith::{
-                AddIOperation, AndIOperation, CmpIOperation, MulIOperation, OrIOperation,
-                SubIOperation, XOrIOperation,
+                AddIOperation, AndIOperation, CmpIOperation, ExtSIOperation, ExtUIOperation,
+                MulIOperation, OrIOperation, SubIOperation, XOrIOperation,
             },
             func::{r#return, FuncOperation, ReturnOperation},
         },
@@ -57,13 +58,13 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
         &mut self,
         block: MlirBlockRef<'ctx, 'blk>,
         operation: &T,
-    ) -> Result<MlirValue<'ctx, 'blk>> {
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
         let op: T = operation.clone();
         let op_ref = block.append_operation(op.into());
         self.value_from_ref(op_ref)
     }
 
-    fn value_from_ref<'blk>(&self, op_ref: MlirOperationRef) -> Result<MlirValue<'ctx, 'blk>> {
+    fn value_from_ref<'blk>(&self, op_ref: MlirOperationRef) -> Result<MlirValue<'ctx, 'ctx>> {
         let result = op_ref.result(0)?;
         let raw_value = result.to_raw();
         Ok(unsafe { MlirValue::from_raw(raw_value) })
@@ -146,15 +147,16 @@ where
             NodeKind::VarDecl(v_d) => v_d,
             _ => unreachable!(),
         };
-        let maybe_type_expr = if let Some(ty) = &var_decl.ty {
-            Some(self.gen_expr_reachable(block, &*ty)?)
-        } else {
-            None
-        };
-        let value = self.gen_expr_reachable(block, &var_decl.expr)?;
 
-        if let Some(type_expr) = maybe_type_expr {
-            self.type_check(type_expr, value)?;
+        let mut value = self.gen_expr_reachable(block, &var_decl.expr)?;
+
+        if let Some(ty_expr) = &var_decl.ty {
+            self.gen_type(ty_expr)?;
+            let expected_type = self.table.get_type(ty_expr)?;
+            value = self.cast(block, &var_decl.expr, &expected_type)?;
+            self.table.define_typed_value(node, expected_type, value);
+        } else {
+            // TODO: infer value type
         }
 
         Ok(value)
@@ -170,6 +172,7 @@ where
         self.push();
 
         let return_type = self.gen_type(&fn_decl.return_type)?;
+        let mlir_return_type = self.table.get_mlir_type(self.ctx, &return_type)?;
 
         let loc = node.loc(self.ctx);
         let body = self.module.body();
@@ -178,23 +181,54 @@ where
 
             let mut param_types = Vec::new();
             for param in &fn_decl.params {
-                self.table.define_name(param.name, &param.ty)?;
-                let param_type = self.gen_type(&param.ty)?;
-                param_types.push(param_type);
+                let param_ty = param.ty.as_ref();
+                self.table.define_name(param.name, param_ty)?;
+                let param_type = self.gen_type(param_ty)?;
+                let mlir_param_type = self.table.get_mlir_type(self.ctx, &param_type)?;
+                param_types.push(mlir_param_type);
 
-                let arg = block.add_argument(param_type, param.ty.loc(self.ctx));
+                let arg = block.add_argument(mlir_param_type, param.ty.loc(self.ctx));
                 self.table.define_symbol(param.name, arg);
-                self.table.define_value(node, arg);
+                self.table.define_value(param_ty, arg);
             }
 
             let region = MlirRegion::new();
-            let block = region.append_block(block);
+            let block_ref = region.append_block(block);
 
-            self.gen_block(block, &fn_decl.block)?;
+            self.gen_block(block_ref, &fn_decl.block)?;
+            assert!(block_ref.terminator().is_some());
 
-            // TODO: return type check
+            // TODO: This assumes that all blocks terminate at their last instruction which might
+            // not be true
+            if let Some(last_node) = fn_decl.block.last() {
+                let return_expr = match &last_node.kind {
+                    NodeKind::Return(Some(return_expr)) => &return_expr.lhs,
+                    _ => unreachable!(),
+                };
+                let curr_return_type = self.table.get_type(return_expr)?;
+                if curr_return_type != return_type {
+                    unimplemented!("TODO: Cast return value of block");
+                    /*
+                    let mut owned_block = unsafe { MlirBlock::from_raw(block_ref.to_raw()) };
+                    let mut terminator = owned_block.terminator_mut().unwrap();
+                    let return_value = self.cast(block_ref, return_expr, &return_type)?;
+                    let return_op = ReturnOperation::builder(self.ctx, loc)
+                        .operands(&[return_value])
+                        .build();
+                    block_ref.insert_operation_before(terminator, return_op.into());
+                    terminator.remove_from_parent();
+                    */
+                }
+            } else {
+                if return_type != TaraType::Void {
+                    Err(Error::new(
+                        node.span,
+                        "Body returns void but return type is not void".to_string(),
+                    ))?;
+                }
+            }
 
-            let fn_type = MlirFunctionType::new(self.ctx, &param_types, &[return_type]).into();
+            let fn_type = MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
             let builder = FuncOperation::builder(self.ctx, loc)
                 .body(region)
                 .sym_name(MlirStringAttribute::new(self.ctx, fn_decl.ident.as_str()))
@@ -226,13 +260,18 @@ where
         let return_op = match &node.kind {
             NodeKind::Return(Some(e)) => {
                 let return_value = self.gen_expr_reachable(block, &e.lhs)?;
+                let return_ty = self.table.get_type(&e.lhs)?;
+                self.table.define_type(node, return_ty);
                 ReturnOperation::builder(self.ctx, loc)
                     .operands(&[return_value])
                     .build()
             }
-            NodeKind::Return(None) => ReturnOperation::builder(self.ctx, loc)
-                .operands(&[])
-                .build(),
+            NodeKind::Return(None) => {
+                self.table.define_type(node, TaraType::Void);
+                ReturnOperation::builder(self.ctx, loc)
+                    .operands(&[])
+                    .build()
+            }
             _ => unreachable!(),
         };
 
@@ -259,6 +298,7 @@ where
             | NodeKind::Lt(_)
             | NodeKind::Gt(_)
             | NodeKind::Lte(_)
+            | NodeKind::Gte(_)
             | NodeKind::Eq(_)
             | NodeKind::Neq(_)
             | NodeKind::BitAnd(_)
@@ -364,6 +404,7 @@ where
                 | NodeKind::Lt(_)
                 | NodeKind::Gt(_)
                 | NodeKind::Lte(_)
+                | NodeKind::Gte(_)
                 | NodeKind::Eq(_)
                 | NodeKind::Neq(_)
         );
@@ -374,19 +415,43 @@ where
             | NodeKind::Lt(binop)
             | NodeKind::Gt(binop)
             | NodeKind::Lte(binop)
+            | NodeKind::Gte(binop)
             | NodeKind::Eq(binop)
             | NodeKind::Neq(binop) => (&binop.lhs, &binop.rhs),
             _ => unreachable!(),
         };
-        let lhs = self.table.get_value(lhs_node);
-        let rhs = self.table.get_value(rhs_node);
+        let lhs = self.table.get_value(lhs_node)?;
+        let lhs_type = self.table.get_type(lhs_node)?;
+        // Type check lhs and rhs
+        let rhs = match &node.kind {
+            NodeKind::Or(_) | NodeKind::And(_) => {
+                self.expect_bool_type(lhs_node)?;
+                self.expect_bool_type(rhs_node)?;
+                self.table.get_value(rhs_node)?
+            }
+            NodeKind::Lt(_) | NodeKind::Gt(_) | NodeKind::Lte(_) | NodeKind::Gte(_) => {
+                self.expect_integral_type(lhs_node)?;
+                self.expect_integral_type(rhs_node)?;
+                self.cast(block, rhs_node, &lhs_type)?
+            }
+            NodeKind::Eq(_) | NodeKind::Neq(_) => {
+                self.expect_integral_type(lhs_node)
+                    .or(self.expect_bool_type(lhs_node))?;
+                self.expect_integral_type(rhs_node)
+                    .or(self.expect_bool_type(rhs_node))?;
+                self.cast(block, rhs_node, &lhs_type)?
+            }
+            _ => unreachable!(),
+        };
 
-        let i64 = MlirIntegerType::new(self.ctx, 64).into();
-        let ret_type = MlirIntegerType::new(self.ctx, 1).into();
+        let i64_ty = TaraType::IntUnsigned { width: 64 };
+        let predicate_i64 = self.table.get_mlir_type(self.ctx, &i64_ty)?;
+        let bool_ty = TaraType::Bool;
+        let ret_type = self.table.get_mlir_type(self.ctx, &bool_ty)?;
+        self.table.define_type(node, bool_ty);
 
         match node.kind {
             NodeKind::Or(_) => {
-                // TODO: Type check that lhs and rhs are bools
                 let built = OrIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
@@ -395,7 +460,6 @@ where
                 Ok(self.create(block, op)?)
             }
             NodeKind::And(_) => {
-                // TODO: Type check that lhs and rhs are bools
                 let built = AndIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
@@ -405,7 +469,9 @@ where
             }
             NodeKind::Lt(_) => {
                 let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
+                    )
                     .lhs(lhs)
                     .rhs(rhs)
                     .result(ret_type)
@@ -415,7 +481,9 @@ where
             }
             NodeKind::Gt(_) => {
                 let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
+                    )
                     .lhs(lhs)
                     .rhs(rhs)
                     .result(ret_type)
@@ -425,7 +493,9 @@ where
             }
             NodeKind::Lte(_) => {
                 let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
+                    )
                     .lhs(lhs)
                     .rhs(rhs)
                     .result(ret_type)
@@ -435,7 +505,9 @@ where
             }
             NodeKind::Gte(_) => {
                 let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
+                    )
                     .lhs(lhs)
                     .rhs(rhs)
                     .result(ret_type)
@@ -445,7 +517,9 @@ where
             }
             NodeKind::Eq(_) => {
                 let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
+                    )
                     .lhs(lhs)
                     .rhs(rhs)
                     .result(ret_type)
@@ -455,7 +529,9 @@ where
             }
             NodeKind::Neq(_) => {
                 let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(MlirIntegerAttribute::new(i64, CmpiPredicate::Ult as i64).into())
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
+                    )
                     .lhs(lhs)
                     .rhs(rhs)
                     .result(ret_type)
@@ -484,8 +560,13 @@ where
             | NodeKind::Div(binop) => (&binop.lhs, &binop.rhs),
             _ => unreachable!(),
         };
-        let lhs = self.table.get_value(lhs_node);
-        let rhs = self.table.get_value(rhs_node);
+        let lhs = self.table.get_value(lhs_node)?;
+        let lhs_type = self.table.get_type(lhs_node)?;
+        self.expect_integral_type(&lhs_node)?;
+
+        let rhs = self.cast(block, rhs_node, &lhs_type)?;
+
+        self.table.define_type(node, lhs_type);
 
         match node.kind {
             NodeKind::Add(_) => {
@@ -529,14 +610,19 @@ where
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_)
         );
         let loc = node.loc(self.ctx);
-        let (lhs_node, rhs_node) = match &node.kind {
+        let (lhs_node, rhs_node): (&Node, &Node) = match &node.kind {
             NodeKind::BitAnd(binop) | NodeKind::BitOr(binop) | NodeKind::BitXor(binop) => {
-                (&binop.lhs, &binop.rhs)
+                (binop.lhs.as_ref(), binop.rhs.as_ref())
             }
             _ => unreachable!(),
         };
-        let lhs = self.table.get_value(lhs_node);
-        let rhs = self.table.get_value(rhs_node);
+        let lhs = self.table.get_value(lhs_node)?;
+        let lhs_type = self.table.get_type(lhs_node)?;
+        self.expect_integral_type(&lhs_node)?;
+
+        let rhs = self.cast(block, rhs_node, &lhs_type)?;
+
+        self.table.define_type(node, lhs_type);
 
         match node.kind {
             NodeKind::BitAnd(_) => {
@@ -570,8 +656,15 @@ where
     // Generates a block. Ensures that the last instruction is a terminator returning void if
     // necessary. It is the callers responsibility to ensure that the terminator type checks.
     fn gen_block(&mut self, block: MlirBlockRef<'ctx, 'blk>, nodes: &'ast [Node]) -> Result<()> {
-        for expr in nodes {
-            self.gen_expr(block, expr)?;
+        for (i, expr) in nodes.iter().enumerate() {
+            if let None = self.gen_expr(block, expr)? {
+                if i != (nodes.len() - 1) {
+                    Err(Error::new(
+                        nodes[i + 1].span,
+                        "Unreachable statement".to_string(),
+                    ))?;
+                }
+            }
         }
 
         if let None = block.terminator() {
@@ -582,17 +675,20 @@ where
         Ok(())
     }
 
-    fn gen_type(&mut self, node: &'ast Node) -> Result<MlirType<'ctx>> {
-        match &node.kind {
+    fn gen_type(&mut self, node: &'ast Node) -> Result<TaraType> {
+        let ty = match &node.kind {
             NodeKind::Identifier(ident) => {
                 let s = ident.as_str();
-                if let Some(ty) = get_maybe_primitive(self.ctx, s) {
-                    return Ok(ty);
+                if let Some(ty) = get_maybe_primitive(s) {
+                    ty
+                } else {
+                    unimplemented!()
                 }
-                unimplemented!()
             }
             _ => unimplemented!(),
-        }
+        };
+        self.table.define_type(node, ty.clone());
+        Ok(ty)
     }
 
     fn get_identifier(
@@ -600,18 +696,93 @@ where
         _: MlirBlockRef,
         node: &'ast Node,
     ) -> Result<MlirValue<'ctx, 'blk>> {
-        self.table.get_identifier(node)
+        self.table.get_identifier_value(node)
     }
 }
 
 // Type checking methods
-impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
-    fn type_check(
-        &self,
-        expected_type: MlirValue<'ctx, 'a>,
-        actual_value: MlirValue<'ctx, 'a>,
-    ) -> Result<()> {
-        unimplemented!()
+impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
+    fn expect_integral_type(&self, node: &Node) -> Result<()> {
+        let actual_type = self.table.get_type(node)?;
+        match actual_type {
+            TaraType::IntSigned { .. } | TaraType::IntUnsigned { .. } => Ok(()),
+            _ => Err(Error::new(
+                node.span,
+                format!("Expected integral type, found {}", actual_type),
+            ))?,
+        }
+    }
+
+    fn expect_bool_type(&self, node: &Node) -> Result<()> {
+        let actual_type = self.table.get_type(node)?;
+        match actual_type {
+            TaraType::Bool => Ok(()),
+            _ => Err(Error::new(
+                node.span,
+                format!("Expected bool type, found {}", actual_type),
+            ))?,
+        }
+    }
+
+    fn cast(
+        &mut self,
+        block: MlirBlockRef<'ctx, 'blk>,
+        node: &Node,
+        expected_type: &TaraType,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let actual_type = self.table.get_type(node)?;
+        if &actual_type == expected_type {
+            return self.table.get_value(node);
+        }
+        match (expected_type, &actual_type) {
+            (
+                TaraType::IntSigned { width: exp_width },
+                TaraType::IntSigned { width: act_width },
+            ) => {
+                if exp_width > act_width {
+                    let actual_mlir_value = self.table.get_value(node)?;
+                    let expected_mlir_type = self.table.get_mlir_type(self.ctx, expected_type)?;
+                    let built = ExtSIOperation::builder(self.ctx, node.loc(self.ctx))
+                        .r#in(actual_mlir_value)
+                        .out(expected_mlir_type)
+                        .build();
+                    let op = built.as_operation();
+                    Ok(self.create(block, op)?)
+                } else {
+                    Err(Error::new(
+                        node.span,
+                        format!("Expected {}, found {}", expected_type, actual_type),
+                    ))?
+                }
+            }
+            (
+                TaraType::IntUnsigned { width: exp_width },
+                TaraType::IntUnsigned { width: act_width },
+            ) => {
+                if exp_width > act_width {
+                    let actual_mlir_value = self.table.get_value(node)?;
+                    let expected_mlir_type = self.table.get_mlir_type(self.ctx, expected_type)?;
+                    let built = ExtUIOperation::builder(self.ctx, node.loc(self.ctx))
+                        .r#in(actual_mlir_value)
+                        .out(expected_mlir_type)
+                        .build();
+                    let op = built.as_operation();
+                    Ok(self.create(block, op)?)
+                } else {
+                    Err(Error::new(
+                        node.span,
+                        format!("Expected {}, found {}", expected_type, actual_type),
+                    ))?
+                }
+            }
+            _ => Err(Error::new(
+                node.span,
+                format!(
+                    "TODO: Unhandled cast from {} to {}",
+                    actual_type, expected_type
+                ),
+            ))?,
+        }
     }
 }
 
@@ -651,17 +822,20 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
     }
 }
 
-fn get_maybe_primitive<'ctx>(context: &'ctx Context, s: &str) -> Option<MlirType<'ctx>> {
+fn get_maybe_primitive(s: &str) -> Option<TaraType> {
     let bytes = s.as_bytes();
-    // TODO: Use TaraType to keep signedness info
     if bytes[0] == b'u' {
         let size = u16::from_str_radix(&s[1..], 10).ok()?;
-        let int_type = MlirIntegerType::new(context, size.into());
+        let int_type = TaraType::IntUnsigned { width: size };
         Some(int_type.into())
     } else if bytes[0] == b'i' {
         let size = u16::from_str_radix(&s[1..], 10).ok()?;
-        let int_type = MlirIntegerType::new(context, size.into());
+        let int_type = TaraType::IntSigned { width: size };
         Some(int_type.into())
+    } else if s == "bool" {
+        Some(TaraType::Bool)
+    } else if s == "void" {
+        Some(TaraType::Void)
     } else {
         None
     }

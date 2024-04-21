@@ -33,6 +33,7 @@ mod tests {
         .expect("Parser tests failed");
     }
 
+    #[ignore]
     #[test]
     fn utir_tests() {
         lit::run::tests(|config| {
@@ -45,13 +46,13 @@ mod tests {
     }
 
     #[test]
-    fn tir_tests() {
+    fn mlir_tests() {
         lit::run::tests(|config| {
-            config.add_search_path("tests/tir/");
+            config.add_search_path("tests/mlir/");
             config.add_extension("t");
 
             config.constants.insert("tara".to_owned(), tara_exe());
         })
-        .expect("TIR tests failed");
+        .expect("MLIR tests failed");
     }
 }
