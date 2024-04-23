@@ -5,6 +5,7 @@ use crate::{
     ast::{Node, NodeKind},
     ast_codegen::{error::Error, table::Table},
     types::Type as TaraType,
+    utils::RRC,
     Ast,
 };
 use anyhow::Result;
@@ -153,7 +154,7 @@ where
         if let Some(ty_expr) = &var_decl.ty {
             self.gen_type(ty_expr)?;
             let expected_type = self.table.get_type(ty_expr)?;
-            value = self.cast(block, &var_decl.expr, &expected_type)?;
+            value = self.cast(block, &var_decl.expr, expected_type.clone())?;
             self.table.define_typed_value(node, expected_type, value);
         } else {
             // TODO: infer value type
@@ -172,7 +173,7 @@ where
         self.push();
 
         let return_type = self.gen_type(&fn_decl.return_type)?;
-        let mlir_return_type = self.table.get_mlir_type(self.ctx, &return_type)?;
+        let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
 
         let loc = node.loc(self.ctx);
         let body = self.module.body();
@@ -184,7 +185,7 @@ where
                 let param_ty = param.ty.as_ref();
                 self.table.define_name(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
-                let mlir_param_type = self.table.get_mlir_type(self.ctx, &param_type)?;
+                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type)?;
                 param_types.push(mlir_param_type);
 
                 let arg = block.add_argument(mlir_param_type, param.ty.loc(self.ctx));
@@ -220,7 +221,7 @@ where
                     */
                 }
             } else {
-                if return_type != TaraType::Void {
+                if *return_type.borrow() != TaraType::Void {
                     Err(Error::new(
                         node.span,
                         "Body returns void but return type is not void".to_string(),
@@ -432,22 +433,22 @@ where
             NodeKind::Lt(_) | NodeKind::Gt(_) | NodeKind::Lte(_) | NodeKind::Gte(_) => {
                 self.expect_integral_type(lhs_node)?;
                 self.expect_integral_type(rhs_node)?;
-                self.cast(block, rhs_node, &lhs_type)?
+                self.cast(block, rhs_node, lhs_type)?
             }
             NodeKind::Eq(_) | NodeKind::Neq(_) => {
                 self.expect_integral_type(lhs_node)
                     .or(self.expect_bool_type(lhs_node))?;
                 self.expect_integral_type(rhs_node)
                     .or(self.expect_bool_type(rhs_node))?;
-                self.cast(block, rhs_node, &lhs_type)?
+                self.cast(block, rhs_node, lhs_type)?
             }
             _ => unreachable!(),
         };
 
         let i64_ty = TaraType::IntUnsigned { width: 64 };
-        let predicate_i64 = self.table.get_mlir_type(self.ctx, &i64_ty)?;
+        let predicate_i64 = self.table.get_mlir_type(self.ctx, i64_ty)?;
         let bool_ty = TaraType::Bool;
-        let ret_type = self.table.get_mlir_type(self.ctx, &bool_ty)?;
+        let ret_type = self.table.get_mlir_type(self.ctx, bool_ty.clone())?;
         self.table.define_type(node, bool_ty);
 
         match node.kind {
@@ -564,7 +565,7 @@ where
         let lhs_type = self.table.get_type(lhs_node)?;
         self.expect_integral_type(&lhs_node)?;
 
-        let rhs = self.cast(block, rhs_node, &lhs_type)?;
+        let rhs = self.cast(block, rhs_node, lhs_type.clone())?;
 
         self.table.define_type(node, lhs_type);
 
@@ -620,7 +621,7 @@ where
         let lhs_type = self.table.get_type(lhs_node)?;
         self.expect_integral_type(&lhs_node)?;
 
-        let rhs = self.cast(block, rhs_node, &lhs_type)?;
+        let rhs = self.cast(block, rhs_node, lhs_type.clone())?;
 
         self.table.define_type(node, lhs_type);
 
@@ -675,7 +676,7 @@ where
         Ok(())
     }
 
-    fn gen_type(&mut self, node: &'ast Node) -> Result<TaraType> {
+    fn gen_type(&mut self, node: &'ast Node) -> Result<RRC<TaraType>> {
         let ty = match &node.kind {
             NodeKind::Identifier(ident) => {
                 let s = ident.as_str();
@@ -688,7 +689,7 @@ where
             _ => unimplemented!(),
         };
         self.table.define_type(node, ty.clone());
-        Ok(ty)
+        Ok(RRC::new(ty))
     }
 
     fn get_identifier(
@@ -704,7 +705,8 @@ where
 impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
     fn expect_integral_type(&self, node: &Node) -> Result<()> {
         let actual_type = self.table.get_type(node)?;
-        match actual_type {
+        let actual_type_borrowed = actual_type.borrow();
+        match *actual_type_borrowed {
             TaraType::IntSigned { .. } | TaraType::IntUnsigned { .. } => Ok(()),
             _ => Err(Error::new(
                 node.span,
@@ -715,7 +717,8 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
 
     fn expect_bool_type(&self, node: &Node) -> Result<()> {
         let actual_type = self.table.get_type(node)?;
-        match actual_type {
+        let actual_type_borrowed = actual_type.borrow();
+        match *actual_type_borrowed {
             TaraType::Bool => Ok(()),
             _ => Err(Error::new(
                 node.span,
@@ -728,20 +731,23 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         &mut self,
         block: MlirBlockRef<'ctx, 'blk>,
         node: &Node,
-        expected_type: &TaraType,
+        expected_type: RRC<TaraType>,
     ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let expected_type_borrow = expected_type.borrow();
         let actual_type = self.table.get_type(node)?;
-        if &actual_type == expected_type {
+        let actual_type_borrow = actual_type.borrow();
+        if actual_type == expected_type {
             return self.table.get_value(node);
         }
-        match (expected_type, &actual_type) {
+        match (&*expected_type_borrow, &*actual_type_borrow) {
             (
                 TaraType::IntSigned { width: exp_width },
                 TaraType::IntSigned { width: act_width },
             ) => {
                 if exp_width > act_width {
                     let actual_mlir_value = self.table.get_value(node)?;
-                    let expected_mlir_type = self.table.get_mlir_type(self.ctx, expected_type)?;
+                    let expected_mlir_type =
+                        self.table.get_mlir_type(self.ctx, expected_type.clone())?;
                     let built = ExtSIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)
@@ -761,7 +767,8 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
             ) => {
                 if exp_width > act_width {
                     let actual_mlir_value = self.table.get_value(node)?;
-                    let expected_mlir_type = self.table.get_mlir_type(self.ctx, expected_type)?;
+                    let expected_mlir_type =
+                        self.table.get_mlir_type(self.ctx, expected_type.clone())?;
                     let built = ExtUIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)

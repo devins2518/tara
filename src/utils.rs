@@ -1,5 +1,6 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
+    fmt::Display,
     hash::Hash,
     mem::MaybeUninit,
     ops::Deref,
@@ -23,7 +24,6 @@ pub mod slice;
 // HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 // TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct RRC<T>(Rc<RefCell<T>>);
 
 macro_rules! init_field {
@@ -78,6 +78,39 @@ impl<T: Hash> Hash for RRC<T> {
 impl<T> Clone for RRC<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+impl<T> From<T> for RRC<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<T: Display> Display for RRC<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let borrowed = self.borrow();
+        borrowed.fmt(f)
+    }
+}
+
+impl<T: PartialEq> PartialEq for RRC<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.borrow().eq(&*other.borrow())
+    }
+}
+
+impl<T: Eq> Eq for RRC<T> {}
+
+impl<T: PartialOrd> PartialOrd for RRC<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.borrow().partial_cmp(&*other.borrow())
+    }
+}
+
+impl<T: Ord> Ord for RRC<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.borrow().cmp(&*other.borrow())
     }
 }
 
