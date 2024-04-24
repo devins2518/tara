@@ -147,8 +147,11 @@ impl Module {
         context.load_all_available_dialects();
         context.set_allow_unregistered_dialects(true);
         let module = MlirModule::new(Location::unknown(&context));
-        let codegen = AstCodegen::new(&ast, &context, &module);
+        let mut codegen = AstCodegen::new(&ast, &context, &module);
         codegen.gen_root()?;
+        if let Err(_) = codegen.report_errors(&file) {
+            return Ok(());
+        }
         if dump_mlir {
             module.as_operation().dump();
         }

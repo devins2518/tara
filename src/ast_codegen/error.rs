@@ -5,8 +5,8 @@ use std::{
 };
 
 pub struct Error {
-    span: Span,
-    reason: String,
+    pub span: Span,
+    pub reason: String,
 }
 
 impl ErrorTrait for Error {

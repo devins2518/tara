@@ -4,11 +4,19 @@ mod table;
 use crate::{
     ast::{Node, NodeKind},
     ast_codegen::{error::Error, table::Table},
+    module::file::File,
     types::Type as TaraType,
     utils::RRC,
     Ast,
 };
 use anyhow::Result;
+use codespan_reporting::{
+    diagnostic::{Diagnostic, Label},
+    term::{
+        self,
+        termcolor::{ColorChoice, StandardStream},
+    },
+};
 use melior::{
     dialect::{
         arith::CmpiPredicate,
@@ -42,6 +50,7 @@ pub struct AstCodegen<'a, 'ast, 'ctx> {
     module: &'a MlirModule<'ctx>,
     builder: Builder<'ctx, 'a>,
     table: Table<'ctx, 'ast>,
+    pub errors: Vec<anyhow::Error>,
 }
 
 impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
@@ -52,6 +61,7 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
             module,
             builder: Builder::new(module.body()),
             table: Table::new(),
+            errors: Vec::new(),
         }
     }
 
@@ -80,6 +90,26 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
     fn pop(&mut self) {
         self.table.pop();
     }
+
+    pub fn report_errors(&self, file: &File) -> Result<()> {
+        if self.errors.len() > 0 {
+            for error in &self.errors {
+                if let Some(err) = error.downcast_ref::<Error>() {
+                    let label = Label::primary((), err.span);
+                    let diagnostic = Diagnostic::error()
+                        .with_message(err.reason.clone())
+                        .with_labels(vec![label]);
+
+                    let writer = StandardStream::stdout(ColorChoice::Always);
+                    let config = codespan_reporting::term::Config::default();
+
+                    term::emit(&mut writer.lock(), &config, file, &diagnostic)?;
+                }
+            }
+            anyhow::bail!("compilation errors!")
+        }
+        Ok(())
+    }
 }
 
 // MLIR generation methods
@@ -87,7 +117,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx>
 where
     'a: 'blk,
 {
-    pub fn gen_root(mut self) -> Result<()> {
+    pub fn gen_root(&mut self) -> Result<()> {
         self.gen_struct_decl(&self.ast.root)?;
 
         Ok(())
@@ -117,13 +147,14 @@ where
 
         for member in members {
             match &member.kind {
-                NodeKind::VarDecl(v_d) => {
-                    let val = self.gen_var_decl(&member)?;
-                    self.table.define_symbol(v_d.ident, val);
-                }
-                NodeKind::SubroutineDecl(s_d) => {
-                    let val = subroutine_gen(self, &member)?;
-                }
+                NodeKind::VarDecl(v_d) => match self.gen_var_decl(&member) {
+                    Ok(val) => self.table.define_symbol(v_d.ident, val),
+                    Err(e) => self.errors.push(e),
+                },
+                NodeKind::SubroutineDecl(s_d) => match subroutine_gen(self, &member) {
+                    Ok(val) => {}
+                    Err(e) => self.errors.push(e),
+                },
                 _ => unreachable!(),
             }
         }
