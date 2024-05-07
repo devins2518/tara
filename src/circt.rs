@@ -146,9 +146,9 @@ pub fn register_all_dialects(ctx: &Context) {
     let registry = DialectRegistry::new();
     unsafe {
         DialectHandle::from_raw(mlirGetDialectHandle__arc__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__calyx__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__calyx__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__comb__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__dc__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__dc__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__esi__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__emit__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__firrtl__()).insert_dialect(&registry);
@@ -156,21 +156,28 @@ pub fn register_all_dialects(ctx: &Context) {
         DialectHandle::from_raw(mlirGetDialectHandle__hw__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__hwarith__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__handshake__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__ibis__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__interop__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__ibis__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__interop__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__llhd__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__ltl__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__loopschedule__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__loopschedule__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__msft__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__moore__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__om__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__pipeline__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__ssp__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__pipeline__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__ssp__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__sv__()).insert_dialect(&registry);
         // DialectHandle::from_raw(mlirGetDialectHandle__seq__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__sim__()).insert_dialect(&registry);
-        DialectHandle::from_raw(mlirGetDialectHandle__systemc__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__sim__()).insert_dialect(&registry);
+        // DialectHandle::from_raw(mlirGetDialectHandle__systemc__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__verif__()).insert_dialect(&registry);
     }
     ctx.append_dialect_registry(&registry);
+}
+
+#[repr(u32)]
+pub enum ModulePortDirection {
+    In = sys::HWModulePortDirection_Input,
+    Out = sys::HWModulePortDirection_Output,
+    InOut = sys::HWModulePortDirection_InOut,
 }

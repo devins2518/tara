@@ -7,8 +7,8 @@ use crate::{
 use anyhow::Result;
 use melior::{
     ir::{
-        attribute::StringAttribute as MlirStringAttribute, Type as MlirType, Value as MlirValue,
-        ValueLike,
+        attribute::FlatSymbolRefAttribute as MlirFlatSymbolRefAttribute, Type as MlirType,
+        Value as MlirValue, ValueLike,
     },
     Context,
 };
@@ -20,7 +20,7 @@ pub struct Table<'ctx, 'ast> {
     // TODO: add publicity to this
     name_table: ScopeMap<GlobalSymbol, &'ast Node>,
     // TODO: store params for type checking
-    fn_table: ScopeMap<GlobalSymbol, MlirStringAttribute<'ctx>>,
+    fn_table: ScopeMap<GlobalSymbol, MlirFlatSymbolRefAttribute<'ctx>>,
     value_table: HashMap<*const Node, MlirValue<'ctx, 'ctx>>,
     type_table: HashMap<*const Node, RRC<TaraType>>,
     type_conversion_table: HashMap<RRC<TaraType>, MlirType<'ctx>>,
@@ -45,13 +45,22 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         Ok(())
     }
 
+    pub fn define_name_intentional_shadow(
+        &mut self,
+        ident: GlobalSymbol,
+        node: &'ast Node,
+    ) -> Result<()> {
+        self.name_table.define(ident, node);
+        Ok(())
+    }
+
     pub fn define_symbol(&mut self, ident: GlobalSymbol, value: MlirValue<'ctx, '_>) {
         assert!(self.name_table.contains_key(&ident));
         let node = self.name_table.get(&ident).unwrap();
         self.define_value(node, value);
     }
 
-    pub fn define_fn(&mut self, ident: GlobalSymbol, fn_name: MlirStringAttribute<'ctx>) {
+    pub fn define_fn(&mut self, ident: GlobalSymbol, fn_name: MlirFlatSymbolRefAttribute<'ctx>) {
         assert!(self.name_table.contains_key(&ident));
         self.fn_table.define(ident, fn_name);
     }
@@ -79,6 +88,15 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
             .insert(ptr, unsafe { MlirValue::from_raw(raw_value) });
     }
 
+    pub fn get_name(&self, node: &Node) -> Option<GlobalSymbol> {
+        for (name, val) in self.name_table.iter() {
+            if std::ptr::eq(*val, node) {
+                return Some(*name);
+            }
+        }
+        None
+    }
+
     pub fn get_type(&self, node: &Node) -> Result<RRC<TaraType>> {
         match &node.kind {
             NodeKind::Identifier(_) => self.get_identifier_type(node),
@@ -90,13 +108,8 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
     }
 
     pub fn get_value(&self, node: &Node) -> Result<MlirValue<'ctx, 'ctx>> {
-        match &node.kind {
-            NodeKind::Identifier(_) => self.get_identifier_value(node),
-            _ => {
-                let ptr: *const Node = node;
-                Ok(self.value_table.get(&ptr).unwrap().to_owned())
-            }
-        }
+        let ptr: *const Node = node;
+        Ok(self.value_table.get(&ptr).unwrap().to_owned())
     }
 
     pub fn get_mlir_type<T: Into<RRC<TaraType>>>(

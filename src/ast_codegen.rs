@@ -4,8 +4,20 @@ mod table;
 use crate::{
     ast::{Node, NodeKind},
     ast_codegen::{error::Error, table::Table},
+    circt::{
+        arc::{
+            CallOperation as HwProcCallOperation, DefineOperation as HwProcDefineOperation,
+            OutputOperation as HwProcReturnOperation,
+        },
+        comb::{
+            AddOperation as HwAddOperation, MulOperation as HwMulOperation,
+            OrOperation as HwOrOperation, SubOperation as HwSubOperation,
+            XorOperation as HwXorOperation,
+        },
+        hw::{HWModuleOperation as HwModuleOperation, OutputOperation as HwOutputOperation},
+    },
     module::file::File,
-    types::Type as TaraType,
+    types::{ModuleInfo, NamedType, Type as TaraType},
     utils::RRC,
     Ast,
 };
@@ -30,19 +42,23 @@ use melior::{
     },
     ir::{
         attribute::{
+            ArrayAttribute as MlirArrayAttribute,
+            FlatSymbolRefAttribute as MlirFlatSymbolRefAttribute,
             IntegerAttribute as MlirIntegerAttribute, StringAttribute as MlirStringAttribute,
             TypeAttribute as MlirTypeAttribute,
         },
         operation::{
             Operation as MlirOperation, OperationBuilder, OperationRef as MlirOperationRef,
         },
-        r#type::{FunctionType as MlirFunctionType, IntegerType as MlirIntegerType},
+        r#type::FunctionType as MlirFunctionType,
         Attribute as MlirAttribute, Block as MlirBlock, BlockRef as MlirBlockRef,
         Identifier as MlirIdentifier, Location, Module as MlirModule, Region as MlirRegion,
-        Type as MlirType, Value as MlirValue, ValueLike,
+        Type as MlirType, TypeLike, Value as MlirValue, ValueLike,
     },
     Context,
 };
+use std::collections::HashMap;
+use symbol_table::GlobalSymbol;
 
 pub struct AstCodegen<'a, 'ast, 'ctx> {
     ast: &'ast Ast,
@@ -51,6 +67,7 @@ pub struct AstCodegen<'a, 'ast, 'ctx> {
     builder: Builder<'ctx, 'a>,
     table: Table<'ctx, 'ast>,
     pub errors: Vec<anyhow::Error>,
+    anon_cnt: usize,
 }
 
 impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
@@ -62,6 +79,7 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
             builder: Builder::new(module.body()),
             table: Table::new(),
             errors: Vec::new(),
+            anon_cnt: 0,
         }
     }
 
@@ -110,6 +128,12 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
         }
         Ok(())
     }
+
+    fn anon(&mut self) -> usize {
+        let anon = self.anon_cnt;
+        self.anon_cnt += 1;
+        anon
+    }
 }
 
 // MLIR generation methods
@@ -139,7 +163,7 @@ where
         // Members will be either a VarDecl or a SubroutineDecl
         for member in members {
             match &member.kind {
-                NodeKind::VarDecl(v_d) => self.table.define_name(v_d.ident, member)?,
+                NodeKind::VarDecl(v_d) => self.table.define_name(v_d.ident, &v_d.expr)?,
                 NodeKind::SubroutineDecl(s_d) => self.table.define_name(s_d.ident, member)?,
                 _ => unreachable!(),
             }
@@ -148,11 +172,12 @@ where
         for member in members {
             match &member.kind {
                 NodeKind::VarDecl(v_d) => match self.gen_var_decl(&member) {
-                    Ok(val) => self.table.define_symbol(v_d.ident, val),
+                    Ok(Some(val)) => self.table.define_symbol(v_d.ident, val),
+                    Ok(None) => {}
                     Err(e) => self.errors.push(e),
                 },
-                NodeKind::SubroutineDecl(s_d) => match subroutine_gen(self, &member) {
-                    Ok(val) => {}
+                NodeKind::SubroutineDecl(_) => match subroutine_gen(self, &member) {
+                    Ok(_) => {}
                     Err(e) => self.errors.push(e),
                 },
                 _ => unreachable!(),
@@ -168,10 +193,95 @@ where
     }
 
     fn gen_module_decl(&mut self, node: &'ast Node) -> Result<()> {
-        self._gen_container(node, Self::gen_comb_decl)
+        matches!(node.kind, NodeKind::ModuleDecl(_));
+        let mod_decl = match &node.kind {
+            NodeKind::ModuleDecl(m_d) => m_d,
+            _ => unreachable!(),
+        };
+        let loc = node.loc(self.ctx);
+        let prev_context = self.builder.save(SurroundingContext::Hw);
+
+        let region = MlirRegion::new();
+        let body = region.append_block(MlirBlock::new(&[]));
+        self.builder.set_block(body);
+
+        {
+            let mut ins = Vec::new();
+            let mut outs = Vec::new();
+            for member in &mod_decl.members {
+                match &member.kind {
+                    NodeKind::SubroutineDecl(s_d) => {
+                        for param in &s_d.params {
+                            let param_ty = param.ty.as_ref();
+                            self.table.define_name(param.name, param_ty)?;
+                            let param_type = self.gen_type(param_ty)?;
+                            let mlir_param_type =
+                                self.table.get_mlir_type(self.ctx, param_type.clone())?;
+                            let arg = self
+                                .builder
+                                .add_argument(mlir_param_type, param_ty.loc(self.ctx));
+                            self.table.define_symbol(param.name, arg);
+                            self.table.define_value(param_ty, arg);
+                            ins.push(NamedType {
+                                name: param.name,
+                                ty: param_type,
+                            });
+                        }
+                        outs.push(NamedType {
+                            name: s_d.ident,
+                            ty: self.gen_type(&s_d.return_type)?,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            let mod_info = ModuleInfo { ins, outs };
+            self.table.define_type(node, TaraType::Module(mod_info));
+        }
+
+        let mod_type = self.table.get_mlir_type_node(self.ctx, node)?;
+
+        self._gen_container(node, Self::gen_comb_decl)?;
+
+        {
+            let mut outs = Vec::new();
+            for member in &mod_decl.members {
+                match &member.kind {
+                    NodeKind::SubroutineDecl(_) => {
+                        let val = self.table.get_value(member)?;
+                        outs.push(val);
+                    }
+                    _ => {}
+                }
+            }
+            let output_op = HwOutputOperation::builder(self.ctx, loc)
+                .outputs(&outs)
+                .build();
+            body.append_operation(output_op.into());
+        }
+
+        let name = if let Some(name) = self.table.get_name(node) {
+            name
+        } else {
+            let name = GlobalSymbol::new(format!("anon_module{}", self.anon()));
+            self.table.define_name(name, node)?;
+            name
+        };
+        let builder = HwModuleOperation::builder(self.ctx, loc)
+            .body(region)
+            .sym_name(MlirStringAttribute::new(self.ctx, name.as_str()))
+            .module_type(MlirTypeAttribute::new(mod_type))
+            .parameters(MlirArrayAttribute::new(self.ctx, &[]))
+            .build();
+        let operation: MlirOperation = builder.into();
+
+        self.module.body().append_operation(operation);
+
+        self.builder.restore(prev_context);
+        Ok(())
     }
 
-    fn gen_var_decl(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_var_decl(&mut self, node: &'ast Node) -> Result<Option<MlirValue<'ctx, 'blk>>> {
         matches!(node.kind, NodeKind::VarDecl(_));
         let block = self.module.body();
 
@@ -180,21 +290,21 @@ where
             _ => unreachable!(),
         };
 
-        let mut value = self.gen_expr_reachable(block, &var_decl.expr)?;
-
-        if let Some(ty_expr) = &var_decl.ty {
-            self.gen_type(ty_expr)?;
-            let expected_type = self.table.get_type(ty_expr)?;
-            value = self.cast(block, &var_decl.expr, expected_type.clone())?;
-            self.table.define_typed_value(node, expected_type, value);
+        if let Some(mut value) = self.gen_expr(block, &var_decl.expr)? {
+            if let Some(ty_expr) = &var_decl.ty {
+                self.gen_type(ty_expr)?;
+                let expected_type = self.table.get_type(ty_expr)?;
+                value = self.cast(block, &var_decl.expr, expected_type.clone())?;
+                self.table.define_typed_value(node, expected_type, value);
+            } else {
+                // TODO: infer value type
+            }
+            Ok(Some(value))
         } else {
-            // TODO: infer value type
+            Ok(None)
         }
-
-        Ok(value)
     }
 
-    // FlatSymbolRefAttribute
     fn gen_fn_decl(&mut self, node: &'ast Node) -> Result<()> {
         matches!(node.kind, NodeKind::SubroutineDecl(_));
         let fn_decl = match &node.kind {
@@ -202,6 +312,7 @@ where
             _ => unreachable!(),
         };
         self.push();
+        let prev_context = self.builder.save(SurroundingContext::Sw);
 
         let return_type = self.gen_type(&fn_decl.return_type)?;
         let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
@@ -227,7 +338,7 @@ where
             let region = MlirRegion::new();
             let block_ref = region.append_block(block);
 
-            self.gen_block(block_ref, &fn_decl.block)?;
+            self.gen_block_terminated(block_ref, &fn_decl.block)?;
             assert!(block_ref.terminator().is_some());
 
             // TODO: This assumes that all blocks terminate at their last instruction which might
@@ -266,12 +377,13 @@ where
                 .sym_name(MlirStringAttribute::new(self.ctx, fn_decl.ident.as_str()))
                 .function_type(MlirTypeAttribute::new(fn_type));
             let func = builder.build();
-            let fn_name = func.sym_name()?;
+            let fn_name = MlirFlatSymbolRefAttribute::new(self.ctx, func.sym_name()?.value());
             body.append_operation(func.into());
             fn_name
         };
 
         self.pop();
+        self.builder.restore(prev_context);
 
         self.table.define_fn(fn_decl.ident, fn_name);
 
@@ -280,34 +392,143 @@ where
 
     fn gen_comb_decl(&mut self, node: &'ast Node) -> Result<()> {
         matches!(node.kind, NodeKind::SubroutineDecl(_));
+        let comb_decl = match &node.kind {
+            NodeKind::SubroutineDecl(s_d) => s_d,
+            _ => unreachable!(),
+        };
         self.push();
+        let prev_context = self.builder.save(SurroundingContext::Hw);
+
+        let return_type = self.gen_type(&comb_decl.return_type)?;
+        let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
+
+        let loc = node.loc(self.ctx);
+        let body = self.module.body();
+        let comb_name = {
+            let block = MlirBlock::new(&[]);
+
+            let mut param_types = Vec::new();
+            for param in &comb_decl.params {
+                let param_ty = param.ty.as_ref();
+                self.table
+                    .define_name_intentional_shadow(param.name, param_ty)?;
+                let param_type = self.gen_type(param_ty)?;
+                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type)?;
+                param_types.push(mlir_param_type);
+
+                let arg = block.add_argument(mlir_param_type, param.ty.loc(self.ctx));
+                self.table.define_symbol(param.name, arg);
+                self.table.define_value(param_ty, arg);
+            }
+
+            let region = MlirRegion::new();
+            let block_ref = region.append_block(block);
+
+            self.gen_block_terminated(block_ref, &comb_decl.block)?;
+
+            // TODO: This assumes that all blocks terminate at their last instruction which might
+            // not be true
+            if let Some(last_node) = comb_decl.block.last() {
+                let return_expr = match &last_node.kind {
+                    NodeKind::Return(Some(return_expr)) => &return_expr.lhs,
+                    _ => unreachable!(),
+                };
+                let curr_return_type = self.table.get_type(return_expr)?;
+                if curr_return_type != return_type {
+                    unimplemented!("TODO: Cast return value of block");
+                    /*
+                    let mut owned_block = unsafe { MlirBlock::from_raw(block_ref.to_raw()) };
+                    let mut terminator = owned_block.terminator_mut().unwrap();
+                    let return_value = self.cast(block_ref, return_expr, &return_type)?;
+                    let return_op = ReturnOperation::builder(self.ctx, loc)
+                        .operands(&[return_value])
+                        .build();
+                    block_ref.insert_operation_before(terminator, return_op.into());
+                    terminator.remove_from_parent();
+                    */
+                }
+            } else {
+                if *return_type.borrow() != TaraType::Void {
+                    Err(Error::new(
+                        node.span,
+                        "Body returns void but return type is not void".to_string(),
+                    ))?;
+                }
+            }
+
+            let comb_type =
+                MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
+            let builder = HwProcDefineOperation::builder(self.ctx, loc)
+                .body(region)
+                .sym_name(MlirStringAttribute::new(self.ctx, comb_decl.ident.as_str()))
+                .function_type(MlirTypeAttribute::new(comb_type));
+            let comb = builder.build();
+            let comb_name = MlirFlatSymbolRefAttribute::new(self.ctx, comb_decl.ident.as_str());
+            let operation: MlirOperation = comb.into();
+            body.append_operation(operation);
+            comb_name
+        };
 
         self.pop();
-        unimplemented!()
+        self.builder.restore(prev_context);
+
+        let mut ins = Vec::new();
+        for param in &comb_decl.params {
+            let param_ty = param.ty.as_ref();
+            let param_val = self.table.get_value(param_ty)?;
+            ins.push(param_val);
+        }
+        let call_op = HwProcCallOperation::builder(self.ctx, loc)
+            .arc(comb_name)
+            .inputs(&ins)
+            .outputs(&[mlir_return_type])
+            .build();
+        let call_ref = self.builder.block.append_operation(call_op.into());
+        let call_val = self.value_from_ref(call_ref)?;
+
+        self.table.define_fn(comb_decl.ident, comb_name);
+        self.table.define_value(node, call_val);
+
+        Ok(())
     }
 
     fn gen_return(&mut self, block: MlirBlockRef<'ctx, 'blk>, node: &'ast Node) -> Result<()> {
         matches!(node.kind, NodeKind::Return(_));
         let loc = node.loc(self.ctx);
-        let return_op = match &node.kind {
+        let return_op: MlirOperation = match &node.kind {
             NodeKind::Return(Some(e)) => {
                 let return_value = self.gen_expr_reachable(block, &e.lhs)?;
                 let return_ty = self.table.get_type(&e.lhs)?;
                 self.table.define_type(node, return_ty);
-                ReturnOperation::builder(self.ctx, loc)
-                    .operands(&[return_value])
-                    .build()
+                match self.builder.surr_context {
+                    SurroundingContext::Sw => ReturnOperation::builder(self.ctx, loc)
+                        .operands(&[return_value])
+                        .build()
+                        .into(),
+                    SurroundingContext::Hw => HwProcReturnOperation::builder(self.ctx, loc)
+                        .outputs(&[return_value])
+                        .build()
+                        .into(),
+                }
             }
             NodeKind::Return(None) => {
                 self.table.define_type(node, TaraType::Void);
-                ReturnOperation::builder(self.ctx, loc)
-                    .operands(&[])
-                    .build()
+                match self.builder.surr_context {
+                    SurroundingContext::Sw => ReturnOperation::builder(self.ctx, loc)
+                        .operands(&[])
+                        .build()
+                        .into(),
+                    SurroundingContext::Hw => HwProcReturnOperation::builder(self.ctx, loc)
+                        .outputs(&[])
+                        .build()
+                        .into(),
+                }
             }
             _ => unreachable!(),
         };
 
-        block.append_operation(return_op.into());
+        block.append_operation(return_op);
+        assert!(block.terminator().is_some());
         Ok(())
     }
 
@@ -319,6 +540,10 @@ where
         let maybe_val = match &node.kind {
             NodeKind::StructDecl(_) => {
                 self.gen_struct_decl(node)?;
+                None
+            }
+            NodeKind::ModuleDecl(_) => {
+                self.gen_module_decl(node)?;
                 None
             }
             NodeKind::Return(_) => {
@@ -600,8 +825,10 @@ where
 
         self.table.define_type(node, lhs_type);
 
-        match node.kind {
-            NodeKind::Add(_) => {
+        let unit = MlirAttribute::unit(self.ctx);
+
+        match (self.builder.surr_context, &node.kind) {
+            (SurroundingContext::Sw, NodeKind::Add(_)) => {
                 let built = AddIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
@@ -609,7 +836,7 @@ where
                 let op = built.as_operation();
                 Ok(self.create(block, op)?)
             }
-            NodeKind::Sub(_) => {
+            (SurroundingContext::Sw, NodeKind::Sub(_)) => {
                 let built = SubIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
@@ -617,7 +844,7 @@ where
                 let op = built.as_operation();
                 Ok(self.create(block, op)?)
             }
-            NodeKind::Mul(_) => {
+            (SurroundingContext::Sw, NodeKind::Mul(_)) => {
                 let built = MulIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
@@ -625,8 +852,36 @@ where
                 let op = built.as_operation();
                 Ok(self.create(block, op)?)
             }
-            NodeKind::Div(_) => {
-                unimplemented!("Signed and unsigned division")
+            (SurroundingContext::Sw, NodeKind::Div(_)) => {
+                unimplemented!("SW: Signed and unsigned division")
+            }
+            (SurroundingContext::Hw, NodeKind::Add(_)) => {
+                let built = HwAddOperation::builder(self.ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            (SurroundingContext::Hw, NodeKind::Sub(_)) => {
+                let built = HwSubOperation::builder(self.ctx, loc)
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            (SurroundingContext::Hw, NodeKind::Mul(_)) => {
+                let built = HwMulOperation::builder(self.ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            (SurroundingContext::Hw, NodeKind::Div(_)) => {
+                unimplemented!("HW: Signed and unsigned division")
             }
             _ => unreachable!(),
         }
@@ -654,10 +909,12 @@ where
 
         let rhs = self.cast(block, rhs_node, lhs_type.clone())?;
 
-        self.table.define_type(node, lhs_type);
+        self.table.define_type(node, lhs_type.clone());
 
-        match node.kind {
-            NodeKind::BitAnd(_) => {
+        let unit = MlirAttribute::unit(self.ctx);
+
+        match (self.builder.surr_context, &node.kind) {
+            (SurroundingContext::Sw, NodeKind::BitAnd(_)) => {
                 let built = AndIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
@@ -665,7 +922,7 @@ where
                 let op = built.as_operation();
                 Ok(self.create(block, op)?)
             }
-            NodeKind::BitOr(_) => {
+            (SurroundingContext::Sw, NodeKind::BitOr(_)) => {
                 let built = OrIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
@@ -673,10 +930,39 @@ where
                 let op = built.as_operation();
                 Ok(self.create(block, op)?)
             }
-            NodeKind::BitXor(_) => {
+            (SurroundingContext::Sw, NodeKind::BitXor(_)) => {
                 let built = XOrIOperation::builder(self.ctx, loc)
                     .lhs(lhs)
                     .rhs(rhs)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            // TODO: melior doesn't generate function to set return types which is what comb
+            // expects
+            (SurroundingContext::Hw, NodeKind::BitAnd(_)) => {
+                // let builder = HwAndOperation::builder(self.ctx, loc)
+                //     .inputs(&[lhs, rhs])
+                //     .two_state(unit);
+                // let built = builder.build();
+                let op = OperationBuilder::new("comb.and", loc)
+                    .add_operands(&[lhs, rhs])
+                    .add_results(&[self.table.get_mlir_type(self.ctx, lhs_type)?])
+                    .build()?;
+                Ok(self.create(block, &op)?)
+            }
+            (SurroundingContext::Hw, NodeKind::BitOr(_)) => {
+                let built = HwOrOperation::builder(self.ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                Ok(self.create(block, op)?)
+            }
+            (SurroundingContext::Hw, NodeKind::BitXor(_)) => {
+                let built = HwXorOperation::builder(self.ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
                     .build();
                 let op = built.as_operation();
                 Ok(self.create(block, op)?)
@@ -685,8 +971,6 @@ where
         }
     }
 
-    // Generates a block. Ensures that the last instruction is a terminator returning void if
-    // necessary. It is the callers responsibility to ensure that the terminator type checks.
     fn gen_block(&mut self, block: MlirBlockRef<'ctx, 'blk>, nodes: &'ast [Node]) -> Result<()> {
         for (i, expr) in nodes.iter().enumerate() {
             if let None = self.gen_expr(block, expr)? {
@@ -698,7 +982,17 @@ where
                 }
             }
         }
+        Ok(())
+    }
 
+    // Generates a block. Ensures that the last instruction is a terminator returning void if
+    // necessary. It is the callers responsibility to ensure that the terminator type checks.
+    fn gen_block_terminated(
+        &mut self,
+        block: MlirBlockRef<'ctx, 'blk>,
+        nodes: &'ast [Node],
+    ) -> Result<()> {
+        self.gen_block(block, nodes)?;
         if let None = block.terminator() {
             let loc = Location::unknown(self.ctx);
             block.append_operation(r#return(self.ctx, &[], loc).into());
@@ -716,6 +1010,36 @@ where
                 } else {
                     unimplemented!()
                 }
+            }
+            NodeKind::ModuleDecl(m_d) => {
+                let mut ins = HashMap::new();
+                let mut outs = HashMap::new();
+                for comb in &m_d.members {
+                    match &comb.kind {
+                        NodeKind::SubroutineDecl(s_d) => {
+                            for param in &s_d.params {
+                                self.table.define_name(param.name, &param.ty)?;
+                                let param_ty = self.gen_type(&param.ty)?;
+                                let named_in = NamedType {
+                                    name: param.name,
+                                    ty: param_ty,
+                                };
+                                ins.insert(param.name, named_in);
+                            }
+                            let return_ty = self.gen_type(&s_d.return_type)?;
+                            let named_out = NamedType {
+                                name: s_d.ident,
+                                ty: return_ty,
+                            };
+                            outs.insert(s_d.ident, named_out);
+                        }
+                        _ => {}
+                    }
+                }
+                TaraType::Module(ModuleInfo {
+                    ins: Vec::from_iter(ins.into_values()),
+                    outs: Vec::from_iter(outs.into_values()),
+                })
             }
             _ => unimplemented!(),
         };
@@ -824,21 +1148,37 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Builder<'ctx, 'blk> {
+    surr_context: SurroundingContext,
     block: MlirBlockRef<'ctx, 'blk>,
+    module_builder: Option<()>,
 }
 
 impl<'ctx, 'blk> Builder<'ctx, 'blk> {
     pub fn new(block: MlirBlockRef<'ctx, 'blk>) -> Self {
-        Self { block }
+        Self {
+            surr_context: SurroundingContext::Sw,
+            block,
+            module_builder: None,
+        }
+    }
+
+    // Returns the current context and updates self to have a surr_context of `ctx`.
+    pub fn save(&mut self, ctx: SurroundingContext) -> Self {
+        let save = *self;
+        self.surr_context = ctx;
+        save
+    }
+
+    pub fn restore(&mut self, ctx: Self) {
+        *self = ctx;
     }
 
     // Set the insertion point of the builder. Returns previous insertion point
-    pub fn set_insertion_point(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-    ) -> MlirBlockRef<'ctx, 'blk> {
-        std::mem::replace(&mut self.block, block)
+    pub fn set_block(&mut self, block: MlirBlockRef<'ctx, '_>) {
+        let b = unsafe { MlirBlockRef::from_raw(block.to_raw()) };
+        self.block = b;
     }
 
     pub fn create(
@@ -857,6 +1197,15 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
             .add_successors(successors);
         let op = state.build()?;
         Ok(self.block.append_operation(op))
+    }
+
+    pub fn add_argument(
+        &self,
+        r#type: MlirType<'ctx>,
+        loc: Location<'ctx>,
+    ) -> MlirValue<'ctx, 'blk> {
+        let raw = self.block.add_argument(r#type, loc).to_raw();
+        unsafe { MlirValue::from_raw(raw) }
     }
 }
 
@@ -877,4 +1226,12 @@ fn get_maybe_primitive(s: &str) -> Option<TaraType> {
     } else {
         None
     }
+}
+
+// The context surrounding an operation. This changes when crossing software/hardware boundaries
+// (i.e. anything->module, anything->fn)
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum SurroundingContext {
+    Sw,
+    Hw,
 }

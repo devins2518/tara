@@ -10,6 +10,7 @@ pub mod variable;
 use crate::{
     ast::Ast,
     ast_codegen::AstCodegen,
+    circt,
     codegen::{package::Package, Codegen},
     comp::Compilation,
     module::{
@@ -144,8 +145,9 @@ impl Module {
         let registry = DialectRegistry::new();
         register_all_dialects(&registry);
         context.append_dialect_registry(&registry);
-        context.load_all_available_dialects();
+        circt::register_all_dialects(&context);
         context.set_allow_unregistered_dialects(true);
+        context.load_all_available_dialects();
         let module = MlirModule::new(Location::unknown(&context));
         let mut codegen = AstCodegen::new(&ast, &context, &module);
         codegen.gen_root()?;

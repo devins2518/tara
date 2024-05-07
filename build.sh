@@ -19,7 +19,29 @@ ninja -C build -j$(nproc) \
       install-mlir-libraries \
       install-circt-headers \
       install-circt-libraries \
-      install-llvm-config
+      install-llvm-config \
+      install-CIRCTCAPIArc \
+      install-CIRCTCAPIComb \
+      install-CIRCTCAPIConversion \
+      install-CIRCTCAPIDebug \
+      install-CIRCTCAPIESI \
+      install-CIRCTCAPIEmit \
+      install-CIRCTCAPIExportFIRRTL \
+      install-CIRCTCAPIExportVerilog \
+      install-CIRCTCAPIFIRRTL \
+      install-CIRCTCAPIFSM \
+      install-CIRCTCAPIFirtool \
+      install-CIRCTCAPIHW \
+      install-CIRCTCAPIHWArith \
+      install-CIRCTCAPIHandshake \
+      install-CIRCTCAPILLHD \
+      install-CIRCTCAPILTL \
+      install-CIRCTCAPIMSFT \
+      install-CIRCTCAPIMoore \
+      install-CIRCTCAPIOM \
+      install-CIRCTCAPISV \
+      install-CIRCTCAPISeq \
+      install-CIRCTCAPIVerif
 
 export TABLEGEN_190_PREFIX=$INSTALL_PREFIX
 export MLIR_SYS_190_PREFIX=$INSTALL_PREFIX

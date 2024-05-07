@@ -1,3 +1,4 @@
 [submodule "external/circt"]
 	path = external/circt
-	url = git@github.com:llvm/circt
+	url = git@github.com:devins2518/circt.git
+	branch = arc-capi
