@@ -18,7 +18,7 @@ pub fn arith(a: u1, b: u1) u1 {
 }
 
 // CHECK:   func.func @cmp(%arg0: i1, %arg1: i1) -> i1 {
-// CHECK:     %0 = arith.cmpi ult, %arg0, %arg1 : i1
+// CHECK:     %0 = arith.cmpi ugt, %arg0, %arg1 : i1
 // CHECK:     return %0 : i1
 // CHECK:   }
 pub fn cmp(a: u1, b: u1) bool {
@@ -53,7 +53,7 @@ pub fn arith_cast(a: u2, b: u1) u2 {
 
 // CHECK:   func.func @cmp_cast(%arg0: i2, %arg1: i1) -> i1 {
 // CHECK:     %0 = arith.extui %arg1 : i1 to i2
-// CHECK:     %1 = arith.cmpi ult, %arg0, %0 : i2
+// CHECK:     %1 = arith.cmpi ugt, %arg0, %0 : i2
 // CHECK:     return %1 : i1
 // CHECK:   }
 pub fn cmp_cast(a: u2, b: u1) bool {

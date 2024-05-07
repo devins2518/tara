@@ -83,22 +83,6 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
         }
     }
 
-    fn create<'blk, T: Into<MlirOperation<'ctx>> + Clone>(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        operation: &T,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
-        let op: T = operation.clone();
-        let op_ref = block.append_operation(op.into());
-        self.value_from_ref(op_ref)
-    }
-
-    fn value_from_ref<'blk>(&self, op_ref: MlirOperationRef) -> Result<MlirValue<'ctx, 'ctx>> {
-        let result = op_ref.result(0)?;
-        let raw_value = result.to_raw();
-        Ok(unsafe { MlirValue::from_raw(raw_value) })
-    }
-
     // Pushes a layer onto all tables
     fn push(&mut self) {
         self.table.push();
@@ -283,18 +267,17 @@ where
 
     fn gen_var_decl(&mut self, node: &'ast Node) -> Result<Option<MlirValue<'ctx, 'blk>>> {
         matches!(node.kind, NodeKind::VarDecl(_));
-        let block = self.module.body();
 
         let var_decl = match &node.kind {
             NodeKind::VarDecl(v_d) => v_d,
             _ => unreachable!(),
         };
 
-        if let Some(mut value) = self.gen_expr(block, &var_decl.expr)? {
+        if let Some(mut value) = self.gen_expr(&var_decl.expr)? {
             if let Some(ty_expr) = &var_decl.ty {
                 self.gen_type(ty_expr)?;
                 let expected_type = self.table.get_type(ty_expr)?;
-                value = self.cast(block, &var_decl.expr, expected_type.clone())?;
+                value = self.cast(&var_decl.expr, expected_type.clone())?;
                 self.table.define_typed_value(node, expected_type, value);
             } else {
                 // TODO: infer value type
@@ -312,16 +295,19 @@ where
             _ => unreachable!(),
         };
         self.push();
-        let prev_context = self.builder.save(SurroundingContext::Sw);
 
         let return_type = self.gen_type(&fn_decl.return_type)?;
         let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
 
         let loc = node.loc(self.ctx);
-        let body = self.module.body();
-        let fn_name = {
-            let block = MlirBlock::new(&[]);
+        let region = MlirRegion::new();
+        let block = MlirBlock::new(&[]);
+        let block_ref = region.append_block(block);
+        let prev_context = self
+            .builder
+            .save_with_block(SurroundingContext::Sw, block_ref);
 
+        let fn_name = {
             let mut param_types = Vec::new();
             for param in &fn_decl.params {
                 let param_ty = param.ty.as_ref();
@@ -330,15 +316,14 @@ where
                 let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type)?;
                 param_types.push(mlir_param_type);
 
-                let arg = block.add_argument(mlir_param_type, param.ty.loc(self.ctx));
+                let arg = self
+                    .builder
+                    .add_argument(mlir_param_type, param.ty.loc(self.ctx));
                 self.table.define_symbol(param.name, arg);
                 self.table.define_value(param_ty, arg);
             }
 
-            let region = MlirRegion::new();
-            let block_ref = region.append_block(block);
-
-            self.gen_block_terminated(block_ref, &fn_decl.block)?;
+            self.gen_block_terminated(&fn_decl.block)?;
             assert!(block_ref.terminator().is_some());
 
             // TODO: This assumes that all blocks terminate at their last instruction which might
@@ -378,7 +363,7 @@ where
                 .function_type(MlirTypeAttribute::new(fn_type));
             let func = builder.build();
             let fn_name = MlirFlatSymbolRefAttribute::new(self.ctx, func.sym_name()?.value());
-            body.append_operation(func.into());
+            self.module.body().append_operation(func.into());
             fn_name
         };
 
@@ -397,7 +382,6 @@ where
             _ => unreachable!(),
         };
         self.push();
-        let prev_context = self.builder.save(SurroundingContext::Hw);
 
         let return_type = self.gen_type(&comb_decl.return_type)?;
         let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
@@ -405,7 +389,12 @@ where
         let loc = node.loc(self.ctx);
         let body = self.module.body();
         let comb_name = {
+            let region = MlirRegion::new();
             let block = MlirBlock::new(&[]);
+            let block_ref = region.append_block(block);
+            let prev_context = self
+                .builder
+                .save_with_block(SurroundingContext::Hw, block_ref);
 
             let mut param_types = Vec::new();
             for param in &comb_decl.params {
@@ -416,15 +405,14 @@ where
                 let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type)?;
                 param_types.push(mlir_param_type);
 
-                let arg = block.add_argument(mlir_param_type, param.ty.loc(self.ctx));
+                let arg = self
+                    .builder
+                    .add_argument(mlir_param_type, param.ty.loc(self.ctx));
                 self.table.define_symbol(param.name, arg);
                 self.table.define_value(param_ty, arg);
             }
 
-            let region = MlirRegion::new();
-            let block_ref = region.append_block(block);
-
-            self.gen_block_terminated(block_ref, &comb_decl.block)?;
+            self.gen_block_terminated(&comb_decl.block)?;
 
             // TODO: This assumes that all blocks terminate at their last instruction which might
             // not be true
@@ -466,11 +454,11 @@ where
             let comb_name = MlirFlatSymbolRefAttribute::new(self.ctx, comb_decl.ident.as_str());
             let operation: MlirOperation = comb.into();
             body.append_operation(operation);
+            self.builder.restore(prev_context);
             comb_name
         };
 
         self.pop();
-        self.builder.restore(prev_context);
 
         let mut ins = Vec::new();
         for param in &comb_decl.params {
@@ -483,8 +471,9 @@ where
             .inputs(&ins)
             .outputs(&[mlir_return_type])
             .build();
-        let call_ref = self.builder.block.append_operation(call_op.into());
-        let call_val = self.value_from_ref(call_ref)?;
+        let call_val = self
+            .builder
+            .insert_operation(call_op.as_operation().clone())?;
 
         self.table.define_fn(comb_decl.ident, comb_name);
         self.table.define_value(node, call_val);
@@ -492,12 +481,12 @@ where
         Ok(())
     }
 
-    fn gen_return(&mut self, block: MlirBlockRef<'ctx, 'blk>, node: &'ast Node) -> Result<()> {
+    fn gen_return(&mut self, node: &'ast Node) -> Result<()> {
         matches!(node.kind, NodeKind::Return(_));
         let loc = node.loc(self.ctx);
         let return_op: MlirOperation = match &node.kind {
             NodeKind::Return(Some(e)) => {
-                let return_value = self.gen_expr_reachable(block, &e.lhs)?;
+                let return_value = self.gen_expr_reachable(&e.lhs)?;
                 let return_ty = self.table.get_type(&e.lhs)?;
                 self.table.define_type(node, return_ty);
                 match self.builder.surr_context {
@@ -527,16 +516,12 @@ where
             _ => unreachable!(),
         };
 
-        block.append_operation(return_op);
-        assert!(block.terminator().is_some());
+        self.builder.block.append_operation(return_op);
+        assert!(self.builder.block.terminator().is_some());
         Ok(())
     }
 
-    fn gen_expr(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        node: &'ast Node,
-    ) -> Result<Option<MlirValue<'ctx, 'blk>>> {
+    fn gen_expr(&mut self, node: &'ast Node) -> Result<Option<MlirValue<'ctx, 'blk>>> {
         let maybe_val = match &node.kind {
             NodeKind::StructDecl(_) => {
                 self.gen_struct_decl(node)?;
@@ -547,7 +532,7 @@ where
                 None
             }
             NodeKind::Return(_) => {
-                self.gen_return(block, node)?;
+                self.gen_return(node)?;
                 None
             }
             NodeKind::Or(_)
@@ -564,19 +549,15 @@ where
             | NodeKind::Add(_)
             | NodeKind::Sub(_)
             | NodeKind::Mul(_)
-            | NodeKind::Div(_) => Some(self.gen_bin_op(block, node)?),
-            NodeKind::Identifier(_) => Some(self.get_identifier(block, node)?),
+            | NodeKind::Div(_) => Some(self.gen_bin_op(node)?),
+            NodeKind::Identifier(_) => Some(self.get_identifier(node)?),
             _ => unimplemented!(),
         };
         Ok(maybe_val)
     }
 
-    fn gen_expr_reachable(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        node: &'ast Node,
-    ) -> Result<MlirValue<'ctx, 'blk>> {
-        let value = self.gen_expr(block, node)?.ok_or_else(|| {
+    fn gen_expr_reachable(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+        let value = self.gen_expr(node)?.ok_or_else(|| {
             Error::new(
                 node.span,
                 "Expected reachable value, control flow unexpectedly diverted".to_string(),
@@ -586,11 +567,7 @@ where
         Ok(value)
     }
 
-    fn gen_bin_op(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        node: &'ast Node,
-    ) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_bin_op(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
         matches!(
             node.kind,
             NodeKind::Or(_)
@@ -627,8 +604,8 @@ where
             | NodeKind::Div(bin) => bin,
             _ => unreachable!(),
         };
-        self.gen_expr_reachable(block, &bin_op.lhs)?;
-        self.gen_expr_reachable(block, &bin_op.rhs)?;
+        self.gen_expr_reachable(&bin_op.lhs)?;
+        self.gen_expr_reachable(&bin_op.rhs)?;
 
         match &node.kind {
             NodeKind::Or(_)
@@ -638,22 +615,18 @@ where
             | NodeKind::Lte(_)
             | NodeKind::Gte(_)
             | NodeKind::Eq(_)
-            | NodeKind::Neq(_) => self.gen_cmp(block, node),
+            | NodeKind::Neq(_) => self.gen_cmp(node),
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_) => {
-                self.gen_bitwise(block, node)
+                self.gen_bitwise(node)
             }
             NodeKind::Add(_) | NodeKind::Sub(_) | NodeKind::Mul(_) | NodeKind::Div(_) => {
-                self.gen_arith(block, node)
+                self.gen_arith(node)
             }
             _ => unreachable!(),
         }
     }
 
-    fn gen_cmp(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        node: &'ast Node,
-    ) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_cmp(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
         matches!(
             node.kind,
             NodeKind::Or(_)
@@ -689,122 +662,35 @@ where
             NodeKind::Lt(_) | NodeKind::Gt(_) | NodeKind::Lte(_) | NodeKind::Gte(_) => {
                 self.expect_integral_type(lhs_node)?;
                 self.expect_integral_type(rhs_node)?;
-                self.cast(block, rhs_node, lhs_type)?
+                self.cast(rhs_node, lhs_type)?
             }
             NodeKind::Eq(_) | NodeKind::Neq(_) => {
                 self.expect_integral_type(lhs_node)
                     .or(self.expect_bool_type(lhs_node))?;
                 self.expect_integral_type(rhs_node)
                     .or(self.expect_bool_type(rhs_node))?;
-                self.cast(block, rhs_node, lhs_type)?
+                self.cast(rhs_node, lhs_type)?
             }
             _ => unreachable!(),
         };
 
-        let i64_ty = TaraType::IntUnsigned { width: 64 };
-        let predicate_i64 = self.table.get_mlir_type(self.ctx, i64_ty)?;
         let bool_ty = TaraType::Bool;
-        let ret_type = self.table.get_mlir_type(self.ctx, bool_ty.clone())?;
         self.table.define_type(node, bool_ty);
 
         match node.kind {
-            NodeKind::Or(_) => {
-                let built = OrIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            NodeKind::And(_) => {
-                let built = AndIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            NodeKind::Lt(_) => {
-                let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(
-                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
-                    )
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .result(ret_type)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            NodeKind::Gt(_) => {
-                let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(
-                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
-                    )
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .result(ret_type)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            NodeKind::Lte(_) => {
-                let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(
-                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
-                    )
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .result(ret_type)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            NodeKind::Gte(_) => {
-                let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(
-                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
-                    )
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .result(ret_type)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            NodeKind::Eq(_) => {
-                let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(
-                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
-                    )
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .result(ret_type)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            NodeKind::Neq(_) => {
-                let built = CmpIOperation::builder(self.ctx, loc)
-                    .predicate(
-                        MlirIntegerAttribute::new(predicate_i64, CmpiPredicate::Ult as i64).into(),
-                    )
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .result(ret_type)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
+            NodeKind::Or(_) => self.builder.gen_log_or(self.ctx, loc, lhs, rhs),
+            NodeKind::And(_) => self.builder.gen_log_and(self.ctx, loc, lhs, rhs),
+            NodeKind::Lt(_) => self.builder.gen_log_lt(self.ctx, loc, lhs, rhs),
+            NodeKind::Gt(_) => self.builder.gen_log_gt(self.ctx, loc, lhs, rhs),
+            NodeKind::Lte(_) => self.builder.gen_log_lte(self.ctx, loc, lhs, rhs),
+            NodeKind::Gte(_) => self.builder.gen_log_gte(self.ctx, loc, lhs, rhs),
+            NodeKind::Eq(_) => self.builder.gen_log_eq(self.ctx, loc, lhs, rhs),
+            NodeKind::Neq(_) => self.builder.gen_log_neq(self.ctx, loc, lhs, rhs),
             _ => unreachable!(),
         }
     }
 
-    fn gen_arith(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        node: &'ast Node,
-    ) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_arith(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
         matches!(
             node.kind,
             NodeKind::Add(_) | NodeKind::Sub(_) | NodeKind::Mul(_) | NodeKind::Div(_)
@@ -821,77 +707,20 @@ where
         let lhs_type = self.table.get_type(lhs_node)?;
         self.expect_integral_type(&lhs_node)?;
 
-        let rhs = self.cast(block, rhs_node, lhs_type.clone())?;
+        let rhs = self.cast(rhs_node, lhs_type.clone())?;
 
         self.table.define_type(node, lhs_type);
 
-        let unit = MlirAttribute::unit(self.ctx);
-
-        match (self.builder.surr_context, &node.kind) {
-            (SurroundingContext::Sw, NodeKind::Add(_)) => {
-                let built = AddIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Sw, NodeKind::Sub(_)) => {
-                let built = SubIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Sw, NodeKind::Mul(_)) => {
-                let built = MulIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Sw, NodeKind::Div(_)) => {
-                unimplemented!("SW: Signed and unsigned division")
-            }
-            (SurroundingContext::Hw, NodeKind::Add(_)) => {
-                let built = HwAddOperation::builder(self.ctx, loc)
-                    .inputs(&[lhs, rhs])
-                    .two_state(unit)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Hw, NodeKind::Sub(_)) => {
-                let built = HwSubOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .two_state(unit)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Hw, NodeKind::Mul(_)) => {
-                let built = HwMulOperation::builder(self.ctx, loc)
-                    .inputs(&[lhs, rhs])
-                    .two_state(unit)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Hw, NodeKind::Div(_)) => {
-                unimplemented!("HW: Signed and unsigned division")
-            }
+        match &node.kind {
+            NodeKind::Add(_) => self.builder.gen_int_add(self.ctx, loc, lhs, rhs),
+            NodeKind::Sub(_) => self.builder.gen_int_sub(self.ctx, loc, lhs, rhs),
+            NodeKind::Mul(_) => self.builder.gen_int_mul(self.ctx, loc, lhs, rhs),
+            NodeKind::Div(_) => self.builder.gen_int_div(self.ctx, loc, lhs, rhs),
             _ => unreachable!(),
         }
     }
 
-    fn gen_bitwise(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        node: &'ast Node,
-    ) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_bitwise(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
         matches!(
             node.kind,
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_)
@@ -907,73 +736,21 @@ where
         let lhs_type = self.table.get_type(lhs_node)?;
         self.expect_integral_type(&lhs_node)?;
 
-        let rhs = self.cast(block, rhs_node, lhs_type.clone())?;
+        let rhs = self.cast(rhs_node, lhs_type.clone())?;
 
         self.table.define_type(node, lhs_type.clone());
 
-        let unit = MlirAttribute::unit(self.ctx);
-
-        match (self.builder.surr_context, &node.kind) {
-            (SurroundingContext::Sw, NodeKind::BitAnd(_)) => {
-                let built = AndIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Sw, NodeKind::BitOr(_)) => {
-                let built = OrIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Sw, NodeKind::BitXor(_)) => {
-                let built = XOrIOperation::builder(self.ctx, loc)
-                    .lhs(lhs)
-                    .rhs(rhs)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            // TODO: melior doesn't generate function to set return types which is what comb
-            // expects
-            (SurroundingContext::Hw, NodeKind::BitAnd(_)) => {
-                // let builder = HwAndOperation::builder(self.ctx, loc)
-                //     .inputs(&[lhs, rhs])
-                //     .two_state(unit);
-                // let built = builder.build();
-                let op = OperationBuilder::new("comb.and", loc)
-                    .add_operands(&[lhs, rhs])
-                    .add_results(&[self.table.get_mlir_type(self.ctx, lhs_type)?])
-                    .build()?;
-                Ok(self.create(block, &op)?)
-            }
-            (SurroundingContext::Hw, NodeKind::BitOr(_)) => {
-                let built = HwOrOperation::builder(self.ctx, loc)
-                    .inputs(&[lhs, rhs])
-                    .two_state(unit)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
-            (SurroundingContext::Hw, NodeKind::BitXor(_)) => {
-                let built = HwXorOperation::builder(self.ctx, loc)
-                    .inputs(&[lhs, rhs])
-                    .two_state(unit)
-                    .build();
-                let op = built.as_operation();
-                Ok(self.create(block, op)?)
-            }
+        match &node.kind {
+            NodeKind::BitAnd(_) => self.builder.gen_bit_and(self.ctx, loc, lhs, rhs),
+            NodeKind::BitOr(_) => self.builder.gen_bit_or(self.ctx, loc, lhs, rhs),
+            NodeKind::BitXor(_) => self.builder.gen_bit_xor(self.ctx, loc, lhs, rhs),
             _ => unreachable!(),
         }
     }
 
-    fn gen_block(&mut self, block: MlirBlockRef<'ctx, 'blk>, nodes: &'ast [Node]) -> Result<()> {
+    fn gen_block(&mut self, nodes: &'ast [Node]) -> Result<()> {
         for (i, expr) in nodes.iter().enumerate() {
-            if let None = self.gen_expr(block, expr)? {
+            if let None = self.gen_expr(expr)? {
                 if i != (nodes.len() - 1) {
                     Err(Error::new(
                         nodes[i + 1].span,
@@ -987,15 +764,13 @@ where
 
     // Generates a block. Ensures that the last instruction is a terminator returning void if
     // necessary. It is the callers responsibility to ensure that the terminator type checks.
-    fn gen_block_terminated(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        nodes: &'ast [Node],
-    ) -> Result<()> {
-        self.gen_block(block, nodes)?;
-        if let None = block.terminator() {
+    fn gen_block_terminated(&mut self, nodes: &'ast [Node]) -> Result<()> {
+        self.gen_block(nodes)?;
+        if let None = self.builder.block.terminator() {
             let loc = Location::unknown(self.ctx);
-            block.append_operation(r#return(self.ctx, &[], loc).into());
+            self.builder
+                .block
+                .append_operation(r#return(self.ctx, &[], loc).as_operation().clone());
         }
 
         Ok(())
@@ -1047,11 +822,7 @@ where
         Ok(RRC::new(ty))
     }
 
-    fn get_identifier(
-        &mut self,
-        _: MlirBlockRef,
-        node: &'ast Node,
-    ) -> Result<MlirValue<'ctx, 'blk>> {
+    fn get_identifier(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
         self.table.get_identifier_value(node)
     }
 }
@@ -1082,12 +853,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         }
     }
 
-    fn cast(
-        &mut self,
-        block: MlirBlockRef<'ctx, 'blk>,
-        node: &Node,
-        expected_type: RRC<TaraType>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+    fn cast(&mut self, node: &Node, expected_type: RRC<TaraType>) -> Result<MlirValue<'ctx, 'ctx>> {
         let expected_type_borrow = expected_type.borrow();
         let actual_type = self.table.get_type(node)?;
         let actual_type_borrow = actual_type.borrow();
@@ -1108,7 +874,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                         .out(expected_mlir_type)
                         .build();
                     let op = built.as_operation();
-                    Ok(self.create(block, op)?)
+                    self.builder.insert_operation(op.clone())
                 } else {
                     Err(Error::new(
                         node.span,
@@ -1129,7 +895,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                         .out(expected_mlir_type)
                         .build();
                     let op = built.as_operation();
-                    Ok(self.create(block, op)?)
+                    self.builder.insert_operation(op.clone())
                 } else {
                     Err(Error::new(
                         node.span,
@@ -1171,11 +937,24 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         save
     }
 
+    // Returns the current context and updates self to have a surr_context of `ctx` with a new
+    // block.
+    pub fn save_with_block(
+        &mut self,
+        ctx: SurroundingContext,
+        block: MlirBlockRef<'ctx, '_>,
+    ) -> Self {
+        let save = *self;
+        self.surr_context = ctx;
+        self.set_block(block);
+        save
+    }
+
     pub fn restore(&mut self, ctx: Self) {
         *self = ctx;
     }
 
-    // Set the insertion point of the builder. Returns previous insertion point
+    // Set the insertion point of the builder
     pub fn set_block(&mut self, block: MlirBlockRef<'ctx, '_>) {
         let b = unsafe { MlirBlockRef::from_raw(block.to_raw()) };
         self.block = b;
@@ -1206,6 +985,395 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
     ) -> MlirValue<'ctx, 'blk> {
         let raw = self.block.add_argument(r#type, loc).to_raw();
         unsafe { MlirValue::from_raw(raw) }
+    }
+
+    fn insert_operation<T: Into<MlirOperation<'ctx>> + Clone>(
+        &self,
+        op: T,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let op_ref = self.block.append_operation(op.into());
+        let res = op_ref.result(0)?;
+        let raw_val = res.to_raw();
+        Ok(unsafe { MlirValue::from_raw(raw_val) })
+    }
+
+    // TODO: melior doesn't generate function to set return types which is what comb
+    // expects
+    pub fn gen_bit_and(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let lhs_type = lhs.r#type();
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = AndIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let op = OperationBuilder::new("comb.and", loc)
+                    .add_operands(&[lhs, rhs])
+                    .add_results(&[lhs_type])
+                    .build()?;
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn gen_bit_or(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let unit = MlirAttribute::unit(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = OrIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let built = HwOrOperation::builder(ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn gen_bit_xor(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let unit = MlirAttribute::unit(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = XOrIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let built = HwXorOperation::builder(ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn gen_int_add(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let unit = MlirAttribute::unit(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = AddIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let built = HwAddOperation::builder(ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn gen_int_sub(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let unit = MlirAttribute::unit(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = SubIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let built = HwSubOperation::builder(ctx, loc)
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn gen_int_mul(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let unit = MlirAttribute::unit(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = MulIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let built = HwMulOperation::builder(ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn gen_int_div(
+        &self,
+        _: &'ctx Context,
+        _: Location<'ctx>,
+        _: MlirValue<'ctx, 'ctx>,
+        _: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                unimplemented!("SW: Signed and unsigned division")
+            }
+            SurroundingContext::Hw => {
+                unimplemented!("HW: Signed and unsigned division")
+            }
+        }
+    }
+
+    pub fn gen_log_or(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = OrIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
+    }
+
+    pub fn gen_log_and(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = AndIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
+    }
+
+    // TODO: Support signed and unsigned lt
+    pub fn gen_log_lt(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
+        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = CmpIOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CmpiPredicate::Ult as i64).into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
+    }
+
+    // TODO: Support signed and unsigned gt
+    pub fn gen_log_gt(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
+        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = CmpIOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CmpiPredicate::Ugt as i64).into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
+    }
+
+    // TODO: Support signed and unsigned lte
+    pub fn gen_log_lte(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
+        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = CmpIOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CmpiPredicate::Ule as i64).into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
+    }
+
+    // TODO: Support signed and unsigned gte
+    pub fn gen_log_gte(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
+        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = CmpIOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CmpiPredicate::Uge as i64).into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
+    }
+
+    pub fn gen_log_eq(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
+        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = CmpIOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CmpiPredicate::Eq as i64).into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
+    }
+
+    pub fn gen_log_neq(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        lhs: MlirValue<'ctx, 'ctx>,
+        rhs: MlirValue<'ctx, 'ctx>,
+    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
+        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = CmpIOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CmpiPredicate::Ne as i64).into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                unimplemented!()
+            }
+        }
     }
 }
 
