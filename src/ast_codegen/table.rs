@@ -21,8 +21,8 @@ pub struct Table<'ctx, 'ast> {
     name_table: ScopeMap<GlobalSymbol, &'ast Node>,
     // TODO: store params for type checking
     fn_table: ScopeMap<GlobalSymbol, MlirFlatSymbolRefAttribute<'ctx>>,
-    value_table: HashMap<*const Node, MlirValue<'ctx, 'ctx>>,
-    type_table: HashMap<*const Node, RRC<TaraType>>,
+    value_table: ScopeMap<*const Node, MlirValue<'ctx, 'ctx>>,
+    type_table: ScopeMap<*const Node, RRC<TaraType>>,
     type_conversion_table: HashMap<RRC<TaraType>, MlirType<'ctx>>,
 }
 
@@ -31,8 +31,8 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         Self {
             name_table: ScopeMap::new(),
             fn_table: ScopeMap::new(),
-            value_table: HashMap::new(),
-            type_table: HashMap::new(),
+            value_table: ScopeMap::new(),
+            type_table: ScopeMap::new(),
             type_conversion_table: HashMap::new(),
         }
     }
@@ -78,14 +78,14 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
 
     pub fn define_type<T: Into<RRC<TaraType>>>(&mut self, node: &'ast Node, ty: T) {
         let rrc = ty.into();
-        self.type_table.insert(node, rrc);
+        self.type_table.define(node, rrc);
     }
 
     pub fn define_value(&mut self, node: &Node, value: MlirValue<'ctx, '_>) {
         let ptr: *const Node = node;
         let raw_value = value.to_raw();
         self.value_table
-            .insert(ptr, unsafe { MlirValue::from_raw(raw_value) });
+            .define(ptr, unsafe { MlirValue::from_raw(raw_value) });
     }
 
     pub fn get_name(&self, node: &Node) -> Option<GlobalSymbol> {
@@ -95,6 +95,10 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
             }
         }
         None
+    }
+
+    pub fn get_node(&self, name: GlobalSymbol) -> &Node {
+        self.name_table.get(&name).unwrap()
     }
 
     pub fn get_type(&self, node: &Node) -> Result<RRC<TaraType>> {
@@ -138,12 +142,16 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
     pub fn push(&mut self) {
         self.name_table.push_layer();
         self.fn_table.push_layer();
+        self.value_table.push_layer();
+        self.type_table.push_layer();
     }
 
     // Pops a layer from all tables
     pub fn pop(&mut self) {
         self.name_table.pop_layer();
         self.fn_table.pop_layer();
+        self.value_table.pop_layer();
+        self.type_table.pop_layer();
     }
 
     pub fn get_identifier_value(&self, node: &Node) -> Result<MlirValue<'ctx, 'ctx>> {
@@ -165,7 +173,10 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
             NodeKind::Identifier(i) => i,
             _ => unreachable!(),
         };
-        let ident_node: *const Node = *self.name_table.get(&ident).unwrap();
+        let ident_node: *const Node = *self
+            .name_table
+            .get(&ident)
+            .ok_or_else(|| Error::new(node.span, "Use of unknown identifier".to_string()))?;
         self.type_table
             .get(&ident_node)
             .ok_or_else(|| Error::new(node.span, "Unknown identifier".to_string()).into())

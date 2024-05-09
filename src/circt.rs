@@ -181,3 +181,22 @@ pub enum ModulePortDirection {
     Out = sys::HWModulePortDirection_Output,
     InOut = sys::HWModulePortDirection_InOut,
 }
+
+// Predicate for `cmp.icmp` operation.
+#[repr(u64)]
+pub enum CombICmpPredicate {
+    Eq = 0,
+    Ne = 1,
+    Slt = 2,
+    Sle = 3,
+    Sgt = 4,
+    Sge = 5,
+    Ult = 6,
+    Ule = 7,
+    Ugt = 8,
+    Uge = 9,
+    Ceq = 10,
+    Cne = 11,
+    Weq = 12,
+    Wne = 13,
+}

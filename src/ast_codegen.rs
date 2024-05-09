@@ -10,11 +10,12 @@ use crate::{
             OutputOperation as HwProcReturnOperation,
         },
         comb::{
-            AddOperation as HwAddOperation, MulOperation as HwMulOperation,
+            ICmpOperation as HwCmpOperation, MulOperation as HwMulOperation,
             OrOperation as HwOrOperation, SubOperation as HwSubOperation,
             XorOperation as HwXorOperation,
         },
         hw::{HWModuleOperation as HwModuleOperation, OutputOperation as HwOutputOperation},
+        CombICmpPredicate,
     },
     module::file::File,
     types::{ModuleInfo, NamedType, Type as TaraType},
@@ -29,6 +30,7 @@ use codespan_reporting::{
         termcolor::{ColorChoice, StandardStream},
     },
 };
+use indexmap::map::{Entry, IndexMap};
 use melior::{
     dialect::{
         arith::CmpiPredicate,
@@ -53,7 +55,7 @@ use melior::{
         r#type::FunctionType as MlirFunctionType,
         Attribute as MlirAttribute, Block as MlirBlock, BlockRef as MlirBlockRef,
         Identifier as MlirIdentifier, Location, Module as MlirModule, Region as MlirRegion,
-        Type as MlirType, TypeLike, Value as MlirValue, ValueLike,
+        Type as MlirType, Value as MlirValue, ValueLike,
     },
     Context,
 };
@@ -138,7 +140,6 @@ where
     ) -> Result<()> {
         matches!(node.kind, NodeKind::StructDecl(_));
         // Setup name table
-        self.push();
         let members = match &node.kind {
             NodeKind::StructDecl(s) => &s.members,
             NodeKind::ModuleDecl(m) => &m.members,
@@ -168,16 +169,19 @@ where
             }
         }
 
-        self.pop();
         Ok(())
     }
 
     fn gen_struct_decl(&mut self, node: &'ast Node) -> Result<()> {
-        self._gen_container(node, Self::gen_fn_decl)
+        self.push();
+        self._gen_container(node, Self::gen_fn_decl)?;
+        self.pop();
+        Ok(())
     }
 
     fn gen_module_decl(&mut self, node: &'ast Node) -> Result<()> {
         matches!(node.kind, NodeKind::ModuleDecl(_));
+        self.push();
         let mod_decl = match &node.kind {
             NodeKind::ModuleDecl(m_d) => m_d,
             _ => unreachable!(),
@@ -189,27 +193,30 @@ where
         let body = region.append_block(MlirBlock::new(&[]));
         self.builder.set_block(body);
 
+        // Here we'll generate all of the inputs to the module by analyzing each comb.
+        // TODO: This should only be done for method combs (i.e. @This() is first parameter), all
+        // other combs should be free
         {
-            let mut ins = Vec::new();
+            let mut ins: IndexMap<GlobalSymbol, (RRC<TaraType>, &Node)> = IndexMap::new();
             let mut outs = Vec::new();
             for member in &mod_decl.members {
                 match &member.kind {
                     NodeKind::SubroutineDecl(s_d) => {
                         for param in &s_d.params {
                             let param_ty = param.ty.as_ref();
-                            self.table.define_name(param.name, param_ty)?;
                             let param_type = self.gen_type(param_ty)?;
-                            let mlir_param_type =
-                                self.table.get_mlir_type(self.ctx, param_type.clone())?;
-                            let arg = self
-                                .builder
-                                .add_argument(mlir_param_type, param_ty.loc(self.ctx));
-                            self.table.define_symbol(param.name, arg);
-                            self.table.define_value(param_ty, arg);
-                            ins.push(NamedType {
-                                name: param.name,
-                                ty: param_type,
-                            });
+
+                            match ins.entry(param.name) {
+                                Entry::Occupied(entry) => {
+                                    if entry.get().0 != param_type {
+                                        Err(Error::new(
+                                            member.span,
+                                            "Comb params have different types!".to_string(),
+                                        ))?;
+                                    }
+                                }
+                                Entry::Vacant(entry) => _ = entry.insert((param_type, param_ty)),
+                            }
                         }
                         outs.push(NamedType {
                             name: s_d.ident,
@@ -219,6 +226,28 @@ where
                     _ => {}
                 }
             }
+
+            // And now that we have the reduced set of inputs, we can generate module inputs
+            let ins = {
+                let mut v = Vec::new();
+                for (name, ty_and_node) in ins {
+                    let param_type = ty_and_node.0;
+                    let param_node = ty_and_node.1;
+                    self.table.define_name(name, param_node)?;
+                    let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type.clone())?;
+                    let arg = self
+                        .builder
+                        .add_argument(mlir_param_type, param_node.loc(self.ctx));
+                    self.table.define_symbol(name, arg);
+                    self.table
+                        .define_typed_value(param_node, param_type.clone(), arg);
+                    v.push(NamedType {
+                        name,
+                        ty: param_type,
+                    });
+                }
+                v
+            };
             let mod_info = ModuleInfo { ins, outs };
             self.table.define_type(node, TaraType::Module(mod_info));
         }
@@ -262,6 +291,7 @@ where
         self.module.body().append_operation(operation);
 
         self.builder.restore(prev_context);
+        self.pop();
         Ok(())
     }
 
@@ -316,14 +346,14 @@ where
                 let param_ty = param.ty.as_ref();
                 self.table.define_name(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
-                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type)?;
+                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type.clone())?;
                 param_types.push(mlir_param_type);
 
                 let arg = self
                     .builder
                     .add_argument(mlir_param_type, param.ty.loc(self.ctx));
                 self.table.define_symbol(param.name, arg);
-                self.table.define_value(param_ty, arg);
+                self.table.define_typed_value(param_ty, param_type, arg);
             }
 
             self.gen_block_terminated(&fn_decl.block)?;
@@ -372,17 +402,15 @@ where
             let mut param_types = Vec::new();
             for param in &comb_decl.params {
                 let param_ty = param.ty.as_ref();
-                self.table
-                    .define_name_intentional_shadow(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
-                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type)?;
+                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type.clone())?;
                 param_types.push(mlir_param_type);
 
                 let arg = self
                     .builder
                     .add_argument(mlir_param_type, param.ty.loc(self.ctx));
                 self.table.define_symbol(param.name, arg);
-                self.table.define_value(param_ty, arg);
+                self.table.define_typed_value(param_ty, param_type, arg);
             }
 
             self.gen_block_terminated(&comb_decl.block)?;
@@ -405,8 +433,8 @@ where
 
         let mut ins = Vec::new();
         for param in &comb_decl.params {
-            let param_ty = param.ty.as_ref();
-            let param_val = self.table.get_value(param_ty)?;
+            let real_param_node = self.table.get_node(param.name);
+            let param_val = self.table.get_value(real_param_node)?;
             ins.push(param_val);
         }
         let call_op = HwProcCallOperation::builder(self.ctx, loc)
@@ -419,7 +447,7 @@ where
             .insert_operation(call_op.as_operation().clone())?;
 
         self.table.define_fn(comb_decl.ident, comb_name);
-        self.table.define_value(node, call_val);
+        self.table.define_typed_value(node, return_type, call_val);
 
         Ok(())
     }
@@ -1029,7 +1057,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: MlirValue<'ctx, 'ctx>,
         rhs: MlirValue<'ctx, 'ctx>,
     ) -> Result<MlirValue<'ctx, 'ctx>> {
-        let unit = MlirAttribute::unit(ctx);
+        let lhs_type = lhs.r#type();
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = AddIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
@@ -1037,12 +1065,11 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                let built = HwAddOperation::builder(ctx, loc)
-                    .inputs(&[lhs, rhs])
-                    .two_state(unit)
-                    .build();
-                let op = built.as_operation();
-                self.insert_operation(op.clone())
+                let op = OperationBuilder::new("comb.add", loc)
+                    .add_operands(&[lhs, rhs])
+                    .add_results(&[lhs_type])
+                    .build()?;
+                self.insert_operation(op)
             }
         }
     }
@@ -1122,6 +1149,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: MlirValue<'ctx, 'ctx>,
         rhs: MlirValue<'ctx, 'ctx>,
     ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = OrIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
@@ -1129,7 +1157,12 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let built = HwOrOperation::builder(ctx, loc)
+                    .inputs(&[lhs, rhs])
+                    .two_state(unit)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
             }
         }
     }
@@ -1141,6 +1174,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: MlirValue<'ctx, 'ctx>,
         rhs: MlirValue<'ctx, 'ctx>,
     ) -> Result<MlirValue<'ctx, 'ctx>> {
+        let lhs_type = lhs.r#type();
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = AndIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
@@ -1148,7 +1182,11 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let op = OperationBuilder::new("comb.and", loc)
+                    .add_operands(&[lhs, rhs])
+                    .add_results(&[lhs_type])
+                    .build()?;
+                self.insert_operation(op.clone())
             }
         }
     }
@@ -1192,6 +1230,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
     ) -> Result<MlirValue<'ctx, 'ctx>> {
         let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
         let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1206,7 +1245,18 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let built = HwCmpOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CombICmpPredicate::Ugt as i64)
+                            .into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .two_state(unit)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
             }
         }
     }

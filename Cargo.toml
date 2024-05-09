@@ -23,6 +23,7 @@ mlir-sys = { version = "0.2.1", features = ["llvm-trunk"], default-features = fa
 log = "0.4.21"
 simple_logger = "4.3.3"
 quickscope = "0.2.0"
+indexmap = "2.2.6"
 
 [patch.crates-io]
 melior = { git = "https://github.com/mikeurbach/melior.git", package = "melior", branch = "mikeurbach/latest-mlir" }
