@@ -272,6 +272,8 @@ where
             NodeKind::VarDecl(v_d) => v_d,
             _ => unreachable!(),
         };
+        let block = self.module.body();
+        let prev_context = self.builder.save_with_block(SurroundingContext::Sw, block);
 
         if let Some(mut value) = self.gen_expr(&var_decl.expr)? {
             if let Some(ty_expr) = &var_decl.ty {
@@ -306,6 +308,7 @@ where
         let prev_context = self
             .builder
             .save_with_block(SurroundingContext::Sw, block_ref);
+        self.builder.block_ret_ty = Some(return_type.clone());
 
         let fn_name = {
             let mut param_types = Vec::new();
@@ -324,37 +327,6 @@ where
             }
 
             self.gen_block_terminated(&fn_decl.block)?;
-            assert!(block_ref.terminator().is_some());
-
-            // TODO: This assumes that all blocks terminate at their last instruction which might
-            // not be true
-            if let Some(last_node) = fn_decl.block.last() {
-                let return_expr = match &last_node.kind {
-                    NodeKind::Return(Some(return_expr)) => &return_expr.lhs,
-                    _ => unreachable!(),
-                };
-                let curr_return_type = self.table.get_type(return_expr)?;
-                if curr_return_type != return_type {
-                    unimplemented!("TODO: Cast return value of block");
-                    /*
-                    let mut owned_block = unsafe { MlirBlock::from_raw(block_ref.to_raw()) };
-                    let mut terminator = owned_block.terminator_mut().unwrap();
-                    let return_value = self.cast(block_ref, return_expr, &return_type)?;
-                    let return_op = ReturnOperation::builder(self.ctx, loc)
-                        .operands(&[return_value])
-                        .build();
-                    block_ref.insert_operation_before(terminator, return_op.into());
-                    terminator.remove_from_parent();
-                    */
-                }
-            } else {
-                if *return_type.borrow() != TaraType::Void {
-                    Err(Error::new(
-                        node.span,
-                        "Body returns void but return type is not void".to_string(),
-                    ))?;
-                }
-            }
 
             let fn_type = MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
             let builder = FuncOperation::builder(self.ctx, loc)
@@ -395,6 +367,7 @@ where
             let prev_context = self
                 .builder
                 .save_with_block(SurroundingContext::Hw, block_ref);
+            self.builder.block_ret_ty = Some(return_type.clone());
 
             let mut param_types = Vec::new();
             for param in &comb_decl.params {
@@ -413,36 +386,6 @@ where
             }
 
             self.gen_block_terminated(&comb_decl.block)?;
-
-            // TODO: This assumes that all blocks terminate at their last instruction which might
-            // not be true
-            if let Some(last_node) = comb_decl.block.last() {
-                let return_expr = match &last_node.kind {
-                    NodeKind::Return(Some(return_expr)) => &return_expr.lhs,
-                    _ => unreachable!(),
-                };
-                let curr_return_type = self.table.get_type(return_expr)?;
-                if curr_return_type != return_type {
-                    unimplemented!("TODO: Cast return value of block");
-                    /*
-                    let mut owned_block = unsafe { MlirBlock::from_raw(block_ref.to_raw()) };
-                    let mut terminator = owned_block.terminator_mut().unwrap();
-                    let return_value = self.cast(block_ref, return_expr, &return_type)?;
-                    let return_op = ReturnOperation::builder(self.ctx, loc)
-                        .operands(&[return_value])
-                        .build();
-                    block_ref.insert_operation_before(terminator, return_op.into());
-                    terminator.remove_from_parent();
-                    */
-                }
-            } else {
-                if *return_type.borrow() != TaraType::Void {
-                    Err(Error::new(
-                        node.span,
-                        "Body returns void but return type is not void".to_string(),
-                    ))?;
-                }
-            }
 
             let comb_type =
                 MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
@@ -488,14 +431,15 @@ where
             NodeKind::Return(Some(e)) => {
                 let return_value = self.gen_expr_reachable(&e.lhs)?;
                 let return_ty = self.table.get_type(&e.lhs)?;
-                self.table.define_type(node, return_ty);
+                self.table.define_typed_value(node, return_ty, return_value);
+                let casted_value = self.cast(node, self.builder.ret_ty())?;
                 match self.builder.surr_context {
                     SurroundingContext::Sw => ReturnOperation::builder(self.ctx, loc)
-                        .operands(&[return_value])
+                        .operands(&[casted_value])
                         .build()
                         .into(),
                     SurroundingContext::Hw => HwProcReturnOperation::builder(self.ctx, loc)
-                        .outputs(&[return_value])
+                        .outputs(&[casted_value])
                         .build()
                         .into(),
                 }
@@ -763,7 +707,7 @@ where
     }
 
     // Generates a block. Ensures that the last instruction is a terminator returning void if
-    // necessary. It is the callers responsibility to ensure that the terminator type checks.
+    // necessary. Performs type checking by casting to `self.builder.ret_ty`.
     fn gen_block_terminated(&mut self, nodes: &'ast [Node]) -> Result<()> {
         self.gen_block(nodes)?;
         if let None = self.builder.block.terminator() {
@@ -914,11 +858,11 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Builder<'ctx, 'blk> {
     surr_context: SurroundingContext,
     block: MlirBlockRef<'ctx, 'blk>,
-    module_builder: Option<()>,
+    block_ret_ty: Option<RRC<TaraType>>,
 }
 
 impl<'ctx, 'blk> Builder<'ctx, 'blk> {
@@ -926,13 +870,13 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         Self {
             surr_context: SurroundingContext::Sw,
             block,
-            module_builder: None,
+            block_ret_ty: None,
         }
     }
 
     // Returns the current context and updates self to have a surr_context of `ctx`.
     pub fn save(&mut self, ctx: SurroundingContext) -> Self {
-        let save = *self;
+        let save = self.clone();
         self.surr_context = ctx;
         save
     }
@@ -944,10 +888,15 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         ctx: SurroundingContext,
         block: MlirBlockRef<'ctx, '_>,
     ) -> Self {
-        let save = *self;
-        self.surr_context = ctx;
+        let save = self.save(ctx);
         self.set_block(block);
         save
+    }
+
+    pub fn ret_ty(&self) -> RRC<TaraType> {
+        self.block_ret_ty
+            .clone()
+            .unwrap_or(RRC::new(TaraType::Void))
     }
 
     pub fn restore(&mut self, ctx: Self) {

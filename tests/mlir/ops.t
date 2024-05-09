@@ -60,9 +60,13 @@ pub fn cmp_cast(a: u2, b: u1) bool {
     return a > b;
 }
 
-// TODO Enable once return value tracking is added
-// pub fn ret_val_cast(a: i1, b: i1) i2 {
-//     return a & b;
-// }
+// CHECK: func.func @ret_val_cast(%arg0: i1, %arg1: i1) -> i2 {
+// CHECK:   %0 = arith.andi %arg0, %arg1 : i1
+// CHECK:   %1 = arith.extsi %0 : i1 to i2
+// CHECK:   return %1 : i2
+// CHECK: }
+pub fn ret_val_cast(a: i1, b: i1) i2 {
+    return a & b;
+}
 
 // CHECK: }
