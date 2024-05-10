@@ -68,6 +68,9 @@ const Top = module {
     pub comb ret_val_cast(f: i1, g: i1) i2 {
         return f & g;
     }
+
+    // Don't generate anything for this comb as no computation is done
+    pub comb test_void_ret(hi: u1, there: i2) void {}
 };
 // CHECK:   hw.module @Top(in %a : i1, in %b : i1, in %c : i1, in %d : i1, in %e : i2, in %f : i1, in %g : i1, out bitwise : i1, out arith : i1, out cmp : i1, out cmp_bool : i1, out bitsize_cast : i2, out arith_cast : i2, out cmp_cast : i1, out ret_val_cast : i2) {
 // CHECK:     %0 = arc.call @bitwise(%a, %b) : (i1, i1) -> i1

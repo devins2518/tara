@@ -108,6 +108,8 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
                     let config = codespan_reporting::term::Config::default();
 
                     term::emit(&mut writer.lock(), &config, file, &diagnostic)?;
+                } else {
+                    println!("{}", error);
                 }
             }
             anyhow::bail!("compilation errors!")
@@ -159,11 +161,18 @@ where
                 NodeKind::VarDecl(v_d) => match self.gen_var_decl(&member) {
                     Ok(Some(val)) => self.table.define_symbol(v_d.ident, val),
                     Ok(None) => {}
-                    Err(e) => self.errors.push(e),
+                    Err(e) => {
+                        self.pop();
+                        self.errors.push(e);
+                    }
                 },
                 NodeKind::SubroutineDecl(_) => match subroutine_gen(self, &member) {
                     Ok(_) => {}
-                    Err(e) => self.errors.push(e),
+                    Err(e) => {
+                        println!("got error");
+                        self.pop();
+                        self.errors.push(e);
+                    }
                 },
                 _ => unreachable!(),
             }
@@ -202,6 +211,14 @@ where
             for member in &mod_decl.members {
                 match &member.kind {
                     NodeKind::SubroutineDecl(s_d) => {
+                        let ret_ty = self.gen_type(&s_d.return_type)?;
+                        if *ret_ty.borrow() == TaraType::Void {
+                            continue;
+                        }
+                        outs.push(NamedType {
+                            name: s_d.ident,
+                            ty: self.gen_type(&s_d.return_type)?,
+                        });
                         for param in &s_d.params {
                             let param_ty = param.ty.as_ref();
                             let param_type = self.gen_type(param_ty)?;
@@ -218,10 +235,6 @@ where
                                 Entry::Vacant(entry) => _ = entry.insert((param_type, param_ty)),
                             }
                         }
-                        outs.push(NamedType {
-                            name: s_d.ident,
-                            ty: self.gen_type(&s_d.return_type)?,
-                        });
                     }
                     _ => {}
                 }
@@ -260,7 +273,11 @@ where
             let mut outs = Vec::new();
             for member in &mod_decl.members {
                 match &member.kind {
-                    NodeKind::SubroutineDecl(_) => {
+                    NodeKind::SubroutineDecl(s_d) => {
+                        let ret_ty = self.gen_type(&s_d.return_type)?;
+                        if *ret_ty.borrow() == TaraType::Void {
+                            continue;
+                        }
                         let val = self.table.get_value(member)?;
                         outs.push(val);
                     }
@@ -358,7 +375,13 @@ where
 
             self.gen_block_terminated(&fn_decl.block)?;
 
-            let fn_type = MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
+            let mlir_fn_ret_type = if *return_type.borrow() != TaraType::Void {
+                Some(mlir_return_type)
+            } else {
+                None
+            };
+            let fn_type =
+                MlirFunctionType::new(self.ctx, &param_types, mlir_fn_ret_type.as_slice()).into();
             let builder = FuncOperation::builder(self.ctx, loc)
                 .body(region)
                 .sym_name(MlirStringAttribute::new(self.ctx, fn_decl.ident.as_str()))
@@ -386,6 +409,10 @@ where
         self.push();
 
         let return_type = self.gen_type(&comb_decl.return_type)?;
+        // Don't emit an arc that returns void as all computation can be culled
+        if *return_type.borrow() == TaraType::Void {
+            return Ok(());
+        }
         let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
 
         let loc = node.loc(self.ctx);
@@ -455,40 +482,21 @@ where
     fn gen_return(&mut self, node: &'ast Node) -> Result<()> {
         matches!(node.kind, NodeKind::Return(_));
         let loc = node.loc(self.ctx);
-        let return_op: MlirOperation = match &node.kind {
+        match &node.kind {
             NodeKind::Return(Some(e)) => {
                 let return_value = self.gen_expr_reachable(&e.lhs)?;
                 let return_ty = self.table.get_type(&e.lhs)?;
                 self.table.define_typed_value(node, return_ty, return_value);
                 let casted_value = self.cast(node, self.builder.ret_ty())?;
-                match self.builder.surr_context {
-                    SurroundingContext::Sw => ReturnOperation::builder(self.ctx, loc)
-                        .operands(&[casted_value])
-                        .build()
-                        .into(),
-                    SurroundingContext::Hw => HwProcReturnOperation::builder(self.ctx, loc)
-                        .outputs(&[casted_value])
-                        .build()
-                        .into(),
-                }
+                self.builder.gen_return(self.ctx, loc, Some(casted_value))?;
             }
             NodeKind::Return(None) => {
                 self.table.define_type(node, TaraType::Void);
-                match self.builder.surr_context {
-                    SurroundingContext::Sw => ReturnOperation::builder(self.ctx, loc)
-                        .operands(&[])
-                        .build()
-                        .into(),
-                    SurroundingContext::Hw => HwProcReturnOperation::builder(self.ctx, loc)
-                        .outputs(&[])
-                        .build()
-                        .into(),
-                }
+                self.builder.gen_return(self.ctx, loc, None)?;
             }
             _ => unreachable!(),
         };
 
-        self.builder.block.append_operation(return_op);
         assert!(self.builder.block.terminator().is_some());
         Ok(())
     }
@@ -740,9 +748,7 @@ where
         self.gen_block(nodes)?;
         if let None = self.builder.block.terminator() {
             let loc = Location::unknown(self.ctx);
-            self.builder
-                .block
-                .append_operation(r#return(self.ctx, &[], loc).as_operation().clone());
+            self.builder.gen_return(self.ctx, loc, None)?;
         }
 
         Ok(())
@@ -1373,6 +1379,31 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 unimplemented!()
             }
         }
+    }
+
+    pub fn gen_return(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        ret_val: Option<MlirValue<'ctx, 'ctx>>,
+    ) -> Result<()> {
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = ReturnOperation::builder(ctx, loc)
+                    .operands(ret_val.as_slice())
+                    .build();
+                let op = built.as_operation();
+                self.block.append_operation(op.clone());
+            }
+            SurroundingContext::Hw => {
+                let built = HwProcReturnOperation::builder(ctx, loc)
+                    .outputs(ret_val.as_slice())
+                    .build();
+                let op = built.as_operation();
+                self.block.append_operation(op.clone());
+            }
+        }
+        Ok(())
     }
 }
 

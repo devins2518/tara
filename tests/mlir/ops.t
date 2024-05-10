@@ -69,4 +69,6 @@ pub fn ret_val_cast(a: i1, b: i1) i2 {
     return a & b;
 }
 
+pub fn test_void_ret(hi: u1, there: i2) void {}
+
 // CHECK: }
