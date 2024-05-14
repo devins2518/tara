@@ -3,6 +3,7 @@ pub mod decls;
 pub mod file;
 pub mod function;
 pub mod namespace;
+pub mod package;
 pub mod structs;
 pub mod tmodule;
 pub mod variable;
@@ -11,21 +12,9 @@ use crate::{
     ast::Ast,
     ast_codegen::AstCodegen,
     circt,
-    codegen::{package::Package, Codegen},
-    comp::Compilation,
-    module::{
-        decls::{CaptureScope, Decl, DeclStatus},
-        file::File,
-        namespace::Namespace,
-        structs::{Struct, StructStatus},
-    },
-    types::Type,
-    utils::{id_arena::Id, init_field, RRC},
-    utir::{
-        inst::{NamedRef, UtirInstIdx},
-        Utir,
-    },
-    values::Value,
+    module::{file::File, package::Package},
+    utils::RRC,
+    utir::Utir,
 };
 use anyhow::{bail, Result};
 use core::fmt;
@@ -218,88 +207,5 @@ impl Module {
             }
         };
         Ok(())
-    }
-}
-
-// Methods for codegen (i.e. namespace lookup)
-impl Module {
-    pub fn scan_namespace(
-        &self,
-        context: &Context,
-        namespace: RRC<Namespace>,
-        decls: &[NamedRef],
-        parent_decl: RRC<Decl>,
-    ) -> Result<()> {
-        for decl in decls {
-            self.scan_decl(context, decl, namespace.clone(), parent_decl.clone())?;
-        }
-        Ok(())
-    }
-
-    fn scan_decl(
-        &self,
-        context: &Context,
-        named_ref: &NamedRef,
-        namespace: RRC<Namespace>,
-        parent_decl: RRC<Decl>,
-    ) -> Result<()> {
-        let decl_name = named_ref.name.as_str();
-        // TODO: Maybe use global symbols for everything?
-        let decl_name_string = decl_name.to_string();
-        let decl_ref = named_ref.inst_ref;
-        let top_decl_name = namespace.borrow().file.borrow().fully_qualified_path();
-        if namespace.borrow().decls.get(decl_name).is_none() {
-            log::debug!(
-                "inserting new decl ({}) into parent_decl ({})",
-                decl_name,
-                parent_decl.borrow().name,
-            );
-            let new_decl = RRC::new(Decl::new(
-                decl_name_string.clone(),
-                namespace.clone(),
-                decl_ref.into(),
-                parent_decl.borrow().src_scope.clone(),
-            ));
-            // TODO: Lazy analysis here
-            // TODO: export support here
-            // Kinda hacky
-            // let wants_analysis = parent_decl.borrow().name == top_decl_name && decl_name == "Top";
-            // if wants_analysis {
-            self.codegen_decl(context, new_decl.clone())?;
-            // }
-            namespace
-                .borrow_mut()
-                .decls
-                .entry(decl_name_string.clone())
-                .or_insert(new_decl.clone());
-        }
-        Ok(())
-    }
-
-    fn codegen_decl(&self, context: &Context, decl: RRC<Decl>) -> Result<()> {
-        {
-            decl.borrow_mut().status = DeclStatus::InProgress;
-        }
-        let file_scope = decl.borrow().file_scope();
-        let file = file_scope.borrow();
-        let utir = file.utir();
-
-        let parent_capture_scope = decl.borrow().src_scope.clone();
-        let capture_scope = RRC::new(CaptureScope::new(parent_capture_scope));
-        let utir_inst = decl.borrow().utir_inst;
-        let mut codegen = Codegen::new(self, &context, utir);
-        let break_ref = codegen.analyze_top_level_decl(decl.clone(), utir_inst, capture_scope)?;
-        let decl_ty_val = codegen.resolve_ref_value(break_ref);
-
-        codegen.resolve_type_layout(decl_ty_val.ty.clone());
-
-        {
-            let mut decl = decl.borrow_mut();
-            decl.ty = Some(decl_ty_val.ty);
-            decl.value = Some(decl_ty_val.value);
-            decl.status = DeclStatus::Complete;
-        }
-
-        unimplemented!()
     }
 }

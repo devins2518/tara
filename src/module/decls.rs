@@ -1,7 +1,7 @@
 use crate::{
     module::{file::File, namespace::Namespace},
     types::Type,
-    utils::{RRC, WRC},
+    utils::RRC,
     utir::inst::UtirInstRef,
     values::{TypedValue, Value},
 };

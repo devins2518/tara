@@ -1,5 +1,4 @@
 mod error;
-pub mod package;
 mod tld;
 
 use crate::{

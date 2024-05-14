@@ -6,7 +6,6 @@ mod ast_codegen;
 mod auto_indenting_stream;
 mod builtin;
 mod circt;
-mod codegen;
 mod comp;
 mod module;
 mod parser;

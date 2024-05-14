@@ -1,6 +1,9 @@
-use crate::codegen::package::Package;
-use crate::utils::RRC;
-use crate::{ast::Ast, module::decls::Decl, utir::Utir};
+use crate::{
+    ast::Ast,
+    module::{decls::Decl, package::Package},
+    utils::RRC,
+    utir::Utir,
+};
 use codespan_reporting::files::Files;
 use std::path::PathBuf;
 
