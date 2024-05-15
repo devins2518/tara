@@ -1,12 +1,9 @@
-use crate::{
-    circt::{
-        self,
-        sys::{
-            MlirAttribute as CirctMlirAttribute, MlirContext as CirctMlirContext,
-            MlirType as CirctMlirType,
-        },
+use crate::circt::{
+    self,
+    sys::{
+        MlirAttribute as CirctMlirAttribute, MlirContext as CirctMlirContext,
+        MlirType as CirctMlirType,
     },
-    utils::RRC,
 };
 use melior::{
     ir::{

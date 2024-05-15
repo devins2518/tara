@@ -2,13 +2,11 @@ use crate::{
     ast::{Node, NodeKind},
     ast_codegen::Error,
     types::Type as TaraType,
+    values::Value as TaraValue,
 };
 use anyhow::Result;
 use melior::{
-    ir::{
-        attribute::FlatSymbolRefAttribute as MlirFlatSymbolRefAttribute, Type as MlirType,
-        Value as MlirValue, ValueLike,
-    },
+    ir::{attribute::FlatSymbolRefAttribute as MlirFlatSymbolRefAttribute, Type as MlirType},
     Context,
 };
 use quickscope::ScopeMap;
@@ -20,7 +18,7 @@ pub struct Table<'ctx, 'ast> {
     name_table: ScopeMap<GlobalSymbol, &'ast Node>,
     // TODO: store params for type checking
     fn_table: ScopeMap<GlobalSymbol, MlirFlatSymbolRefAttribute<'ctx>>,
-    value_table: ScopeMap<*const Node, MlirValue<'ctx, 'ctx>>,
+    value_table: ScopeMap<*const Node, TaraValue>,
     type_table: ScopeMap<*const Node, TaraType>,
     type_conversion_table: HashMap<TaraType, MlirType<'ctx>>,
 }
@@ -53,7 +51,7 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         Ok(())
     }
 
-    pub fn define_symbol(&mut self, ident: GlobalSymbol, value: MlirValue<'ctx, '_>) {
+    pub fn define_symbol(&mut self, ident: GlobalSymbol, value: TaraValue) {
         assert!(self.name_table.contains_key(&ident));
         let node = self.name_table.get(&ident).unwrap();
         self.define_value(node, value);
@@ -64,12 +62,7 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.fn_table.define(ident, fn_name);
     }
 
-    pub fn define_typed_value(
-        &mut self,
-        node: &'ast Node,
-        ty: TaraType,
-        value: MlirValue<'ctx, '_>,
-    ) {
+    pub fn define_typed_value(&mut self, node: &'ast Node, ty: TaraType, value: TaraValue) {
         let rrc = ty.into();
         self.define_type(node, rrc);
         self.define_value(node, value);
@@ -79,11 +72,9 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.type_table.define(node, ty);
     }
 
-    pub fn define_value(&mut self, node: &Node, value: MlirValue<'ctx, '_>) {
+    pub fn define_value(&mut self, node: &Node, value: TaraValue) {
         let ptr: *const Node = node;
-        let raw_value = value.to_raw();
-        self.value_table
-            .define(ptr, unsafe { MlirValue::from_raw(raw_value) });
+        self.value_table.define(ptr, value);
     }
 
     pub fn get_name(&self, node: &Node) -> Option<GlobalSymbol> {
@@ -109,9 +100,9 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         }
     }
 
-    pub fn get_value(&self, node: &Node) -> Result<MlirValue<'ctx, 'ctx>> {
+    pub fn get_value(&self, node: &Node) -> Result<TaraValue> {
         let ptr: *const Node = node;
-        Ok(self.value_table.get(&ptr).unwrap().to_owned())
+        Ok(self.value_table.get(&ptr).unwrap().clone())
     }
 
     pub fn get_mlir_type(&mut self, ctx: &'ctx Context, ty: TaraType) -> Result<MlirType<'ctx>> {
@@ -146,7 +137,7 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.type_table.pop_layer();
     }
 
-    pub fn get_identifier_value(&self, node: &Node) -> Result<MlirValue<'ctx, 'ctx>> {
+    pub fn get_identifier_value(&self, node: &Node) -> Result<TaraValue> {
         matches!(node.kind, NodeKind::Identifier(_));
         let ident = match node.kind {
             NodeKind::Identifier(i) => i,
@@ -156,7 +147,7 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.value_table
             .get(&ident_node)
             .ok_or_else(|| Error::new(node.span, "Unknown identifier".to_string()).into())
-            .copied()
+            .cloned()
     }
 
     pub fn get_identifier_type(&self, node: &Node) -> Result<TaraType> {

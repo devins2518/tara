@@ -19,7 +19,7 @@ use crate::{
     },
     module::file::File,
     types::{ModuleInfo, NamedType, Type as TaraType},
-    utils::RRC,
+    values::{StaticMlirValue, Value as TaraValue},
     Ast,
 };
 use anyhow::Result;
@@ -39,7 +39,7 @@ use melior::{
                 AddIOperation, AndIOperation, CmpIOperation, ExtSIOperation, ExtUIOperation,
                 MulIOperation, OrIOperation, SubIOperation, XOrIOperation,
             },
-            func::{r#return, FuncOperation, ReturnOperation},
+            func::{FuncOperation, ReturnOperation},
         },
     },
     ir::{
@@ -251,7 +251,7 @@ where
                     let arg = self
                         .builder
                         .add_argument(mlir_param_type, param_node.loc(self.ctx));
-                    self.table.define_symbol(name, arg);
+                    self.table.define_symbol(name, arg.clone());
                     self.table
                         .define_typed_value(param_node, param_type.clone(), arg);
                     v.push(NamedType {
@@ -278,7 +278,7 @@ where
                         if ret_ty == TaraType::Void {
                             continue;
                         }
-                        let val = self.table.get_value(member)?;
+                        let val = self.table.get_value(member)?.get_runtime_value();
                         outs.push(val);
                     }
                     _ => {}
@@ -312,7 +312,7 @@ where
         Ok(())
     }
 
-    fn gen_var_decl(&mut self, node: &'ast Node) -> Result<Option<MlirValue<'ctx, 'blk>>> {
+    fn gen_var_decl(&mut self, node: &'ast Node) -> Result<Option<TaraValue>> {
         matches!(node.kind, NodeKind::VarDecl(_));
 
         let var_decl = match &node.kind {
@@ -322,19 +322,24 @@ where
         let block = self.module.body();
         let prev_context = self.builder.save_with_block(SurroundingContext::Sw, block);
 
-        if let Some(mut value) = self.gen_expr(&var_decl.expr)? {
+        let ret_val = if let Some(mut value) = self.gen_expr(&var_decl.expr)? {
             if let Some(ty_expr) = &var_decl.ty {
                 self.gen_type(ty_expr)?;
                 let expected_type = self.table.get_type(ty_expr)?;
                 value = self.cast(&var_decl.expr, &expected_type)?;
-                self.table.define_typed_value(node, expected_type, value);
+                self.table
+                    .define_typed_value(node, expected_type, value.clone());
             } else {
                 // TODO: infer value type
             }
             Ok(Some(value))
         } else {
             Ok(None)
-        }
+        };
+
+        self.builder.restore(prev_context);
+
+        ret_val
     }
 
     fn gen_fn_decl(&mut self, node: &'ast Node) -> Result<()> {
@@ -369,7 +374,7 @@ where
                 let arg = self
                     .builder
                     .add_argument(mlir_param_type, param.ty.loc(self.ctx));
-                self.table.define_symbol(param.name, arg);
+                self.table.define_symbol(param.name, arg.clone());
                 self.table.define_typed_value(param_ty, param_type, arg);
             }
 
@@ -436,7 +441,7 @@ where
                 let arg = self
                     .builder
                     .add_argument(mlir_param_type, param.ty.loc(self.ctx));
-                self.table.define_symbol(param.name, arg);
+                self.table.define_symbol(param.name, arg.clone());
                 self.table.define_typed_value(param_ty, param_type, arg);
             }
 
@@ -461,7 +466,7 @@ where
         let mut ins = Vec::new();
         for param in &comb_decl.params {
             let real_param_node = self.table.get_node(param.name);
-            let param_val = self.table.get_value(real_param_node)?;
+            let param_val = self.table.get_value(real_param_node)?.get_runtime_value();
             ins.push(param_val);
         }
         let call_op = HwProcCallOperation::builder(self.ctx, loc)
@@ -487,8 +492,10 @@ where
                 let return_value = self.gen_expr_reachable(&e.lhs)?;
                 let return_ty = self.table.get_type(&e.lhs)?;
                 self.table.define_typed_value(node, return_ty, return_value);
-                let casted_value = self.cast(node, &self.builder.ret_ty())?;
-                self.builder.gen_return(self.ctx, loc, Some(casted_value))?;
+                let ret_ty = self.builder.ret_ty();
+                let casted_value = self.cast(node, &ret_ty)?;
+                let mat_value = self.builder.materialize(&ret_ty, &casted_value);
+                self.builder.gen_return(self.ctx, loc, Some(mat_value))?;
             }
             NodeKind::Return(None) => {
                 self.table.define_type(node, TaraType::Void);
@@ -501,7 +508,7 @@ where
         Ok(())
     }
 
-    fn gen_expr(&mut self, node: &'ast Node) -> Result<Option<MlirValue<'ctx, 'blk>>> {
+    fn gen_expr(&mut self, node: &'ast Node) -> Result<Option<TaraValue>> {
         let maybe_val = match &node.kind {
             NodeKind::StructDecl(_) => {
                 self.gen_struct_decl(node)?;
@@ -536,18 +543,18 @@ where
         Ok(maybe_val)
     }
 
-    fn gen_expr_reachable(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_expr_reachable(&mut self, node: &'ast Node) -> Result<TaraValue> {
         let value = self.gen_expr(node)?.ok_or_else(|| {
             Error::new(
                 node.span,
                 "Expected reachable value, control flow unexpectedly diverted".to_string(),
             )
         })?;
-        self.table.define_value(node, value);
+        self.table.define_value(node, value.clone());
         Ok(value)
     }
 
-    fn gen_bin_op(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_bin_op(&mut self, node: &'ast Node) -> Result<TaraValue> {
         matches!(
             node.kind,
             NodeKind::Or(_)
@@ -606,7 +613,7 @@ where
         }
     }
 
-    fn gen_cmp(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_cmp(&mut self, node: &'ast Node) -> Result<TaraValue> {
         matches!(
             node.kind,
             NodeKind::Or(_)
@@ -657,6 +664,16 @@ where
         let bool_ty = TaraType::Bool;
         self.table.define_type(node, bool_ty);
 
+        if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
+            Err(Error::new(
+                node.span,
+                "TODO: compile time cmpt operation".to_string(),
+            ))?;
+        }
+
+        let lhs = self.builder.materialize(&lhs_type, &lhs);
+        let rhs = self.builder.materialize(&lhs_type, &rhs);
+
         match node.kind {
             NodeKind::Or(_) => self.builder.gen_log_or(self.ctx, loc, lhs, rhs),
             NodeKind::And(_) => self.builder.gen_log_and(self.ctx, loc, lhs, rhs),
@@ -670,7 +687,7 @@ where
         }
     }
 
-    fn gen_arith(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_arith(&mut self, node: &'ast Node) -> Result<TaraValue> {
         matches!(
             node.kind,
             NodeKind::Add(_) | NodeKind::Sub(_) | NodeKind::Mul(_) | NodeKind::Div(_)
@@ -689,7 +706,17 @@ where
 
         let rhs = self.cast(rhs_node, &lhs_type)?;
 
-        self.table.define_type(node, lhs_type);
+        self.table.define_type(node, lhs_type.clone());
+
+        if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
+            Err(Error::new(
+                node.span,
+                "TODO: compile time arithmetic operation".to_string(),
+            ))?;
+        }
+
+        let lhs = self.builder.materialize(&lhs_type, &lhs);
+        let rhs = self.builder.materialize(&lhs_type, &rhs);
 
         match &node.kind {
             NodeKind::Add(_) => self.builder.gen_int_add(self.ctx, loc, lhs, rhs),
@@ -700,7 +727,7 @@ where
         }
     }
 
-    fn gen_bitwise(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+    fn gen_bitwise(&mut self, node: &'ast Node) -> Result<TaraValue> {
         matches!(
             node.kind,
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_)
@@ -719,6 +746,16 @@ where
         let rhs = self.cast(rhs_node, &lhs_type)?;
 
         self.table.define_type(node, lhs_type.clone());
+
+        if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
+            Err(Error::new(
+                node.span,
+                "TODO: compile time bitwise operation".to_string(),
+            ))?;
+        }
+
+        let lhs = self.builder.materialize(&lhs_type, &lhs);
+        let rhs = self.builder.materialize(&lhs_type, &rhs);
 
         match &node.kind {
             NodeKind::BitAnd(_) => self.builder.gen_bit_and(self.ctx, loc, lhs, rhs),
@@ -800,7 +837,7 @@ where
         Ok(ty)
     }
 
-    fn get_identifier(&mut self, node: &'ast Node) -> Result<MlirValue<'ctx, 'blk>> {
+    fn get_identifier(&mut self, node: &'ast Node) -> Result<TaraValue> {
         self.table.get_identifier_value(node)
     }
 }
@@ -829,7 +866,8 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         }
     }
 
-    fn cast(&mut self, node: &Node, expected_type: &TaraType) -> Result<MlirValue<'ctx, 'ctx>> {
+    // TODO: Handle values being known at compile time
+    fn cast(&mut self, node: &Node, expected_type: &TaraType) -> Result<TaraValue> {
         let actual_type = self.table.get_type(node)?;
         if actual_type == *expected_type {
             return self.table.get_value(node);
@@ -840,7 +878,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 TaraType::IntSigned { width: act_width },
             ) => {
                 if exp_width > act_width {
-                    let actual_mlir_value = self.table.get_value(node)?;
+                    let actual_mlir_value = self.table.get_value(node)?.get_runtime_value();
                     let expected_mlir_type =
                         self.table.get_mlir_type(self.ctx, expected_type.clone())?;
                     let built = ExtSIOperation::builder(self.ctx, node.loc(self.ctx))
@@ -861,7 +899,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 TaraType::IntUnsigned { width: act_width },
             ) => {
                 if exp_width > act_width {
-                    let actual_mlir_value = self.table.get_value(node)?;
+                    let actual_mlir_value = self.table.get_value(node)?.get_runtime_value();
                     let expected_mlir_type =
                         self.table.get_mlir_type(self.ctx, expected_type.clone())?;
                     let built = ExtUIOperation::builder(self.ctx, node.loc(self.ctx))
@@ -955,23 +993,54 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         Ok(self.block.append_operation(op))
     }
 
-    pub fn add_argument(
-        &self,
-        r#type: MlirType<'ctx>,
-        loc: Location<'ctx>,
-    ) -> MlirValue<'ctx, 'blk> {
+    pub fn add_argument(&self, r#type: MlirType<'ctx>, loc: Location<'ctx>) -> TaraValue {
         let raw = self.block.add_argument(r#type, loc).to_raw();
-        unsafe { MlirValue::from_raw(raw) }
+        let val = unsafe { MlirValue::from_raw(raw) };
+        TaraValue::RuntimeValue(val)
     }
 
-    fn insert_operation<T: Into<MlirOperation<'ctx>> + Clone>(
-        &self,
-        op: T,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+    fn insert_operation<T: Into<MlirOperation<'ctx>> + Clone>(&self, op: T) -> Result<TaraValue> {
         let op_ref = self.block.append_operation(op.into());
         let res = op_ref.result(0)?;
         let raw_val = res.to_raw();
-        Ok(unsafe { MlirValue::from_raw(raw_val) })
+        let mlir_val = unsafe { MlirValue::from_raw(raw_val) };
+        Ok(TaraValue::RuntimeValue(mlir_val))
+    }
+
+    pub fn materialize(&self, ty: &TaraType, val: &TaraValue) -> StaticMlirValue {
+        match val {
+            TaraValue::RuntimeValue(val) => val.clone(),
+            TaraValue::U1Type
+            | TaraValue::U8Type
+            | TaraValue::I8Type
+            | TaraValue::U16Type
+            | TaraValue::I16Type
+            | TaraValue::U32Type
+            | TaraValue::I32Type
+            | TaraValue::U64Type
+            | TaraValue::I64Type
+            | TaraValue::U128Type
+            | TaraValue::I128Type
+            | TaraValue::UsizeType
+            | TaraValue::IsizeType
+            | TaraValue::BoolType
+            | TaraValue::VoidType
+            | TaraValue::TypeType
+            | TaraValue::ComptimeIntType
+            | TaraValue::UndefinedType
+            | TaraValue::EnumLiteralType
+            | TaraValue::Undef
+            | TaraValue::Zero
+            | TaraValue::One
+            | TaraValue::VoidValue
+            | TaraValue::Unreachable
+            | TaraValue::BoolTrue
+            | TaraValue::BoolFalse
+            | TaraValue::Type(_)
+            | TaraValue::Function(_)
+            | TaraValue::Struct(_)
+            | TaraValue::Integer(_) => unimplemented!(),
+        }
     }
 
     // TODO: melior doesn't generate function to set return types which is what comb
@@ -980,9 +1049,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let lhs_type = lhs.r#type();
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1004,9 +1073,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1029,9 +1098,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1054,9 +1123,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let lhs_type = lhs.r#type();
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1078,9 +1147,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1104,9 +1173,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1129,9 +1198,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         _: &'ctx Context,
         _: Location<'ctx>,
-        _: MlirValue<'ctx, 'ctx>,
-        _: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        _: StaticMlirValue,
+        _: StaticMlirValue,
+    ) -> Result<TaraValue> {
         match self.surr_context {
             SurroundingContext::Sw => {
                 unimplemented!("SW: Signed and unsigned division")
@@ -1146,9 +1215,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1171,9 +1240,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let lhs_type = lhs.r#type();
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1196,9 +1265,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
         let ret_type = TaraType::Bool.to_mlir_type(ctx);
         match self.surr_context {
@@ -1225,9 +1294,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
         let ret_type = TaraType::Bool.to_mlir_type(ctx);
         let unit = MlirAttribute::unit(ctx);
@@ -1266,9 +1335,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
         let ret_type = TaraType::Bool.to_mlir_type(ctx);
         match self.surr_context {
@@ -1295,9 +1364,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
         let ret_type = TaraType::Bool.to_mlir_type(ctx);
         match self.surr_context {
@@ -1323,9 +1392,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
         let ret_type = TaraType::Bool.to_mlir_type(ctx);
         match self.surr_context {
@@ -1351,9 +1420,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        lhs: MlirValue<'ctx, 'ctx>,
-        rhs: MlirValue<'ctx, 'ctx>,
-    ) -> Result<MlirValue<'ctx, 'ctx>> {
+        lhs: StaticMlirValue,
+        rhs: StaticMlirValue,
+    ) -> Result<TaraValue> {
         let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
         let ret_type = TaraType::Bool.to_mlir_type(ctx);
         match self.surr_context {

@@ -7,7 +7,6 @@ use crate::{
 };
 use std::{collections::HashMap, hash::Hash};
 
-#[derive(Hash)]
 pub struct Decl {
     pub name: String,
     pub ty: Option<Type>,
@@ -42,6 +41,12 @@ impl Decl {
 
     pub fn file_scope(&self) -> RRC<File> {
         self.src_namespace.borrow().file.clone()
+    }
+}
+
+impl Hash for Decl {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state)
     }
 }
 

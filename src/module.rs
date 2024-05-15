@@ -106,16 +106,6 @@ impl Module {
                     return Ok(());
                 }
             }
-
-            /*
-            self.gen_utir(f)?;
-            if dump_utir {
-                println!("{}", f.utir());
-                if exit_early || !dump_mlir {
-                    return Ok(());
-                }
-            }
-            */
         }
 
         self.codegen_file(file, dump_mlir)?;
