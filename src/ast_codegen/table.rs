@@ -2,7 +2,6 @@ use crate::{
     ast::{Node, NodeKind},
     ast_codegen::Error,
     types::Type as TaraType,
-    utils::RRC,
 };
 use anyhow::Result;
 use melior::{
@@ -22,8 +21,8 @@ pub struct Table<'ctx, 'ast> {
     // TODO: store params for type checking
     fn_table: ScopeMap<GlobalSymbol, MlirFlatSymbolRefAttribute<'ctx>>,
     value_table: ScopeMap<*const Node, MlirValue<'ctx, 'ctx>>,
-    type_table: ScopeMap<*const Node, RRC<TaraType>>,
-    type_conversion_table: HashMap<RRC<TaraType>, MlirType<'ctx>>,
+    type_table: ScopeMap<*const Node, TaraType>,
+    type_conversion_table: HashMap<TaraType, MlirType<'ctx>>,
 }
 
 impl<'ctx, 'ast> Table<'ctx, 'ast> {
@@ -65,10 +64,10 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.fn_table.define(ident, fn_name);
     }
 
-    pub fn define_typed_value<T: Into<RRC<TaraType>>>(
+    pub fn define_typed_value(
         &mut self,
         node: &'ast Node,
-        ty: T,
+        ty: TaraType,
         value: MlirValue<'ctx, '_>,
     ) {
         let rrc = ty.into();
@@ -76,9 +75,8 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.define_value(node, value);
     }
 
-    pub fn define_type<T: Into<RRC<TaraType>>>(&mut self, node: &'ast Node, ty: T) {
-        let rrc = ty.into();
-        self.type_table.define(node, rrc);
+    pub fn define_type(&mut self, node: &'ast Node, ty: TaraType) {
+        self.type_table.define(node, ty);
     }
 
     pub fn define_value(&mut self, node: &Node, value: MlirValue<'ctx, '_>) {
@@ -101,7 +99,7 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         self.name_table.get(&name).unwrap()
     }
 
-    pub fn get_type(&self, node: &Node) -> Result<RRC<TaraType>> {
+    pub fn get_type(&self, node: &Node) -> Result<TaraType> {
         match &node.kind {
             NodeKind::Identifier(_) => self.get_identifier_type(node),
             _ => {
@@ -116,17 +114,11 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
         Ok(self.value_table.get(&ptr).unwrap().to_owned())
     }
 
-    pub fn get_mlir_type<T: Into<RRC<TaraType>>>(
-        &mut self,
-        ctx: &'ctx Context,
-        ty: T,
-    ) -> Result<MlirType<'ctx>> {
-        let rrc = ty.into();
-        let borrowed = rrc.borrow();
+    pub fn get_mlir_type(&mut self, ctx: &'ctx Context, ty: TaraType) -> Result<MlirType<'ctx>> {
         Ok(*self
             .type_conversion_table
-            .entry(rrc.clone())
-            .or_insert_with(|| borrowed.to_mlir_type(ctx)))
+            .entry(ty.clone())
+            .or_insert_with(|| ty.to_mlir_type(ctx)))
     }
 
     pub fn get_mlir_type_node(
@@ -167,7 +159,7 @@ impl<'ctx, 'ast> Table<'ctx, 'ast> {
             .copied()
     }
 
-    pub fn get_identifier_type(&self, node: &Node) -> Result<RRC<TaraType>> {
+    pub fn get_identifier_type(&self, node: &Node) -> Result<TaraType> {
         matches!(node.kind, NodeKind::Identifier(_));
         let ident = match node.kind {
             NodeKind::Identifier(i) => i,

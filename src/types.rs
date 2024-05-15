@@ -53,7 +53,7 @@ impl<'ctx> Type {
                 let mut ports = Vec::new();
                 let mut in_ports = Vec::new();
                 for in_port in &mod_info.ins {
-                    let mlir_type = in_port.ty.borrow().to_mlir_type(ctx);
+                    let mlir_type = in_port.ty.to_mlir_type(ctx);
                     let hw_module_port = circt::sys::HWModulePort {
                         name: CirctMlirAttribute {
                             ptr: MlirStringAttribute::new(ctx, in_port.name.as_str())
@@ -70,7 +70,7 @@ impl<'ctx> Type {
                 }
                 let mut out_ports = Vec::new();
                 for out_port in &mod_info.outs {
-                    let mlir_type = out_port.ty.borrow().to_mlir_type(ctx);
+                    let mlir_type = out_port.ty.to_mlir_type(ctx);
                     let hw_module_port = circt::sys::HWModulePort {
                         name: CirctMlirAttribute {
                             ptr: MlirStringAttribute::new(ctx, out_port.name.as_str())
@@ -126,7 +126,7 @@ impl Display for Type {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NamedType {
     pub name: GlobalSymbol,
-    pub ty: RRC<Type>,
+    pub ty: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
