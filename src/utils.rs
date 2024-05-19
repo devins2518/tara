@@ -30,7 +30,7 @@ macro_rules! init_field {
     ($struct:ident, $field:ident, $val:expr) => {{
         use std::ptr::addr_of_mut;
         unsafe {
-            addr_of_mut!((*$struct.as_mut_ptr()).$field).write($val);
+            addr_of_mut!($struct.$field).write($val);
         }
     }};
 }
@@ -52,6 +52,16 @@ impl<T> RRC<T> {
 
     pub fn borrow_mut(&self) -> RefMut<'_, T> {
         self.0.borrow_mut()
+    }
+
+    pub fn map<R>(&self, f: impl Fn(&T) -> R) -> R {
+        let borrow = self.borrow();
+        f(&borrow)
+    }
+
+    pub fn map_mut<R>(&self, f: impl Fn(&mut T) -> R) -> R {
+        let mut borrow = self.borrow_mut();
+        f(&mut borrow)
     }
 }
 

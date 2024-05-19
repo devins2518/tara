@@ -1,46 +1,218 @@
 use crate::{
-    module::{file::File, namespace::Namespace},
-    types::Type,
-    utils::RRC,
+    ast::Node,
+    module::{
+        comb::Comb, file::File, function::Function, namespace::Namespace, structs::Struct,
+        tmodule::TModule,
+    },
+    types::Type as TaraType,
+    utils::{init_field, RRC},
     utir::inst::UtirInstRef,
-    values::{TypedValue, Value},
+    values::{TypedValue, Value as TaraValue},
 };
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, mem::MaybeUninit};
 
+// A container, function, or comb
 pub struct Decl {
     pub name: String,
-    pub ty: Option<Type>,
-    pub value: Option<Value>,
-    pub src_namespace: RRC<Namespace>,
-    pub src_scope: Option<RRC<CaptureScope>>,
-    pub utir_inst: UtirInstRef,
+    pub ty: Option<TaraType>,
+    // TODO: handle this by making parentless one by defualt, init_struct will set this and set the
+    // parent
+    pub namespace: RRC<Namespace>,
+    pub value: Option<TaraValue>,
+    pub node_ptr: *const Node,
     pub public: bool,
     pub export: bool,
     pub status: DeclStatus,
 }
 
 impl Decl {
-    pub fn new(
-        name: String,
-        src_namespace: RRC<Namespace>,
-        utir_inst: UtirInstRef,
-        src_scope: Option<RRC<CaptureScope>>,
-    ) -> Self {
+    pub fn new<T: Into<String>>(name: T, node: &Node) -> Self {
+        let name = name.into();
+        let node_ptr = node as *const _;
         Self {
             name,
             ty: None,
+            #[allow(invalid_value)]
+            namespace: unsafe { MaybeUninit::uninit().assume_init() },
             value: None,
-            src_namespace,
-            src_scope,
-            utir_inst,
+            node_ptr,
             public: false,
             export: false,
             status: DeclStatus::Unreferenced,
         }
     }
 
+    pub fn child_name(&self, child_name: &str) -> String {
+        [&self.name, child_name].join(".").to_string()
+    }
+
     pub fn file_scope(&self) -> RRC<File> {
-        self.src_namespace.borrow().file.clone()
+        unimplemented!()
+    }
+
+    pub fn namespace(&self) -> RRC<Namespace> {
+        self.namespace.clone()
+    }
+
+    pub fn init_struct_empty_namespace<S: Into<RRC<Self>>>(decl: S, node: &Node) -> RRC<Self> {
+        let rrc = decl.into();
+
+        {
+            let mut decl = rrc.borrow_mut();
+
+            decl.ty = Some(TaraType::Type);
+            decl.status = DeclStatus::InProgress;
+
+            let struct_obj = Struct::new(node, rrc.clone());
+            let struct_obj_rrc = RRC::new(struct_obj);
+
+            let struct_ty = TaraType::Struct(struct_obj_rrc.clone());
+            let struct_ty_rrc = RRC::new(struct_ty);
+
+            let struct_val = TaraValue::Type(struct_ty_rrc.clone());
+            decl.value = Some(struct_val);
+
+            let mut namespace = Namespace::new();
+            namespace.init_ty(struct_ty_rrc.clone());
+            namespace.parent = None;
+            let namespace_rrc = RRC::new(namespace);
+            init_field!(decl, namespace, namespace_rrc.clone());
+
+            struct_obj_rrc
+                .borrow_mut()
+                .init_namespace(namespace_rrc.clone());
+        }
+
+        rrc
+    }
+
+    pub fn init_struct<S: Into<RRC<Self>>>(
+        decl: S,
+        node: &Node,
+        parent_namespace: RRC<Namespace>,
+    ) -> RRC<Self> {
+        let rrc = Self::init_struct_empty_namespace(decl, node);
+
+        {
+            let decl = rrc.borrow();
+            let mut namespace = decl.namespace.borrow_mut();
+            namespace.parent = Some(parent_namespace);
+        }
+
+        rrc
+    }
+
+    pub fn init_module<S: Into<RRC<Self>>>(
+        decl: S,
+        node: &Node,
+        parent_namespace: RRC<Namespace>,
+    ) -> RRC<Self> {
+        let rrc = decl.into();
+
+        {
+            rrc.map_mut(|decl| {
+                decl.ty = Some(TaraType::Type);
+                decl.status = DeclStatus::InProgress;
+            });
+
+            let mod_obj = TModule::new(rrc.clone(), node);
+            let mod_obj_rrc = RRC::new(mod_obj);
+
+            let mod_ty = TaraType::Module(mod_obj_rrc.clone());
+            let mod_ty_rrc = RRC::new(mod_ty);
+
+            let mod_val = TaraValue::Type(mod_ty_rrc.clone());
+            rrc.map_mut(|decl| decl.value = Some(mod_val.clone()));
+
+            let mut namespace = Namespace::new();
+            namespace.init_ty(mod_ty_rrc.clone());
+            namespace.parent = Some(parent_namespace);
+            let namespace_rrc = RRC::new(namespace);
+            rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));
+
+            mod_obj_rrc
+                .borrow_mut()
+                .init_namespace(namespace_rrc.clone());
+        }
+
+        rrc
+    }
+
+    pub fn init_fn<S: Into<RRC<Self>>>(
+        decl: S,
+        node: &Node,
+        parent_namespace: RRC<Namespace>,
+    ) -> RRC<Self> {
+        let rrc = decl.into();
+
+        {
+            rrc.map_mut(|decl| {
+                decl.ty = Some(TaraType::Type);
+                decl.status = DeclStatus::InProgress;
+            });
+
+            let fn_obj = Function::new(rrc.clone(), node);
+            let fn_obj_rrc = RRC::new(fn_obj);
+
+            let fn_ty = TaraType::Function(fn_obj_rrc.clone());
+            let fn_ty_rrc = RRC::new(fn_ty);
+
+            let fn_val = TaraValue::Type(fn_ty_rrc.clone());
+            rrc.map_mut(|decl| decl.value = Some(fn_val.clone()));
+
+            let mut namespace = Namespace::new();
+            namespace.init_ty(fn_ty_rrc.clone());
+            namespace.parent = Some(parent_namespace);
+            let namespace_rrc = RRC::new(namespace);
+            rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));
+        }
+
+        rrc
+    }
+
+    pub fn init_comb<S: Into<RRC<Self>>>(
+        decl: S,
+        node: &Node,
+        parent_namespace: RRC<Namespace>,
+    ) -> RRC<Self> {
+        let rrc = decl.into();
+
+        {
+            rrc.map_mut(|decl| {
+                decl.ty = Some(TaraType::Type);
+                decl.status = DeclStatus::InProgress;
+            });
+
+            let comb_obj = Comb::new(rrc.clone(), node);
+            let comb_obj_rrc = RRC::new(comb_obj);
+
+            let comb_ty = TaraType::Comb(comb_obj_rrc.clone());
+            let comb_ty_rrc = RRC::new(comb_ty);
+
+            let fn_val = TaraValue::Type(comb_ty_rrc.clone());
+            rrc.map_mut(|decl| decl.value = Some(fn_val.clone()));
+
+            let mut namespace = Namespace::new();
+            namespace.init_ty(comb_ty_rrc.clone());
+            namespace.parent = Some(parent_namespace);
+            let namespace_rrc = RRC::new(namespace);
+            rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));
+        }
+
+        rrc
+    }
+
+    pub fn node<'a, 'b>(&'a self) -> &'b Node {
+        unsafe { &*self.node_ptr }
+    }
+
+    pub fn error_guard<S: Into<RRC<Self>>>(decl: S) -> DeclErrorGuard {
+        let rrc = decl.into();
+
+        DeclErrorGuard {
+            decl: rrc,
+            errored: true,
+        }
     }
 }
 
@@ -49,6 +221,14 @@ impl Hash for Decl {
         self.name.hash(state)
     }
 }
+
+impl PartialEq for Decl {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for Decl {}
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum DeclStatus {
@@ -66,6 +246,26 @@ pub enum DeclStatus {
     CodegenFailure,
     // Everything is done
     Complete,
+}
+
+pub struct DeclErrorGuard {
+    decl: RRC<Decl>,
+    errored: bool,
+}
+
+impl DeclErrorGuard {
+    pub fn success(&mut self) {
+        self.errored = false;
+    }
+}
+
+impl Drop for DeclErrorGuard {
+    fn drop(&mut self) {
+        if self.errored {
+            self.decl
+                .map_mut(|decl| decl.status = DeclStatus::DependencyFailure);
+        }
+    }
 }
 
 pub struct CaptureScope {

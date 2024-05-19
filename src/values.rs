@@ -1,4 +1,9 @@
-use crate::{builtin::Signedness, module::function::Function, types::Type, utils::RRC};
+use crate::{
+    builtin::Signedness,
+    module::{function::Function, namespace::Namespace},
+    types::Type as TaraType,
+    utils::RRC,
+};
 use melior::ir::{Value as MlirValue, ValueLike};
 use std::hash::Hash;
 
@@ -34,8 +39,9 @@ pub enum Value {
     BoolTrue,
     BoolFalse,
 
+    // TODO: Remove rrc from here
     // Compile time types
-    Type(RRC<Type>),
+    Type(RRC<TaraType>),
     Function(RRC<Function>),
     /// An instance of a struct.
     Struct(RRC<Vec<Value>>),
@@ -61,6 +67,24 @@ impl Value {
         match self {
             Value::RuntimeValue(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn to_type(&self) -> TaraType {
+        match self {
+            Value::Type(ty) => ty.borrow().clone(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn namespace(&self) -> RRC<Namespace> {
+        self.to_type().namespace()
+    }
+
+    pub fn integer(&self) -> i64 {
+        match self {
+            Value::Integer(int) => *int,
+            _ => unreachable!(),
         }
     }
 }
@@ -94,8 +118,14 @@ pub struct IntInfo {
     width: u16,
 }
 
-#[derive(Hash)]
+#[derive(Clone, Hash)]
 pub struct TypedValue {
-    pub ty: Type,
+    pub ty: TaraType,
     pub value: Value,
+}
+
+impl TypedValue {
+    pub fn new(ty: TaraType, value: Value) -> Self {
+        Self { ty, value }
+    }
 }

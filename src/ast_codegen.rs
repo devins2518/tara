@@ -1,9 +1,10 @@
 mod error;
 mod table;
 
+pub use crate::ast_codegen::error::Error;
 use crate::{
     ast::{Node, NodeKind},
-    ast_codegen::{error::Error, table::Table},
+    ast_codegen::table::Table,
     circt::{
         arc::{
             CallOperation as HwProcCallOperation, DefineOperation as HwProcDefineOperation,
@@ -14,12 +15,22 @@ use crate::{
             OrOperation as HwOrOperation, SubOperation as HwSubOperation,
             XorOperation as HwXorOperation,
         },
-        hw::{HWModuleOperation as HwModuleOperation, OutputOperation as HwOutputOperation},
+        hw::{
+            ConstantOperation as HwConstantOperation, HWModuleOperation as HwModuleOperation,
+            OutputOperation as HwOutputOperation, StructCreateOperation as HwStructCreateOperation,
+        },
         CombICmpPredicate,
     },
-    module::file::File,
-    types::{ModuleInfo, NamedType, Type as TaraType},
-    values::{StaticMlirValue, Value as TaraValue},
+    module::{
+        decls::{Decl, DeclStatus},
+        file::File,
+        namespace::Namespace,
+        structs::{Field, Struct, StructStatus},
+        tmodule::{ModuleStatus, TModule},
+    },
+    types::{NamedType, Type as TaraType},
+    utils::{init_field, RRC},
+    values::{StaticMlirValue, TypedValue, Value as TaraValue},
     Ast,
 };
 use anyhow::Result;
@@ -36,15 +47,17 @@ use melior::{
         arith::CmpiPredicate,
         ods::{
             arith::{
-                AddIOperation, AndIOperation, CmpIOperation, ExtSIOperation, ExtUIOperation,
-                MulIOperation, OrIOperation, SubIOperation, XOrIOperation,
+                AddIOperation, AndIOperation, CmpIOperation, ConstantOperation, ExtSIOperation,
+                ExtUIOperation, MulIOperation, OrIOperation, SubIOperation, XOrIOperation,
             },
             func::{FuncOperation, ReturnOperation},
+            llvm::{InsertValueOperation, UndefOperation},
         },
     },
     ir::{
         attribute::{
             ArrayAttribute as MlirArrayAttribute,
+            DenseI64ArrayAttribute as MlirDenseI64ArrayAttribute,
             FlatSymbolRefAttribute as MlirFlatSymbolRefAttribute,
             IntegerAttribute as MlirIntegerAttribute, StringAttribute as MlirStringAttribute,
             TypeAttribute as MlirTypeAttribute,
@@ -59,6 +72,7 @@ use melior::{
     },
     Context,
 };
+use num_bigint::ToBigInt;
 use std::collections::HashMap;
 use symbol_table::GlobalSymbol;
 
@@ -67,18 +81,22 @@ pub struct AstCodegen<'a, 'ast, 'ctx> {
     ctx: &'ctx Context,
     module: &'a MlirModule<'ctx>,
     builder: Builder<'ctx, 'a>,
-    table: Table<'ctx, 'ast>,
+    table: Table,
     pub errors: Vec<anyhow::Error>,
     anon_cnt: usize,
 }
 
 impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
     pub fn new(ast: &'ast Ast, ctx: &'ctx Context, module: &'a MlirModule<'ctx>) -> Self {
+        let root_node = &ast.root;
+        let root = Decl::new("root", root_node);
+        let root_rrc = Decl::init_struct_empty_namespace(root, &ast.root);
+
         Self {
             ast,
             ctx,
             module,
-            builder: Builder::new(module.body()),
+            builder: Builder::new(root_rrc, module.body()),
             table: Table::new(),
             errors: Vec::new(),
             anon_cnt: 0,
@@ -130,50 +148,45 @@ where
     'a: 'blk,
 {
     pub fn gen_root(&mut self) -> Result<()> {
-        self.gen_struct_decl(&self.ast.root)?;
+        let node = &self.ast.root;
+        self.setup_namespace(node)?;
+        self._gen_container(node, Self::gen_fn_decl)?;
 
         Ok(())
     }
 
-    fn _gen_container(
+    fn _gen_container<F: Fn(&mut Self, &Node) -> Result<TypedValue>>(
         &mut self,
-        node: &'ast Node,
-        subroutine_gen: impl Fn(&mut Self, &'ast Node) -> Result<()>,
+        node: &Node,
+        subroutine_gen: F,
     ) -> Result<()> {
-        matches!(node.kind, NodeKind::StructDecl(_));
-        // Setup name table
+        matches!(node.kind, NodeKind::StructDecl(_) | NodeKind::ModuleDecl(_));
+
         let members = match &node.kind {
             NodeKind::StructDecl(s) => &s.members,
             NodeKind::ModuleDecl(m) => &m.members,
             _ => unreachable!(),
         };
-        // Members will be either a VarDecl or a SubroutineDecl
-        for member in members {
-            match &member.kind {
-                NodeKind::VarDecl(v_d) => self.table.define_name(v_d.ident, &v_d.expr)?,
-                NodeKind::SubroutineDecl(s_d) => self.table.define_name(s_d.ident, member)?,
-                _ => unreachable!(),
-            }
-        }
 
         for member in members {
             match &member.kind {
-                NodeKind::VarDecl(v_d) => match self.gen_var_decl(&member) {
-                    Ok(Some(val)) => self.table.define_symbol(v_d.ident, val),
-                    Ok(None) => {}
-                    Err(e) => {
-                        self.pop();
-                        self.errors.push(e);
-                    }
-                },
-                NodeKind::SubroutineDecl(_) => match subroutine_gen(self, &member) {
+                NodeKind::VarDecl(_) => match self.gen_var_decl(&member) {
                     Ok(_) => {}
                     Err(e) => {
-                        println!("got error");
                         self.pop();
                         self.errors.push(e);
                     }
                 },
+                NodeKind::SubroutineDecl(_) => {
+                    match self._gen_subroutine(&member, &subroutine_gen) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            println!("got error");
+                            self.pop();
+                            self.errors.push(e);
+                        }
+                    }
+                }
                 _ => unreachable!(),
             }
         }
@@ -181,14 +194,34 @@ where
         Ok(())
     }
 
-    fn gen_struct_decl(&mut self, node: &'ast Node) -> Result<()> {
+    fn gen_struct_decl(&mut self, node: &Node) -> Result<TypedValue> {
         self.push();
+
+        let struct_ty = {
+            let curr_decl = self.builder.parent_decl.clone();
+            let namespace = self.builder.namespace();
+            Decl::init_struct(curr_decl.clone(), node, namespace);
+            let struct_obj = match curr_decl.borrow().value.as_ref().unwrap() {
+                TaraValue::Type(ty) => match &ty.borrow().clone() {
+                    TaraType::Struct(s) => s.clone(),
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            };
+            RRC::new(TaraType::Struct(struct_obj))
+        };
+
+        self.setup_namespace(node)?;
+
         self._gen_container(node, Self::gen_fn_decl)?;
+
         self.pop();
-        Ok(())
+
+        let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(struct_ty));
+        Ok(ty_val)
     }
 
-    fn gen_module_decl(&mut self, node: &'ast Node) -> Result<()> {
+    fn gen_module_decl(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::ModuleDecl(_));
         self.push();
         let mod_decl = match &node.kind {
@@ -198,78 +231,50 @@ where
         let loc = node.loc(self.ctx);
         let prev_context = self.builder.save(SurroundingContext::Hw);
 
+        // Set up module decl
+        let module_ty = {
+            let curr_decl = self.builder.parent_decl.clone();
+            let namespace = self.builder.namespace();
+            Decl::init_module(curr_decl.clone(), node, namespace);
+            let module_ty = curr_decl.borrow().value.as_ref().unwrap().to_type();
+            RRC::new(module_ty)
+        };
+
+        self.builder
+            .curr_decl()
+            .map_mut(|decl| decl.status = DeclStatus::InProgress);
+
+        self.setup_namespace(node)?;
+
+        match &module_ty.borrow().clone() {
+            TaraType::Module(m) => self.resolve_module_type(m.clone())?,
+            _ => unreachable!(),
+        }
+
+        let mod_mlir_type = module_ty.map(|ty| self.builder.get_mlir_tye(self.ctx, ty));
+
         let region = MlirRegion::new();
         let body = region.append_block(MlirBlock::new(&[]));
         self.builder.set_block(body);
 
-        // Here we'll generate all of the inputs to the module by analyzing each comb.
-        // TODO: This should only be done for method combs (i.e. @This() is first parameter), all
-        // other combs should be free
-        {
-            let mut ins: IndexMap<GlobalSymbol, (TaraType, &Node)> = IndexMap::new();
-            let mut outs = Vec::new();
-            for member in &mod_decl.members {
-                match &member.kind {
-                    NodeKind::SubroutineDecl(s_d) => {
-                        let ret_ty = self.gen_type(&s_d.return_type)?;
-                        if ret_ty == TaraType::Void {
-                            continue;
-                        }
-                        outs.push(NamedType {
-                            name: s_d.ident,
-                            ty: self.gen_type(&s_d.return_type)?,
-                        });
-                        for param in &s_d.params {
-                            let param_ty = param.ty.as_ref();
-                            let param_type = self.gen_type(param_ty)?;
-
-                            match ins.entry(param.name) {
-                                Entry::Occupied(entry) => {
-                                    if entry.get().0 != param_type {
-                                        Err(Error::new(
-                                            member.span,
-                                            "Comb params have different types!".to_string(),
-                                        ))?;
-                                    }
-                                }
-                                Entry::Vacant(entry) => _ = entry.insert((param_type, param_ty)),
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            // And now that we have the reduced set of inputs, we can generate module inputs
-            let ins = {
-                let mut v = Vec::new();
-                for (name, ty_and_node) in ins {
-                    let param_type = ty_and_node.0;
-                    let param_node = ty_and_node.1;
-                    self.table.define_name(name, param_node)?;
-                    let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type.clone())?;
-                    let arg = self
-                        .builder
-                        .add_argument(mlir_param_type, param_node.loc(self.ctx));
-                    self.table.define_symbol(name, arg.clone());
-                    self.table
-                        .define_typed_value(param_node, param_type.clone(), arg);
-                    v.push(NamedType {
-                        name,
-                        ty: param_type,
-                    });
-                }
-                v
-            };
-            let mod_info = ModuleInfo { ins, outs };
-            self.table.define_type(node, TaraType::Module(mod_info));
+        for (name, node_ptr, param_type) in &module_ty.map(|ty| ty.module()).borrow().ins {
+            let param_node = unsafe { &**node_ptr };
+            self.table.define_name(name.into(), param_node)?;
+            let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
+            let arg = self
+                .builder
+                .add_argument(mlir_param_type, param_node.loc(self.ctx));
+            let ty_val = TypedValue::new(param_type.clone(), arg);
+            self.table.define_ty_val(param_node, ty_val);
         }
-
-        let mod_type = self.table.get_mlir_type_node(self.ctx, node)?;
 
         self._gen_container(node, Self::gen_comb_decl)?;
 
-        {
+        if self.errors.len() == 0 {
+            self.builder
+                .curr_decl()
+                .map_mut(|decl| decl.status = DeclStatus::CodegenFailure);
+
             let mut outs = Vec::new();
             for member in &mod_decl.members {
                 match &member.kind {
@@ -288,31 +293,37 @@ where
                 .outputs(&outs)
                 .build();
             body.append_operation(output_op.into());
+
+            let operation: MlirOperation = {
+                let name = &self.builder.parent_decl.borrow().name;
+                let builder = HwModuleOperation::builder(self.ctx, loc)
+                    .body(region)
+                    .sym_name(MlirStringAttribute::new(self.ctx, name.as_str()))
+                    .module_type(MlirTypeAttribute::new(mod_mlir_type))
+                    .parameters(MlirArrayAttribute::new(self.ctx, &[]))
+                    .build();
+                builder.into()
+            };
+
+            self.module.body().append_operation(operation);
         }
-
-        let name = if let Some(name) = self.table.get_name(node) {
-            name
-        } else {
-            let name = GlobalSymbol::new(format!("anon_module{}", self.anon()));
-            self.table.define_name(name, node)?;
-            name
-        };
-        let builder = HwModuleOperation::builder(self.ctx, loc)
-            .body(region)
-            .sym_name(MlirStringAttribute::new(self.ctx, name.as_str()))
-            .module_type(MlirTypeAttribute::new(mod_type))
-            .parameters(MlirArrayAttribute::new(self.ctx, &[]))
-            .build();
-        let operation: MlirOperation = builder.into();
-
-        self.module.body().append_operation(operation);
 
         self.builder.restore(prev_context);
         self.pop();
-        Ok(())
+
+        let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(module_ty));
+
+        self.builder.curr_decl().map_mut(|decl| {
+            let ty_val = ty_val.clone();
+            decl.status = DeclStatus::Complete;
+            decl.ty = Some(ty_val.ty);
+            decl.value = Some(ty_val.value);
+        });
+
+        Ok(ty_val)
     }
 
-    fn gen_var_decl(&mut self, node: &'ast Node) -> Result<Option<TaraValue>> {
+    fn gen_var_decl(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::VarDecl(_));
 
         let var_decl = match &node.kind {
@@ -320,29 +331,74 @@ where
             _ => unreachable!(),
         };
         let block = self.module.body();
-        let prev_context = self.builder.save_with_block(SurroundingContext::Sw, block);
+        let decl_name = var_decl.ident.as_str();
+        // Decl should've already been created if we got to this point
+        let decl = self.builder.find_decl(decl_name).unwrap();
+        let prev_context =
+            self.builder
+                .save_with_block_with_decl(SurroundingContext::Sw, block, decl.clone());
 
-        let ret_val = if let Some(mut value) = self.gen_expr(&var_decl.expr)? {
-            if let Some(ty_expr) = &var_decl.ty {
-                self.gen_type(ty_expr)?;
-                let expected_type = self.table.get_type(ty_expr)?;
-                value = self.cast(&var_decl.expr, &expected_type)?;
-                self.table
-                    .define_typed_value(node, expected_type, value.clone());
-            } else {
-                // TODO: infer value type
-            }
-            Ok(Some(value))
-        } else {
-            Ok(None)
+        let mut ty_val = self.gen_expr_reachable(&var_decl.expr)?;
+        let mut decl = decl.borrow_mut();
+        if let Some(ty_expr) = &var_decl.ty {
+            self.gen_type(ty_expr)?;
+            let expected_type = self.table.get_type(ty_expr)?;
+            ty_val.value = self.cast(&var_decl.expr, ty_val.clone(), &expected_type)?;
+            ty_val.ty = expected_type;
         };
+        {
+            let ty_val = ty_val.clone();
+            decl.ty = Some(ty_val.ty);
+            decl.value = Some(ty_val.value);
+        }
 
         self.builder.restore(prev_context);
 
-        ret_val
+        Ok(ty_val)
     }
 
-    fn gen_fn_decl(&mut self, node: &'ast Node) -> Result<()> {
+    fn _gen_subroutine<F: Fn(&mut Self, &Node) -> Result<TypedValue>>(
+        &mut self,
+        node: &Node,
+        subroutine_gen: F,
+    ) -> Result<()> {
+        matches!(node.kind, NodeKind::SubroutineDecl(_));
+
+        let sr_decl = match &node.kind {
+            NodeKind::SubroutineDecl(s_d) => s_d,
+            _ => unreachable!(),
+        };
+        let decl_name = sr_decl.ident.as_str();
+        // Decl should've already been created if we got to this point
+        let decl = self.builder.find_decl(decl_name).unwrap();
+        let prev_context = self.builder.save_with_block_with_decl(
+            self.builder.surr_context,
+            self.builder.block,
+            decl.clone(),
+        );
+
+        match decl.borrow().status {
+            DeclStatus::Complete => return Ok(()),
+            _ => {}
+        }
+
+        decl.map_mut(|decl| decl.status = DeclStatus::InProgress);
+
+        let ty_val = subroutine_gen(self, node)?;
+
+        decl.map_mut(|decl| {
+            let ty_val = ty_val.clone();
+            decl.status = DeclStatus::Complete;
+            decl.ty = Some(ty_val.ty);
+            decl.value = Some(ty_val.value);
+        });
+
+        self.builder.restore(prev_context);
+
+        Ok(())
+    }
+
+    fn gen_fn_decl(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::SubroutineDecl(_));
         let fn_decl = match &node.kind {
             NodeKind::SubroutineDecl(s_d) => s_d,
@@ -350,8 +406,23 @@ where
         };
         self.push();
 
+        // Set up fn decl
+        let fn_ty = {
+            let curr_decl = self.builder.parent_decl.clone();
+            let namespace = self.builder.namespace();
+            Decl::init_fn(curr_decl.clone(), node, namespace);
+            let fn_obj = match curr_decl.borrow().value.as_ref().unwrap() {
+                TaraValue::Type(ty) => match &ty.borrow().clone() {
+                    TaraType::Function(f) => f.clone(),
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            };
+            RRC::new(TaraType::Function(fn_obj))
+        };
+
         let return_type = self.gen_type(&fn_decl.return_type)?;
-        let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
+        let mlir_return_type = self.builder.get_mlir_tye(self.ctx, &return_type);
 
         let loc = node.loc(self.ctx);
         let region = MlirRegion::new();
@@ -362,20 +433,20 @@ where
             .save_with_block(SurroundingContext::Sw, block_ref);
         self.builder.block_ret_ty = Some(return_type.clone());
 
-        let fn_name = {
+        {
             let mut param_types = Vec::new();
             for param in &fn_decl.params {
                 let param_ty = param.ty.as_ref();
                 self.table.define_name(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
-                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type.clone())?;
+                let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
                 param_types.push(mlir_param_type);
 
                 let arg = self
                     .builder
                     .add_argument(mlir_param_type, param.ty.loc(self.ctx));
-                self.table.define_symbol(param.name, arg.clone());
-                self.table.define_typed_value(param_ty, param_type, arg);
+                let ty_val = TypedValue::new(param_type, arg);
+                self.table.define_ty_val(param_ty, ty_val);
             }
 
             self.gen_block_terminated(&fn_decl.block)?;
@@ -385,27 +456,26 @@ where
             } else {
                 None
             };
+            let fn_name = &self.builder.parent_decl.borrow().name;
             let fn_type =
                 MlirFunctionType::new(self.ctx, &param_types, mlir_fn_ret_type.as_slice()).into();
             let builder = FuncOperation::builder(self.ctx, loc)
                 .body(region)
-                .sym_name(MlirStringAttribute::new(self.ctx, fn_decl.ident.as_str()))
+                .sym_name(MlirStringAttribute::new(self.ctx, &fn_name))
                 .function_type(MlirTypeAttribute::new(fn_type));
             let func = builder.build();
-            let fn_name = MlirFlatSymbolRefAttribute::new(self.ctx, func.sym_name()?.value());
             self.module.body().append_operation(func.into());
-            fn_name
         };
 
         self.pop();
         self.builder.restore(prev_context);
 
-        self.table.define_fn(fn_decl.ident, fn_name);
+        let ty_val = TypedValue::new(TaraType::TypeType, TaraValue::Type(fn_ty));
 
-        Ok(())
+        Ok(ty_val)
     }
 
-    fn gen_comb_decl(&mut self, node: &'ast Node) -> Result<()> {
+    fn gen_comb_decl(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::SubroutineDecl(_));
         let comb_decl = match &node.kind {
             NodeKind::SubroutineDecl(s_d) => s_d,
@@ -413,16 +483,31 @@ where
         };
         self.push();
 
+        // Set up comb decl
+        let comb_ty = {
+            let curr_decl = self.builder.parent_decl.clone();
+            let namespace = self.builder.namespace();
+            Decl::init_comb(curr_decl.clone(), node, namespace);
+            let comb_obj = match curr_decl.borrow().value.as_ref().unwrap() {
+                TaraValue::Type(ty) => match &ty.borrow().clone() {
+                    TaraType::Comb(c) => c.clone(),
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            };
+            RRC::new(TaraType::Comb(comb_obj))
+        };
+
         let return_type = self.gen_type(&comb_decl.return_type)?;
         // Don't emit an arc that returns void as all computation can be culled
         if return_type == TaraType::Void {
-            return Ok(());
+            return Ok(TypedValue::new(TaraType::Void, TaraValue::VoidValue));
         }
-        let mlir_return_type = self.table.get_mlir_type(self.ctx, return_type.clone())?;
+        let mlir_return_type = self.builder.get_mlir_tye(self.ctx, &return_type);
 
         let loc = node.loc(self.ctx);
         let body = self.module.body();
-        let comb_name = {
+        {
             let region = MlirRegion::new();
             let block = MlirBlock::new(&[]);
             let block_ref = region.append_block(block);
@@ -434,15 +519,16 @@ where
             let mut param_types = Vec::new();
             for param in &comb_decl.params {
                 let param_ty = param.ty.as_ref();
+                self.table.define_name_shadow_upper(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
-                let mlir_param_type = self.table.get_mlir_type(self.ctx, param_type.clone())?;
+                let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
                 param_types.push(mlir_param_type);
 
                 let arg = self
                     .builder
                     .add_argument(mlir_param_type, param.ty.loc(self.ctx));
-                self.table.define_symbol(param.name, arg.clone());
-                self.table.define_typed_value(param_ty, param_type, arg);
+                let ty_val = TypedValue::new(param_type, arg);
+                self.table.define_ty_val(param_ty, ty_val);
             }
 
             self.gen_block_terminated(&comb_decl.block)?;
@@ -451,26 +537,30 @@ where
                 MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
             let builder = HwProcDefineOperation::builder(self.ctx, loc)
                 .body(region)
-                .sym_name(MlirStringAttribute::new(self.ctx, comb_decl.ident.as_str()))
+                .sym_name(MlirStringAttribute::new(
+                    self.ctx,
+                    &self.builder.parent_decl.borrow().name,
+                ))
                 .function_type(MlirTypeAttribute::new(comb_type));
             let comb = builder.build();
-            let comb_name = MlirFlatSymbolRefAttribute::new(self.ctx, comb_decl.ident.as_str());
             let operation: MlirOperation = comb.into();
             body.append_operation(operation);
             self.builder.restore(prev_context);
-            comb_name
         };
 
         self.pop();
 
         let mut ins = Vec::new();
         for param in &comb_decl.params {
-            let real_param_node = self.table.get_node(param.name);
-            let param_val = self.table.get_value(real_param_node)?.get_runtime_value();
+            let param_val = self
+                .table
+                .get_named_value(param.name, param.ty.span)?
+                .get_runtime_value();
             ins.push(param_val);
         }
+        let comb_name = &self.builder.parent_decl.borrow().name;
         let call_op = HwProcCallOperation::builder(self.ctx, loc)
-            .arc(comb_name)
+            .arc(MlirFlatSymbolRefAttribute::new(self.ctx, &comb_name))
             .inputs(&ins)
             .outputs(&[mlir_return_type])
             .build();
@@ -478,27 +568,30 @@ where
             .builder
             .insert_operation(call_op.as_operation().clone())?;
 
-        self.table.define_fn(comb_decl.ident, comb_name);
-        self.table.define_typed_value(node, return_type, call_val);
+        let rt_ty_val = TypedValue::new(return_type, call_val);
+        self.table.define_ty_val(node, rt_ty_val);
 
-        Ok(())
+        let ty_val = TypedValue::new(TaraType::TypeType, TaraValue::Type(comb_ty));
+        Ok(ty_val)
     }
 
-    fn gen_return(&mut self, node: &'ast Node) -> Result<()> {
+    fn gen_return(&mut self, node: &Node) -> Result<()> {
         matches!(node.kind, NodeKind::Return(_));
         let loc = node.loc(self.ctx);
         match &node.kind {
             NodeKind::Return(Some(e)) => {
-                let return_value = self.gen_expr_reachable(&e.lhs)?;
-                let return_ty = self.table.get_type(&e.lhs)?;
-                self.table.define_typed_value(node, return_ty, return_value);
+                let return_ty_val = self.gen_expr_reachable(&e.lhs)?;
+                self.table.define_ty_val(node, return_ty_val.clone());
                 let ret_ty = self.builder.ret_ty();
-                let casted_value = self.cast(node, &ret_ty)?;
-                let mat_value = self.builder.materialize(&ret_ty, &casted_value);
+                let casted_value = self.cast(node, return_ty_val, &ret_ty)?;
+                let mat_value = self
+                    .builder
+                    .materialize(self.ctx, loc, &ret_ty, &casted_value)?;
                 self.builder.gen_return(self.ctx, loc, Some(mat_value))?;
             }
             NodeKind::Return(None) => {
-                self.table.define_type(node, TaraType::Void);
+                let ty_val = TypedValue::new(TaraType::Void, TaraValue::VoidValue);
+                self.table.define_ty_val(node, ty_val);
                 self.builder.gen_return(self.ctx, loc, None)?;
             }
             _ => unreachable!(),
@@ -508,16 +601,10 @@ where
         Ok(())
     }
 
-    fn gen_expr(&mut self, node: &'ast Node) -> Result<Option<TaraValue>> {
+    fn gen_expr(&mut self, node: &Node) -> Result<Option<TypedValue>> {
         let maybe_val = match &node.kind {
-            NodeKind::StructDecl(_) => {
-                self.gen_struct_decl(node)?;
-                None
-            }
-            NodeKind::ModuleDecl(_) => {
-                self.gen_module_decl(node)?;
-                None
-            }
+            NodeKind::StructDecl(_) => Some(self.gen_struct_decl(node)?),
+            NodeKind::ModuleDecl(_) => Some(self.gen_module_decl(node)?),
             NodeKind::Return(_) => {
                 self.gen_return(node)?;
                 None
@@ -538,23 +625,26 @@ where
             | NodeKind::Mul(_)
             | NodeKind::Div(_) => Some(self.gen_bin_op(node)?),
             NodeKind::Identifier(_) => Some(self.get_identifier(node)?),
+            NodeKind::StructInit(_) => Some(self.gen_struct_init(node)?),
+            NodeKind::NumberLiteral(_) => Some(self.gen_number(node)?),
+            NodeKind::VarDecl(_) => Some(self.gen_var_decl(node)?),
             _ => unimplemented!(),
         };
         Ok(maybe_val)
     }
 
-    fn gen_expr_reachable(&mut self, node: &'ast Node) -> Result<TaraValue> {
-        let value = self.gen_expr(node)?.ok_or_else(|| {
+    fn gen_expr_reachable(&mut self, node: &Node) -> Result<TypedValue> {
+        let ty_val = self.gen_expr(node)?.ok_or_else(|| {
             Error::new(
                 node.span,
                 "Expected reachable value, control flow unexpectedly diverted".to_string(),
             )
         })?;
-        self.table.define_value(node, value.clone());
-        Ok(value)
+        self.table.define_ty_val(node, ty_val.clone());
+        Ok(ty_val)
     }
 
-    fn gen_bin_op(&mut self, node: &'ast Node) -> Result<TaraValue> {
+    fn gen_bin_op(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(
             node.kind,
             NodeKind::Or(_)
@@ -613,7 +703,7 @@ where
         }
     }
 
-    fn gen_cmp(&mut self, node: &'ast Node) -> Result<TaraValue> {
+    fn gen_cmp(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(
             node.kind,
             NodeKind::Or(_)
@@ -640,6 +730,7 @@ where
         let lhs = self.table.get_value(lhs_node)?;
         let lhs_type = self.table.get_type(lhs_node)?;
         // Type check lhs and rhs
+        let rhs_ty_val = self.table.get_ty_val(rhs_node)?;
         let rhs = match &node.kind {
             NodeKind::Or(_) | NodeKind::And(_) => {
                 self.expect_bool_type(lhs_node)?;
@@ -649,20 +740,17 @@ where
             NodeKind::Lt(_) | NodeKind::Gt(_) | NodeKind::Lte(_) | NodeKind::Gte(_) => {
                 self.expect_integral_type(lhs_node)?;
                 self.expect_integral_type(rhs_node)?;
-                self.cast(rhs_node, &lhs_type)?
+                self.cast(rhs_node, rhs_ty_val, &lhs_type)?
             }
             NodeKind::Eq(_) | NodeKind::Neq(_) => {
                 self.expect_integral_type(lhs_node)
                     .or(self.expect_bool_type(lhs_node))?;
                 self.expect_integral_type(rhs_node)
                     .or(self.expect_bool_type(rhs_node))?;
-                self.cast(rhs_node, &lhs_type)?
+                self.cast(rhs_node, rhs_ty_val, &lhs_type)?
             }
             _ => unreachable!(),
         };
-
-        let bool_ty = TaraType::Bool;
-        self.table.define_type(node, bool_ty);
 
         if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
             Err(Error::new(
@@ -671,10 +759,14 @@ where
             ))?;
         }
 
-        let lhs = self.builder.materialize(&lhs_type, &lhs);
-        let rhs = self.builder.materialize(&lhs_type, &rhs);
+        let lhs = self
+            .builder
+            .materialize(self.ctx, lhs_node.loc(self.ctx), &lhs_type, &lhs)?;
+        let rhs = self
+            .builder
+            .materialize(self.ctx, rhs_node.loc(self.ctx), &lhs_type, &rhs)?;
 
-        match node.kind {
+        let val = match node.kind {
             NodeKind::Or(_) => self.builder.gen_log_or(self.ctx, loc, lhs, rhs),
             NodeKind::And(_) => self.builder.gen_log_and(self.ctx, loc, lhs, rhs),
             NodeKind::Lt(_) => self.builder.gen_log_lt(self.ctx, loc, lhs, rhs),
@@ -684,10 +776,15 @@ where
             NodeKind::Eq(_) => self.builder.gen_log_eq(self.ctx, loc, lhs, rhs),
             NodeKind::Neq(_) => self.builder.gen_log_neq(self.ctx, loc, lhs, rhs),
             _ => unreachable!(),
-        }
+        }?;
+
+        let ty_val = TypedValue::new(TaraType::Bool, val.clone());
+        self.table.define_ty_val(node, ty_val.clone());
+
+        Ok(ty_val)
     }
 
-    fn gen_arith(&mut self, node: &'ast Node) -> Result<TaraValue> {
+    fn gen_arith(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(
             node.kind,
             NodeKind::Add(_) | NodeKind::Sub(_) | NodeKind::Mul(_) | NodeKind::Div(_)
@@ -704,9 +801,8 @@ where
         let lhs_type = self.table.get_type(lhs_node)?;
         self.expect_integral_type(&lhs_node)?;
 
-        let rhs = self.cast(rhs_node, &lhs_type)?;
-
-        self.table.define_type(node, lhs_type.clone());
+        let rhs_ty_val = self.table.get_ty_val(rhs_node)?;
+        let rhs = self.cast(rhs_node, rhs_ty_val, &lhs_type)?;
 
         if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
             Err(Error::new(
@@ -715,19 +811,28 @@ where
             ))?;
         }
 
-        let lhs = self.builder.materialize(&lhs_type, &lhs);
-        let rhs = self.builder.materialize(&lhs_type, &rhs);
+        let lhs = self
+            .builder
+            .materialize(self.ctx, lhs_node.loc(self.ctx), &lhs_type, &lhs)?;
+        let rhs = self
+            .builder
+            .materialize(self.ctx, rhs_node.loc(self.ctx), &lhs_type, &rhs)?;
 
-        match &node.kind {
+        let val = match &node.kind {
             NodeKind::Add(_) => self.builder.gen_int_add(self.ctx, loc, lhs, rhs),
             NodeKind::Sub(_) => self.builder.gen_int_sub(self.ctx, loc, lhs, rhs),
             NodeKind::Mul(_) => self.builder.gen_int_mul(self.ctx, loc, lhs, rhs),
             NodeKind::Div(_) => self.builder.gen_int_div(self.ctx, loc, lhs, rhs),
             _ => unreachable!(),
-        }
+        }?;
+
+        let ty_val = TypedValue::new(lhs_type, val.clone());
+        self.table.define_ty_val(node, ty_val.clone());
+
+        Ok(ty_val)
     }
 
-    fn gen_bitwise(&mut self, node: &'ast Node) -> Result<TaraValue> {
+    fn gen_bitwise(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(
             node.kind,
             NodeKind::BitAnd(_) | NodeKind::BitOr(_) | NodeKind::BitXor(_)
@@ -743,9 +848,8 @@ where
         let lhs_type = self.table.get_type(lhs_node)?;
         self.expect_integral_type(&lhs_node)?;
 
-        let rhs = self.cast(rhs_node, &lhs_type)?;
-
-        self.table.define_type(node, lhs_type.clone());
+        let rhs_ty_val = self.table.get_ty_val(rhs_node)?;
+        let rhs = self.cast(rhs_node, rhs_ty_val, &lhs_type)?;
 
         if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
             Err(Error::new(
@@ -754,18 +858,96 @@ where
             ))?;
         }
 
-        let lhs = self.builder.materialize(&lhs_type, &lhs);
-        let rhs = self.builder.materialize(&lhs_type, &rhs);
+        let lhs = self
+            .builder
+            .materialize(self.ctx, lhs_node.loc(self.ctx), &lhs_type, &lhs)?;
+        let rhs = self
+            .builder
+            .materialize(self.ctx, rhs_node.loc(self.ctx), &lhs_type, &rhs)?;
 
-        match &node.kind {
+        let val = match &node.kind {
             NodeKind::BitAnd(_) => self.builder.gen_bit_and(self.ctx, loc, lhs, rhs),
             NodeKind::BitOr(_) => self.builder.gen_bit_or(self.ctx, loc, lhs, rhs),
             NodeKind::BitXor(_) => self.builder.gen_bit_xor(self.ctx, loc, lhs, rhs),
             _ => unreachable!(),
-        }
+        }?;
+
+        let ty_val = TypedValue::new(lhs_type, val.clone());
+        self.table.define_ty_val(node, ty_val.clone());
+
+        Ok(ty_val)
     }
 
-    fn gen_block(&mut self, nodes: &'ast [Node]) -> Result<()> {
+    fn gen_struct_init(&mut self, node: &Node) -> Result<TypedValue> {
+        matches!(node.kind, NodeKind::StructInit(_));
+        let struct_init = match &node.kind {
+            NodeKind::StructInit(s_i) => s_i,
+            _ => unreachable!(),
+        };
+
+        let struct_type = match &struct_init.ty {
+            Some(ty) => self.gen_type(ty)?,
+            None => Err(Error::new(
+                node.span,
+                "TODO: support anonymous struct initialization",
+            ))?,
+        };
+
+        let struct_val = self.expect_struct_type(node, &struct_type)?;
+
+        self.resolve_struct_layout(struct_val.clone())?;
+
+        let mut field_tracker = struct_val.map(|s| {
+            let mut field_tracker = IndexMap::new();
+            for field in &s.fields {
+                field_tracker.insert(field.name.clone(), (false, field.ty.clone()));
+            }
+            field_tracker
+        });
+
+        let mut fields = Vec::new();
+        for field_init in &struct_init.fields {
+            match field_tracker.get_mut(field_init.name.as_str()) {
+                Some((inited, expected_ty)) => {
+                    if *inited {
+                        Err(Error::new(
+                            field_init.ty.span,
+                            format!("Duplicate field initialization of {}", field_init.name),
+                        ))?
+                    }
+                    *inited = true;
+                    let init_ty_val = self.gen_expr_reachable(&field_init.ty)?;
+                    let casted_value = self.cast(&field_init.ty, init_ty_val, expected_ty)?;
+                    fields.push(casted_value);
+                }
+                None => Err(Error::new(
+                    field_init.ty.span,
+                    format!("Attempted to init unknown field {}", field_init.name),
+                ))?,
+            };
+        }
+
+        // Check if anything was left uninitialized
+        for uninited_field in field_tracker
+            .iter()
+            .filter(|(_, (inited, _))| !*inited)
+            .into_iter()
+        {
+            Err(Error::new(
+                node.span,
+                format!("Field {} is not initialized", uninited_field.0),
+            ))?;
+        }
+
+        let value = TaraValue::Struct(RRC::new(fields));
+
+        let ty_val = TypedValue::new(struct_type, value);
+        self.table.define_ty_val(node, ty_val.clone());
+
+        Ok(ty_val)
+    }
+
+    fn gen_block(&mut self, nodes: &[Node]) -> Result<()> {
         for (i, expr) in nodes.iter().enumerate() {
             if let None = self.gen_expr(expr)? {
                 if i != (nodes.len() - 1) {
@@ -781,7 +963,7 @@ where
 
     // Generates a block. Ensures that the last instruction is a terminator returning void if
     // necessary. Performs type checking by casting to `self.builder.ret_ty`.
-    fn gen_block_terminated(&mut self, nodes: &'ast [Node]) -> Result<()> {
+    fn gen_block_terminated(&mut self, nodes: &[Node]) -> Result<()> {
         self.gen_block(nodes)?;
         if let None = self.builder.block.terminator() {
             let loc = Location::unknown(self.ctx);
@@ -791,15 +973,17 @@ where
         Ok(())
     }
 
-    fn gen_type(&mut self, node: &'ast Node) -> Result<TaraType> {
+    fn gen_type(&mut self, node: &Node) -> Result<TaraType> {
         let ty = match &node.kind {
-            NodeKind::Identifier(ident) => {
-                let s = ident.as_str();
-                if let Some(ty) = get_maybe_primitive(s) {
-                    ty
-                } else {
-                    unimplemented!()
+            NodeKind::Identifier(_) => {
+                let ty_val = self.get_identifier(node)?;
+                let ty = ty_val.value.to_type();
+                match &ty {
+                    TaraType::Struct(s) => self.resolve_struct_layout(s.clone())?,
+                    TaraType::Module(m) => self.resolve_module_type(m.clone())?,
+                    _ => {}
                 }
+                ty
             }
             NodeKind::ModuleDecl(m_d) => {
                 let mut ins = HashMap::new();
@@ -808,7 +992,7 @@ where
                     match &comb.kind {
                         NodeKind::SubroutineDecl(s_d) => {
                             for param in &s_d.params {
-                                self.table.define_name(param.name, &param.ty)?;
+                                // self.table.define_name(param.name, &param.ty)?;
                                 let param_ty = self.gen_type(&param.ty)?;
                                 let named_in = NamedType {
                                     name: param.name,
@@ -826,19 +1010,226 @@ where
                         _ => {}
                     }
                 }
-                TaraType::Module(ModuleInfo {
-                    ins: Vec::from_iter(ins.into_values()),
-                    outs: Vec::from_iter(outs.into_values()),
-                })
+                // TaraType::Module(ModuleInfo {
+                //     ins: Vec::from_iter(ins.into_values()),
+                //     outs: Vec::from_iter(outs.into_values()),
+                // })
+                unimplemented!()
+            }
+            NodeKind::StructDecl(_) => {
+                // If we're reaching here, then we're generating an anonymous struct declaration.
+                let block = self.module.body();
+                let anon_num = self.anon();
+                let decl = self
+                    .builder
+                    .new_decl(node, &format!("anon_struct{}", anon_num))?;
+                let prev_context =
+                    self.builder
+                        .save_with_block_with_decl(SurroundingContext::Sw, block, decl);
+
+                let ty_val = self.gen_expr_reachable(node)?;
+                self.expect_type_type(node, &ty_val.ty)?;
+                let struct_val = self.expect_struct_type(node, &ty_val.value.to_type())?;
+
+                self.builder.restore(prev_context);
+
+                TaraType::Struct(struct_val)
             }
             _ => unimplemented!(),
         };
-        self.table.define_type(node, ty.clone());
         Ok(ty)
     }
 
-    fn get_identifier(&mut self, node: &'ast Node) -> Result<TaraValue> {
-        self.table.get_identifier_value(node)
+    fn gen_number(&mut self, node: &Node) -> Result<TypedValue> {
+        matches!(node.kind, NodeKind::NumberLiteral(_));
+        let number: i64 = match &node.kind {
+            NodeKind::NumberLiteral(num) => num.to_bigint().unwrap().try_into().unwrap(),
+            _ => unreachable!(),
+        };
+        let ty_val = TypedValue::new(TaraType::ComptimeInt, TaraValue::Integer(number));
+        Ok(ty_val)
+    }
+
+    fn get_identifier(&mut self, node: &Node) -> Result<TypedValue> {
+        let ident = match node.kind {
+            NodeKind::Identifier(ident) => ident,
+            _ => unreachable!(),
+        };
+        get_maybe_primitive(ident.as_str())
+            .map(Result::Ok)
+            .or_else(|| {
+                self.builder
+                    .find_decl(ident.as_str())
+                    .map(|decl| self.resolve_decl_ty_val(decl))
+            })
+            .unwrap_or_else(|| self.table.get_named_ty_val(ident, node.span))
+    }
+}
+
+// Decl related methods
+impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx>
+where
+    'a: 'blk,
+{
+    fn resolve_struct_layout(&mut self, struct_rrc: RRC<Struct>) -> Result<()> {
+        let mut struct_obj = struct_rrc.borrow_mut();
+        let decl = struct_obj.decl.clone();
+        let node = struct_obj.node();
+        let struct_node = match &node.kind {
+            NodeKind::StructDecl(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        match struct_obj.status {
+            StructStatus::FullyResolved => return Ok(()),
+            StructStatus::FieldTypeWip => Err(Error::new(node.span, "Struct depends on itself")),
+            _ => Ok(()),
+        }?;
+        struct_obj.status = StructStatus::FieldTypeWip;
+        decl.map_mut(|decl| decl.status = DeclStatus::InProgress);
+
+        let mut decl_error_guard = Decl::error_guard(decl.clone());
+        for field_node in &struct_node.fields {
+            let field_type = self.gen_type(&field_node.ty)?;
+            let field = Field {
+                name: field_node.name.to_string(),
+                ty: field_type,
+            };
+            struct_obj.fields.push(field);
+        }
+        decl_error_guard.success();
+
+        struct_obj.status = StructStatus::FullyResolved;
+        decl.map_mut(|decl| decl.status = DeclStatus::Complete);
+
+        Ok(())
+    }
+
+    fn resolve_module_type(&mut self, module_rrc: RRC<TModule>) -> Result<()> {
+        let node = module_rrc.map(|module| module.node());
+        let decl = module_rrc.map(|module| module.decl.clone());
+        let module_node = match &node.kind {
+            NodeKind::ModuleDecl(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        match module_rrc.borrow().status {
+            ModuleStatus::FullyResolved => return Ok(()),
+            ModuleStatus::InProgress => Err(Error::new(node.span, "Module depends on itself")),
+            _ => Ok(()),
+        }?;
+        module_rrc.map_mut(|obj| obj.status = ModuleStatus::InProgress);
+        decl.map_mut(|decl| decl.status = DeclStatus::InProgress);
+
+        // Here we'll generate all of the inputs to the module by analyzing each comb.
+        // TODO: This should only be done for method combs (i.e. @This() is first parameter), all
+        // other combs should be free
+        // TODO: Probably should generate all comb methods here as well, can use error guard to
+        // detect dependency errors
+        let mut reduced_ins: IndexMap<GlobalSymbol, (TaraType, &Node)> = IndexMap::new();
+        for member in &module_node.members {
+            match &member.kind {
+                NodeKind::SubroutineDecl(s_d) => {
+                    let ret_ty = self.gen_type(&s_d.return_type)?;
+                    // Skip generating combs which don't return anything
+                    if ret_ty == TaraType::Void {
+                        continue;
+                    }
+                    module_rrc.map_mut(|obj| -> Result<()> {
+                        obj.outs.push((s_d.ident.to_string(), ret_ty.clone()));
+                        Ok(())
+                    })?;
+                    for param in &s_d.params {
+                        let param_ty = param.ty.as_ref();
+                        let param_type = self.gen_type(param_ty)?;
+
+                        match reduced_ins.entry(param.name) {
+                            Entry::Occupied(entry) => {
+                                if entry.get().0 != param_type {
+                                    module_rrc.map_mut(|obj| obj.status = ModuleStatus::SemaError);
+                                    Err(Error::new(
+                                        member.span,
+                                        "Comb params have different types!".to_string(),
+                                    ))?;
+                                }
+                            }
+                            Entry::Vacant(entry) => _ = entry.insert((param_type, param_ty)),
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // And now that we have the reduced set of inputs, we can generate module inputs
+        let mut module_obj = module_rrc.borrow_mut();
+        for (name, ty_and_node) in reduced_ins {
+            let param_type = ty_and_node.0;
+            let param_node = ty_and_node.1;
+            module_obj
+                .ins
+                .push((name.to_string(), param_node, param_type));
+        }
+
+        module_obj.status = ModuleStatus::FullyResolved;
+        decl.map_mut(|decl| decl.status = DeclStatus::Complete);
+
+        Ok(())
+    }
+
+    fn resolve_decl_ty_val(&mut self, decl: RRC<Decl>) -> Result<TypedValue> {
+        if let (Some(value), Some(ty)) = (&decl.borrow().value, &decl.borrow().ty) {
+            let ty_val = TypedValue::new(ty.clone(), value.clone());
+            return Ok(ty_val);
+        }
+
+        let node = decl.borrow().node();
+
+        if decl.borrow().status == DeclStatus::InProgress {
+            Err(Error::new(node.span, "Decl depends on itself"))?
+        }
+
+        decl.map_mut(|decl| decl.status = DeclStatus::InProgress);
+
+        let ty_val = self.gen_expr_reachable(node)?;
+
+        decl.map_mut(|decl| {
+            let ty_val = ty_val.clone();
+            decl.value = Some(ty_val.value.clone());
+            decl.ty = Some(ty_val.ty);
+            decl.status = DeclStatus::Complete;
+        });
+
+        Ok(ty_val)
+    }
+}
+
+// Housekeeping methods
+impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx>
+where
+    'a: 'blk,
+{
+    fn setup_namespace(&mut self, node: &Node) -> Result<()> {
+        matches!(node.kind, NodeKind::StructDecl(_) | NodeKind::ModuleDecl(_));
+        let members = match &node.kind {
+            NodeKind::StructDecl(s) => &s.members,
+            NodeKind::ModuleDecl(m) => &m.members,
+            _ => unreachable!(),
+        };
+        for member in members {
+            match &member.kind {
+                NodeKind::VarDecl(v_d) => {
+                    // self.table.define_name(v_d.ident, &v_d.expr)?;
+                    self.builder.new_decl(member, v_d.ident.as_str())?;
+                }
+                NodeKind::SubroutineDecl(s_d) => {
+                    // self.table.define_name(s_d.ident, member)?;
+                    self.builder.new_decl(member, s_d.ident.as_str())?;
+                }
+                _ => unreachable!(),
+            }
+        }
+        Ok(())
     }
 }
 
@@ -866,11 +1257,36 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         }
     }
 
+    fn expect_struct_type(&self, node: &Node, actual_type: &TaraType) -> Result<RRC<Struct>> {
+        match actual_type {
+            TaraType::Struct(s) => Ok(s.clone()),
+            _ => Err(Error::new(
+                node.span,
+                format!("Expected struct type, found {}", actual_type),
+            ))?,
+        }
+    }
+
+    fn expect_type_type(&self, node: &Node, actual_type: &TaraType) -> Result<()> {
+        match actual_type {
+            TaraType::Type => Ok(()),
+            _ => Err(Error::new(
+                node.span,
+                format!("Expected type type, found {}", actual_type),
+            ))?,
+        }
+    }
+
     // TODO: Handle values being known at compile time
-    fn cast(&mut self, node: &Node, expected_type: &TaraType) -> Result<TaraValue> {
-        let actual_type = self.table.get_type(node)?;
+    fn cast(
+        &mut self,
+        node: &Node,
+        ty_val: TypedValue,
+        expected_type: &TaraType,
+    ) -> Result<TaraValue> {
+        let actual_type = ty_val.ty;
         if actual_type == *expected_type {
-            return self.table.get_value(node);
+            return Ok(ty_val.value);
         }
         match (expected_type, &actual_type) {
             (
@@ -878,9 +1294,8 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 TaraType::IntSigned { width: act_width },
             ) => {
                 if exp_width > act_width {
-                    let actual_mlir_value = self.table.get_value(node)?.get_runtime_value();
-                    let expected_mlir_type =
-                        self.table.get_mlir_type(self.ctx, expected_type.clone())?;
+                    let actual_mlir_value = ty_val.value.get_runtime_value();
+                    let expected_mlir_type = self.builder.get_mlir_tye(self.ctx, expected_type);
                     let built = ExtSIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)
@@ -899,9 +1314,8 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 TaraType::IntUnsigned { width: act_width },
             ) => {
                 if exp_width > act_width {
-                    let actual_mlir_value = self.table.get_value(node)?.get_runtime_value();
-                    let expected_mlir_type =
-                        self.table.get_mlir_type(self.ctx, expected_type.clone())?;
+                    let actual_mlir_value = ty_val.value.get_runtime_value();
+                    let expected_mlir_type = self.builder.get_mlir_tye(self.ctx, expected_type);
                     let built = ExtUIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)
@@ -915,6 +1329,21 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                     ))?
                 }
             }
+            (TaraType::IntUnsigned { .. }, TaraType::ComptimeInt) => {
+                let value = ty_val.value.integer();
+                if value < 0 {
+                    Err(Error::new(
+                        node.span,
+                        format!(
+                            "Attempted to cast comptime_int {} to {}",
+                            value, expected_type
+                        ),
+                    ))?
+                } else {
+                    Ok(ty_val.value)
+                }
+            }
+            (TaraType::IntSigned { .. }, TaraType::ComptimeInt) => Ok(ty_val.value),
             _ => Err(Error::new(
                 node.span,
                 format!(
@@ -928,14 +1357,16 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
 
 #[derive(Clone)]
 struct Builder<'ctx, 'blk> {
+    parent_decl: RRC<Decl>,
     surr_context: SurroundingContext,
     block: MlirBlockRef<'ctx, 'blk>,
     block_ret_ty: Option<TaraType>,
 }
 
 impl<'ctx, 'blk> Builder<'ctx, 'blk> {
-    pub fn new(block: MlirBlockRef<'ctx, 'blk>) -> Self {
+    pub fn new(parent_decl: RRC<Decl>, block: MlirBlockRef<'ctx, 'blk>) -> Self {
         Self {
+            parent_decl,
             surr_context: SurroundingContext::Sw,
             block,
             block_ret_ty: None,
@@ -959,6 +1390,41 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         let save = self.save(ctx);
         self.set_block(block);
         save
+    }
+
+    pub fn save_with_block_with_decl(
+        &mut self,
+        ctx: SurroundingContext,
+        block: MlirBlockRef<'ctx, '_>,
+        decl: RRC<Decl>,
+    ) -> Self {
+        let save = self.save_with_block(ctx, block);
+        self.parent_decl = decl;
+        save
+    }
+
+    pub fn curr_decl(&self) -> RRC<Decl> {
+        self.parent_decl.clone()
+    }
+
+    pub fn namespace(&self) -> RRC<Namespace> {
+        let curr_decl = self.parent_decl.borrow();
+        curr_decl.namespace.clone()
+    }
+
+    pub fn add_decl(&self, decl_name: &str, decl: RRC<Decl>) -> Result<()> {
+        let curr_decl = self.parent_decl.borrow();
+        let namespace = curr_decl.namespace();
+        namespace.borrow_mut().add_decl(decl_name, decl.clone())?;
+        let mut decl = decl.borrow_mut();
+        init_field!(decl, namespace, namespace);
+        Ok(())
+    }
+
+    pub fn find_decl(&self, decl_name: &str) -> Option<RRC<Decl>> {
+        let curr_decl = self.parent_decl.borrow();
+        let namespace = curr_decl.namespace();
+        Namespace::find_decl(namespace, decl_name)
     }
 
     pub fn ret_ty(&self) -> TaraType {
@@ -1007,9 +1473,44 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         Ok(TaraValue::RuntimeValue(mlir_val))
     }
 
-    pub fn materialize(&self, ty: &TaraType, val: &TaraValue) -> StaticMlirValue {
-        match val {
+    pub fn new_decl(&self, node: &Node, child_name: &str) -> Result<RRC<Decl>> {
+        let curr_decl = self.parent_decl.borrow();
+        let decl_name = curr_decl.child_name(child_name);
+        let decl = Decl::new(decl_name, node);
+        let rrc = RRC::new(decl);
+        self.add_decl(child_name, rrc.clone())?;
+        Ok(rrc)
+    }
+
+    pub fn materialize(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        // Type needed here for constant creation, not type checking
+        ty: &TaraType,
+        val: &TaraValue,
+    ) -> Result<StaticMlirValue> {
+        let val = match val {
             TaraValue::RuntimeValue(val) => val.clone(),
+            TaraValue::Integer(int) => self
+                .gen_constant_int(ctx, loc, ty, *int)?
+                .get_runtime_value(),
+            TaraValue::Struct(fields_rrc) => {
+                let mut materialized_fields = Vec::new();
+
+                let struct_ty_rrc = ty.to_struct();
+
+                let struct_ty = struct_ty_rrc.borrow();
+                let fields = fields_rrc.borrow();
+
+                for (field, struct_field) in fields.iter().zip(struct_ty.fields.iter()) {
+                    let materialized = self.materialize(ctx, loc, &struct_field.ty, field)?;
+                    materialized_fields.push(materialized);
+                }
+
+                self.gen_constant_struct(ctx, loc, ty, &materialized_fields)?
+                    .get_runtime_value()
+            }
             TaraValue::U1Type
             | TaraValue::U8Type
             | TaraValue::I8Type
@@ -1037,10 +1538,9 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
             | TaraValue::BoolTrue
             | TaraValue::BoolFalse
             | TaraValue::Type(_)
-            | TaraValue::Function(_)
-            | TaraValue::Struct(_)
-            | TaraValue::Integer(_) => unimplemented!(),
-        }
+            | TaraValue::Function(_) => unimplemented!(),
+        };
+        Ok(val)
     }
 
     // TODO: melior doesn't generate function to set return types which is what comb
@@ -1130,13 +1630,19 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = AddIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
-                let op = built.as_operation();
-                self.insert_operation(op.clone())
+                let mut op = built.as_operation().clone();
+                // HACK: Currently we don't set any overflow flags, but none should be omitted but
+                // the generated bindings insert it anyways
+                op.remove_attribute("overflowFlags")?;
+                self.insert_operation(op)
             }
             SurroundingContext::Hw => {
+                let bin_identifier = MlirIdentifier::new(ctx, "twoState");
+                let unit = MlirAttribute::unit(ctx);
                 let op = OperationBuilder::new("comb.add", loc)
                     .add_operands(&[lhs, rhs])
                     .add_results(&[lhs_type])
+                    .add_attributes(&[(bin_identifier, unit)])
                     .build()?;
                 self.insert_operation(op)
             }
@@ -1154,8 +1660,11 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = SubIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
-                let op = built.as_operation();
-                self.insert_operation(op.clone())
+                let mut op = built.as_operation().clone();
+                // HACK: Currently we don't set any overflow flags, but none should be omitted but
+                // the generated bindings insert it anyways
+                op.remove_attribute("overflowFlags")?;
+                self.insert_operation(op)
             }
             SurroundingContext::Hw => {
                 let built = HwSubOperation::builder(ctx, loc)
@@ -1268,8 +1777,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
-        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1297,8 +1806,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
-        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
         let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1338,8 +1847,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
-        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1367,8 +1876,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
-        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1395,8 +1904,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
-        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1423,8 +1932,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = TaraType::IntUnsigned { width: 64 }.to_mlir_type(ctx);
-        let ret_type = TaraType::Bool.to_mlir_type(ctx);
+        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1448,7 +1957,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         &self,
         ctx: &'ctx Context,
         loc: Location<'ctx>,
-        ret_val: Option<MlirValue<'ctx, 'ctx>>,
+        ret_val: Option<StaticMlirValue>,
     ) -> Result<()> {
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1468,11 +1977,87 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         }
         Ok(())
     }
+
+    pub fn gen_constant_int(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        ty: &TaraType,
+        val: i64,
+    ) -> Result<TaraValue> {
+        let mlir_ty = self.get_mlir_tye(ctx, ty);
+        let attribute = MlirIntegerAttribute::new(mlir_ty, val);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = ConstantOperation::builder(ctx, loc)
+                    .value(attribute.into())
+                    .result(mlir_ty)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let built = HwConstantOperation::builder(ctx, loc)
+                    .value(attribute)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn gen_constant_struct(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        ty: &TaraType,
+        vals: &[StaticMlirValue],
+    ) -> Result<TaraValue> {
+        let mlir_ty = self.get_mlir_tye(ctx, ty);
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                // Set up initial undefined value
+                let mut struct_op: MlirOperation = UndefOperation::builder(ctx, loc)
+                    .res(mlir_ty)
+                    .build()
+                    .into();
+                let mut struct_val = self.insert_operation(struct_op.clone())?;
+
+                // Insert into each field
+                for (field_i, field) in vals.iter().enumerate() {
+                    let position_value =
+                        MlirDenseI64ArrayAttribute::new(ctx, &[field_i as i64]).into();
+                    struct_op = InsertValueOperation::builder(ctx, loc)
+                        .res(mlir_ty)
+                        .container(struct_val.get_runtime_value())
+                        .value(*field)
+                        .position(position_value)
+                        .build()
+                        .into();
+                    struct_val = self.insert_operation(struct_op)?;
+                }
+
+                Ok(struct_val)
+            }
+            SurroundingContext::Hw => {
+                let built = HwStructCreateOperation::builder(ctx, loc)
+                    .input(vals)
+                    .result(mlir_ty)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
+    }
+
+    pub fn get_mlir_tye(&self, ctx: &'ctx Context, ty: &TaraType) -> MlirType<'ctx> {
+        ty.to_mlir_type(ctx, self.surr_context)
+    }
 }
 
-fn get_maybe_primitive(s: &str) -> Option<TaraType> {
+fn get_maybe_primitive(s: &str) -> Option<TypedValue> {
     let bytes = s.as_bytes();
-    if bytes[0] == b'u' {
+    let maybe_val = if bytes[0] == b'u' {
         let size = u16::from_str_radix(&s[1..], 10).ok()?;
         let int_type = TaraType::IntUnsigned { width: size };
         Some(int_type.into())
@@ -1486,13 +2071,14 @@ fn get_maybe_primitive(s: &str) -> Option<TaraType> {
         Some(TaraType::Void)
     } else {
         None
-    }
+    };
+    maybe_val.map(|val| TypedValue::new(TaraType::TypeType, TaraValue::Type(RRC::new(val))))
 }
 
 // The context surrounding an operation. This changes when crossing software/hardware boundaries
 // (i.e. anything->module, anything->fn)
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum SurroundingContext {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum SurroundingContext {
     Sw,
     Hw,
 }

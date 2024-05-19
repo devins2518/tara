@@ -28,7 +28,8 @@ impl Debug for Error {
 }
 
 impl Error {
-    pub fn new(span: Span, reason: String) -> Self {
+    pub fn new<T: Into<String>>(span: Span, reason: T) -> Self {
+        let reason = reason.into();
         Self { span, reason }
     }
 }
