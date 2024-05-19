@@ -168,6 +168,7 @@ where
             _ => unreachable!(),
         };
 
+        let mut error_guard = Decl::error_guard(self.builder.curr_decl());
         for member in members {
             match &member.kind {
                 NodeKind::VarDecl(_) => match self.gen_var_decl(&member) {
@@ -181,7 +182,6 @@ where
                     match self._gen_subroutine(&member, &subroutine_gen) {
                         Ok(_) => {}
                         Err(e) => {
-                            println!("got error");
                             self.pop();
                             self.errors.push(e);
                         }
@@ -190,6 +190,7 @@ where
                 _ => unreachable!(),
             }
         }
+        error_guard.success();
 
         Ok(())
     }
@@ -575,7 +576,7 @@ where
         Ok(ty_val)
     }
 
-    fn gen_return(&mut self, node: &Node) -> Result<()> {
+    fn gen_return(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::Return(_));
         let loc = node.loc(self.ctx);
         match &node.kind {
@@ -598,17 +599,15 @@ where
         };
 
         assert!(self.builder.block.terminator().is_some());
-        Ok(())
+        let ty_val = TypedValue::new(TaraType::NoReturn, TaraValue::VoidValue);
+        Ok(ty_val)
     }
 
-    fn gen_expr(&mut self, node: &Node) -> Result<Option<TypedValue>> {
-        let maybe_val = match &node.kind {
-            NodeKind::StructDecl(_) => Some(self.gen_struct_decl(node)?),
-            NodeKind::ModuleDecl(_) => Some(self.gen_module_decl(node)?),
-            NodeKind::Return(_) => {
-                self.gen_return(node)?;
-                None
-            }
+    fn gen_expr(&mut self, node: &Node) -> Result<TypedValue> {
+        let ty_val = match &node.kind {
+            NodeKind::StructDecl(_) => self.gen_struct_decl(node)?,
+            NodeKind::ModuleDecl(_) => self.gen_module_decl(node)?,
+            NodeKind::Return(_) => self.gen_return(node)?,
             NodeKind::Or(_)
             | NodeKind::And(_)
             | NodeKind::Lt(_)
@@ -623,23 +622,24 @@ where
             | NodeKind::Add(_)
             | NodeKind::Sub(_)
             | NodeKind::Mul(_)
-            | NodeKind::Div(_) => Some(self.gen_bin_op(node)?),
-            NodeKind::Identifier(_) => Some(self.get_identifier(node)?),
-            NodeKind::StructInit(_) => Some(self.gen_struct_init(node)?),
-            NodeKind::NumberLiteral(_) => Some(self.gen_number(node)?),
-            NodeKind::VarDecl(_) => Some(self.gen_var_decl(node)?),
+            | NodeKind::Div(_) => self.gen_bin_op(node)?,
+            NodeKind::Identifier(_) => self.get_identifier(node)?,
+            NodeKind::StructInit(_) => self.gen_struct_init(node)?,
+            NodeKind::NumberLiteral(_) => self.gen_number(node)?,
+            NodeKind::VarDecl(_) => self.gen_var_decl(node)?,
             _ => unimplemented!(),
         };
-        Ok(maybe_val)
+        Ok(ty_val)
     }
 
     fn gen_expr_reachable(&mut self, node: &Node) -> Result<TypedValue> {
-        let ty_val = self.gen_expr(node)?.ok_or_else(|| {
-            Error::new(
+        let ty_val = self.gen_expr(node)?;
+        if ty_val.ty.is_noreturn() {
+            Err(Error::new(
                 node.span,
                 "Expected reachable value, control flow unexpectedly diverted".to_string(),
-            )
-        })?;
+            ))?
+        }
         self.table.define_ty_val(node, ty_val.clone());
         Ok(ty_val)
     }
@@ -948,15 +948,11 @@ where
     }
 
     fn gen_block(&mut self, nodes: &[Node]) -> Result<()> {
-        for (i, expr) in nodes.iter().enumerate() {
-            if let None = self.gen_expr(expr)? {
-                if i != (nodes.len() - 1) {
-                    Err(Error::new(
-                        nodes[i + 1].span,
-                        "Unreachable statement".to_string(),
-                    ))?;
-                }
+        if let Some((last, rest)) = nodes.split_last() {
+            for expr in rest {
+                self.gen_expr_reachable(expr)?;
             }
+            self.gen_expr(last)?;
         }
         Ok(())
     }

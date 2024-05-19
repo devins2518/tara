@@ -47,6 +47,7 @@ pub enum Type {
     Module(RRC<TModule>),
     Function(RRC<Function>),
     Comb(RRC<Comb>),
+    NoReturn,
     TypeType,
 }
 
@@ -200,6 +201,13 @@ impl<'ctx> Type {
         match self {
             Type::Module(m) => m.clone(),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn is_noreturn(&self) -> bool {
+        match self {
+            Type::NoReturn => true,
+            _ => false,
         }
     }
 }
