@@ -342,8 +342,7 @@ where
         let mut ty_val = self.gen_expr_reachable(&var_decl.expr)?;
         let mut decl = decl.borrow_mut();
         if let Some(ty_expr) = &var_decl.ty {
-            self.gen_type(ty_expr)?;
-            let expected_type = self.table.get_type(ty_expr)?;
+            let expected_type = self.gen_type(ty_expr)?;
             ty_val.value = self.cast(&var_decl.expr, ty_val.clone(), &expected_type)?;
             ty_val.ty = expected_type;
         };
@@ -627,6 +626,7 @@ where
             NodeKind::StructInit(_) => self.gen_struct_init(node)?,
             NodeKind::NumberLiteral(_) => self.gen_number(node)?,
             NodeKind::VarDecl(_) => self.gen_var_decl(node)?,
+            NodeKind::LocalVarDecl(_) => self.gen_local_var_decl(node)?,
             _ => unimplemented!(),
         };
         Ok(ty_val)
@@ -641,6 +641,26 @@ where
             ))?
         }
         self.table.define_ty_val(node, ty_val.clone());
+        Ok(ty_val)
+    }
+
+    fn gen_local_var_decl(&mut self, node: &Node) -> Result<TypedValue> {
+        matches!(node.kind, NodeKind::LocalVarDecl(_));
+        let local_var_decl = match &node.kind {
+            NodeKind::LocalVarDecl(l_v_d) => l_v_d,
+            _ => unreachable!(),
+        };
+
+        let mut ty_val = self.gen_expr_reachable(&local_var_decl.expr)?;
+        if let Some(ty_expr) = &local_var_decl.ty {
+            let expected_type = self.gen_type(ty_expr)?;
+            ty_val.value = self.cast(&local_var_decl.expr, ty_val.clone(), &expected_type)?;
+            ty_val.ty = expected_type;
+        };
+
+        self.table.define_name(local_var_decl.ident, node)?;
+        self.table.define_ty_val(node, ty_val.clone());
+
         Ok(ty_val)
     }
 
