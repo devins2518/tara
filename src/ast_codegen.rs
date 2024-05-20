@@ -470,7 +470,7 @@ where
         self.pop();
         self.builder.restore(prev_context);
 
-        let ty_val = TypedValue::new(TaraType::TypeType, TaraValue::Type(fn_ty));
+        let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(fn_ty));
 
         Ok(ty_val)
     }
@@ -571,7 +571,7 @@ where
         let rt_ty_val = TypedValue::new(return_type, call_val);
         self.table.define_ty_val(node, rt_ty_val);
 
-        let ty_val = TypedValue::new(TaraType::TypeType, TaraValue::Type(comb_ty));
+        let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(comb_ty));
         Ok(ty_val)
     }
 
@@ -2088,7 +2088,7 @@ fn get_maybe_primitive(s: &str) -> Option<TypedValue> {
     } else {
         None
     };
-    maybe_val.map(|val| TypedValue::new(TaraType::TypeType, TaraValue::Type(RRC::new(val))))
+    maybe_val.map(|val| TypedValue::new(TaraType::Type, TaraValue::Type(RRC::new(val))))
 }
 
 // The context surrounding an operation. This changes when crossing software/hardware boundaries

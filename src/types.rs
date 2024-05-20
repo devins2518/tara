@@ -48,7 +48,6 @@ pub enum Type {
     Function(RRC<Function>),
     Comb(RRC<Comb>),
     NoReturn,
-    TypeType,
 }
 
 impl<'ctx> Type {
