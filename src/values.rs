@@ -73,6 +73,27 @@ impl Value {
     pub fn to_type(&self) -> TaraType {
         match self {
             Value::Type(ty) => ty.borrow().clone(),
+            Value::U1Type => TaraType::IntUnsigned { width: 1 },
+            Value::U8Type => TaraType::IntUnsigned { width: 8 },
+            Value::I8Type => TaraType::IntSigned { width: 8 },
+            Value::U16Type => TaraType::IntUnsigned { width: 16 },
+            Value::I16Type => TaraType::IntSigned { width: 16 },
+            Value::U32Type => TaraType::IntUnsigned { width: 32 },
+            Value::I32Type => TaraType::IntSigned { width: 32 },
+            Value::U64Type => TaraType::IntUnsigned { width: 64 },
+            Value::I64Type => TaraType::IntSigned { width: 64 },
+            Value::U128Type => TaraType::IntUnsigned { width: 128 },
+            Value::I128Type => TaraType::IntSigned { width: 128 },
+            Value::UsizeType => TaraType::IntUnsigned {
+                width: unimplemented!(),
+            },
+            Value::IsizeType => TaraType::IntUnsigned {
+                width: unimplemented!(),
+            },
+            Value::BoolType => TaraType::Bool,
+            Value::VoidType => TaraType::Void,
+            Value::TypeType => TaraType::Type,
+            Value::ComptimeIntType => TaraType::ComptimeInt,
             _ => unreachable!(),
         }
     }

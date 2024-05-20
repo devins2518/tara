@@ -35,6 +35,10 @@ impl TModule {
         init_field!(self, namespace, namespace);
     }
 
+    pub fn decl(&self) -> RRC<Decl> {
+        self.decl.clone()
+    }
+
     pub fn node<'a, 'b>(&'a self) -> &'b Node {
         unsafe { &*self.node_ptr }
     }

@@ -340,17 +340,16 @@ where
                 .save_with_block_with_decl(SurroundingContext::Sw, block, decl.clone());
 
         let mut ty_val = self.gen_expr_reachable(&var_decl.expr)?;
-        let mut decl = decl.borrow_mut();
         if let Some(ty_expr) = &var_decl.ty {
             let expected_type = self.gen_type(ty_expr)?;
             ty_val.value = self.cast(&var_decl.expr, ty_val.clone(), &expected_type)?;
             ty_val.ty = expected_type;
         };
-        {
+        decl.map_mut(|decl| {
             let ty_val = ty_val.clone();
             decl.ty = Some(ty_val.ty);
             decl.value = Some(ty_val.value);
-        }
+        });
 
         self.builder.restore(prev_context);
 
@@ -1362,10 +1361,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
             (TaraType::IntSigned { .. }, TaraType::ComptimeInt) => Ok(ty_val.value),
             _ => Err(Error::new(
                 node.span,
-                format!(
-                    "TODO: Unhandled cast from {} to {}",
-                    actual_type, expected_type
-                ),
+                format!("Illegal cast from {} to {}", actual_type, expected_type),
             ))?,
         }
     }
@@ -2073,22 +2069,28 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
 
 fn get_maybe_primitive(s: &str) -> Option<TypedValue> {
     let bytes = s.as_bytes();
-    let maybe_val = if bytes[0] == b'u' {
+    let maybe_ty_val = if bytes[0] == b'u' {
         let size = u16::from_str_radix(&s[1..], 10).ok()?;
         let int_type = TaraType::IntUnsigned { width: size };
-        Some(int_type.into())
+        Some((TaraType::Type, TaraValue::Type(RRC::new(int_type))))
     } else if bytes[0] == b'i' {
         let size = u16::from_str_radix(&s[1..], 10).ok()?;
         let int_type = TaraType::IntSigned { width: size };
-        Some(int_type.into())
+        Some((TaraType::Type, TaraValue::Type(RRC::new(int_type))))
     } else if s == "bool" {
-        Some(TaraType::Bool)
+        Some((TaraType::Type, TaraValue::BoolType))
     } else if s == "void" {
-        Some(TaraType::Void)
+        Some((TaraType::Type, TaraValue::VoidType))
+    } else if s == "type" {
+        Some((TaraType::Type, TaraValue::TypeType))
+    } else if s == "true" {
+        Some((TaraType::Bool, TaraValue::BoolTrue))
+    } else if s == "false" {
+        Some((TaraType::Bool, TaraValue::BoolFalse))
     } else {
         None
     };
-    maybe_val.map(|val| TypedValue::new(TaraType::Type, TaraValue::Type(RRC::new(val))))
+    maybe_ty_val.map(|(ty, val)| TypedValue::new(ty, val))
 }
 
 // The context surrounding an operation. This changes when crossing software/hardware boundaries

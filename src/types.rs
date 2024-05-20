@@ -225,8 +225,14 @@ impl Display for Type {
             Type::Pointer => unimplemented!(),
             Type::IntSigned { width } => f.write_fmt(format_args!("i{}", width)),
             Type::IntUnsigned { width } => f.write_fmt(format_args!("u{}", width)),
-            Type::Struct(_) => unimplemented!(),
-            Type::Module(_) => unimplemented!(),
+            Type::Struct(struct_rrc) => f.write_fmt(format_args!(
+                "{}",
+                &struct_rrc.borrow().decl().borrow().name
+            )),
+            Type::Module(module_rrc) => f.write_fmt(format_args!(
+                "{}",
+                &module_rrc.borrow().decl().borrow().name
+            )),
             _ => unreachable!(),
         }
     }
