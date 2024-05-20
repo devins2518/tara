@@ -9,7 +9,7 @@ use std::{collections::HashMap, hash::Hash, mem::MaybeUninit};
 
 pub struct Namespace {
     pub parent: Option<RRC<Namespace>>,
-    pub ty: RRC<Type>,
+    pub ty: Type,
     pub decls: HashMap<String, RRC<Decl>>,
 }
 
@@ -23,7 +23,7 @@ impl Namespace {
         }
     }
 
-    pub fn init_ty(&mut self, ty: RRC<Type>) {
+    pub fn init_ty(&mut self, ty: Type) {
         init_field!(self, ty, ty);
     }
 
@@ -50,7 +50,7 @@ impl Namespace {
     }
 
     pub fn decl(&self) -> RRC<Decl> {
-        self.ty.map(|t| t.decl())
+        self.ty.decl()
     }
 }
 

@@ -65,6 +65,13 @@ impl<T> RRC<T> {
     }
 }
 
+impl<T: Clone> RRC<T> {
+    pub fn into_inner(&self) -> T {
+        let ref_cell: RefCell<T> = (*self.0).clone();
+        ref_cell.into_inner()
+    }
+}
+
 impl<T> RRC<MaybeUninit<T>> {
     pub fn init(self) -> RRC<T> {
         unsafe { std::mem::transmute(self) }

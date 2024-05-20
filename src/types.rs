@@ -162,8 +162,7 @@ impl<'ctx> Type {
     }
 
     pub fn to_value(&self) -> TaraValue {
-        let rrc = RRC::new(self.clone());
-        TaraValue::Type(rrc)
+        TaraValue::Type(self.clone())
     }
 
     pub fn has_namespace(&self) -> bool {

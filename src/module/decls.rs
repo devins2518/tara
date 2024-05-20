@@ -67,13 +67,12 @@ impl Decl {
             let struct_obj_rrc = RRC::new(struct_obj);
 
             let struct_ty = TaraType::Struct(struct_obj_rrc.clone());
-            let struct_ty_rrc = RRC::new(struct_ty);
 
-            let struct_val = TaraValue::Type(struct_ty_rrc.clone());
+            let struct_val = TaraValue::Type(struct_ty.clone());
             decl.value = Some(struct_val);
 
             let mut namespace = Namespace::new();
-            namespace.init_ty(struct_ty_rrc.clone());
+            namespace.init_ty(struct_ty);
             namespace.parent = None;
             let namespace_rrc = RRC::new(namespace);
             init_field!(decl, namespace, namespace_rrc.clone());
@@ -119,13 +118,12 @@ impl Decl {
             let mod_obj_rrc = RRC::new(mod_obj);
 
             let mod_ty = TaraType::Module(mod_obj_rrc.clone());
-            let mod_ty_rrc = RRC::new(mod_ty);
 
-            let mod_val = TaraValue::Type(mod_ty_rrc.clone());
+            let mod_val = TaraValue::Type(mod_ty.clone());
             rrc.map_mut(|decl| decl.value = Some(mod_val.clone()));
 
             let mut namespace = Namespace::new();
-            namespace.init_ty(mod_ty_rrc.clone());
+            namespace.init_ty(mod_ty);
             namespace.parent = Some(parent_namespace);
             let namespace_rrc = RRC::new(namespace);
             rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));
@@ -155,13 +153,12 @@ impl Decl {
             let fn_obj_rrc = RRC::new(fn_obj);
 
             let fn_ty = TaraType::Function(fn_obj_rrc.clone());
-            let fn_ty_rrc = RRC::new(fn_ty);
 
-            let fn_val = TaraValue::Type(fn_ty_rrc.clone());
+            let fn_val = TaraValue::Type(fn_ty.clone());
             rrc.map_mut(|decl| decl.value = Some(fn_val.clone()));
 
             let mut namespace = Namespace::new();
-            namespace.init_ty(fn_ty_rrc.clone());
+            namespace.init_ty(fn_ty);
             namespace.parent = Some(parent_namespace);
             let namespace_rrc = RRC::new(namespace);
             rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));
@@ -187,13 +184,12 @@ impl Decl {
             let comb_obj_rrc = RRC::new(comb_obj);
 
             let comb_ty = TaraType::Comb(comb_obj_rrc.clone());
-            let comb_ty_rrc = RRC::new(comb_ty);
 
-            let fn_val = TaraValue::Type(comb_ty_rrc.clone());
-            rrc.map_mut(|decl| decl.value = Some(fn_val.clone()));
+            let comb_val = TaraValue::Type(comb_ty.clone());
+            rrc.map_mut(|decl| decl.value = Some(comb_val.clone()));
 
             let mut namespace = Namespace::new();
-            namespace.init_ty(comb_ty_rrc.clone());
+            namespace.init_ty(comb_ty);
             namespace.parent = Some(parent_namespace);
             let namespace_rrc = RRC::new(namespace);
             rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));

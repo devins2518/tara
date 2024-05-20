@@ -203,13 +203,13 @@ where
             let namespace = self.builder.namespace();
             Decl::init_struct(curr_decl.clone(), node, namespace);
             let struct_obj = match curr_decl.borrow().value.as_ref().unwrap() {
-                TaraValue::Type(ty) => match &ty.borrow().clone() {
+                TaraValue::Type(ty) => match &ty {
                     TaraType::Struct(s) => s.clone(),
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
             };
-            RRC::new(TaraType::Struct(struct_obj))
+            TaraType::Struct(struct_obj)
         };
 
         self.setup_namespace(node)?;
@@ -238,7 +238,7 @@ where
             let namespace = self.builder.namespace();
             Decl::init_module(curr_decl.clone(), node, namespace);
             let module_ty = curr_decl.borrow().value.as_ref().unwrap().to_type();
-            RRC::new(module_ty)
+            module_ty
         };
 
         self.builder
@@ -247,18 +247,18 @@ where
 
         self.setup_namespace(node)?;
 
-        match &module_ty.borrow().clone() {
+        match &module_ty {
             TaraType::Module(m) => self.resolve_module_type(m.clone())?,
             _ => unreachable!(),
         }
 
-        let mod_mlir_type = module_ty.map(|ty| self.builder.get_mlir_tye(self.ctx, ty));
+        let mod_mlir_type = self.builder.get_mlir_tye(self.ctx, &module_ty);
 
         let region = MlirRegion::new();
         let body = region.append_block(MlirBlock::new(&[]));
         self.builder.set_block(body);
 
-        for (name, node_ptr, param_type) in &module_ty.map(|ty| ty.module()).borrow().ins {
+        for (name, node_ptr, param_type) in &module_ty.module().borrow().ins {
             let param_node = unsafe { &**node_ptr };
             self.table.define_name(name.into(), param_node)?;
             let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
@@ -411,13 +411,13 @@ where
             let namespace = self.builder.namespace();
             Decl::init_fn(curr_decl.clone(), node, namespace);
             let fn_obj = match curr_decl.borrow().value.as_ref().unwrap() {
-                TaraValue::Type(ty) => match &ty.borrow().clone() {
+                TaraValue::Type(ty) => match &ty {
                     TaraType::Function(f) => f.clone(),
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
             };
-            RRC::new(TaraType::Function(fn_obj))
+            TaraType::Function(fn_obj)
         };
 
         let return_type = self.gen_type(&fn_decl.return_type)?;
@@ -488,13 +488,13 @@ where
             let namespace = self.builder.namespace();
             Decl::init_comb(curr_decl.clone(), node, namespace);
             let comb_obj = match curr_decl.borrow().value.as_ref().unwrap() {
-                TaraValue::Type(ty) => match &ty.borrow().clone() {
+                TaraValue::Type(ty) => match &ty {
                     TaraType::Comb(c) => c.clone(),
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
             };
-            RRC::new(TaraType::Comb(comb_obj))
+            TaraType::Comb(comb_obj)
         };
 
         let return_type = self.gen_type(&comb_decl.return_type)?;
@@ -2072,11 +2072,11 @@ fn get_maybe_primitive(s: &str) -> Option<TypedValue> {
     let maybe_ty_val = if bytes[0] == b'u' {
         let size = u16::from_str_radix(&s[1..], 10).ok()?;
         let int_type = TaraType::IntUnsigned { width: size };
-        Some((TaraType::Type, TaraValue::Type(RRC::new(int_type))))
+        Some((TaraType::Type, TaraValue::Type(int_type)))
     } else if bytes[0] == b'i' {
         let size = u16::from_str_radix(&s[1..], 10).ok()?;
         let int_type = TaraType::IntSigned { width: size };
-        Some((TaraType::Type, TaraValue::Type(RRC::new(int_type))))
+        Some((TaraType::Type, TaraValue::Type(int_type)))
     } else if s == "bool" {
         Some((TaraType::Type, TaraValue::BoolType))
     } else if s == "void" {

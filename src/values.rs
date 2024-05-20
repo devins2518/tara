@@ -39,9 +39,8 @@ pub enum Value {
     BoolTrue,
     BoolFalse,
 
-    // TODO: Remove rrc from here
     // Compile time types
-    Type(RRC<TaraType>),
+    Type(TaraType),
     Function(RRC<Function>),
     /// An instance of a struct.
     Struct(RRC<Vec<Value>>),
@@ -72,7 +71,7 @@ impl Value {
 
     pub fn to_type(&self) -> TaraType {
         match self {
-            Value::Type(ty) => ty.borrow().clone(),
+            Value::Type(ty) => ty.clone(),
             Value::U1Type => TaraType::IntUnsigned { width: 1 },
             Value::U8Type => TaraType::IntUnsigned { width: 8 },
             Value::I8Type => TaraType::IntSigned { width: 8 },
