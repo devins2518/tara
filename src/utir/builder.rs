@@ -276,6 +276,7 @@ impl<'ast> Builder<'ast> {
             | NodeKind::SizedNumberLiteral(_)
             | NodeKind::IfExpr(_)
             | NodeKind::StructInit(_) => self.gen_inline_block(env, node),
+            NodeKind::BuiltinCall(_) => unimplemented!(),
             NodeKind::VarDecl(_) | NodeKind::SubroutineDecl(_) => unreachable!(),
         };
     }
@@ -453,6 +454,7 @@ impl<'ast> Builder<'ast> {
             NodeKind::IfExpr(_) => self.gen_branch(env, node),
             NodeKind::Access(_) => self.gen_access(env, node),
             NodeKind::StructInit(_) => self.gen_struct_init(env, node),
+            NodeKind::BuiltinCall(_) => unimplemented!(),
             NodeKind::StructDecl(_)
             | NodeKind::ModuleDecl(_)
             | NodeKind::VarDecl(_)
@@ -519,7 +521,8 @@ impl<'ast> Builder<'ast> {
             | NodeKind::SizedNumberLiteral(_)
             | NodeKind::IfExpr(_)
             | NodeKind::SubroutineDecl(_)
-            | NodeKind::StructInit(_) => unreachable!(),
+            | NodeKind::StructInit(_)
+            | NodeKind::BuiltinCall(_) => unreachable!(),
         };
 
         let lhs_idx = self.gen_expr(env, &*inner.lhs)?;

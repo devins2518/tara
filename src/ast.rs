@@ -64,6 +64,7 @@ pub enum NodeKind {
     IfExpr(IfExpr),
     SubroutineDecl(SubroutineDecl),
     StructInit(StructInit),
+    BuiltinCall(BuiltinCall),
 }
 
 impl Display for NodeKind {
@@ -112,6 +113,7 @@ impl Display for NodeKind {
                 f.write_fmt(format_args!("subroutine_decl({})", subroutine))?
             }
             NodeKind::StructInit(expr) => f.write_fmt(format_args!("struct_init({})", expr))?,
+            NodeKind::BuiltinCall(expr) => f.write_fmt(format_args!("builtin_call({})", expr))?,
         }
         Ok(())
     }
@@ -393,6 +395,22 @@ impl Display for StructInit {
         }
         for field in &self.fields {
             f.write_fmt(format_args!(".{} = {}, ", field.name, *field.ty))?;
+        }
+        f.write_str(")")?;
+        Ok(())
+    }
+}
+
+pub struct BuiltinCall {
+    pub call: GlobalSymbol,
+    pub args: Vec<Node>,
+}
+
+impl Display for BuiltinCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}, (", self.call.as_str()))?;
+        for arg in &self.args {
+            f.write_fmt(format_args!("{}", arg))?;
         }
         f.write_str(")")?;
         Ok(())

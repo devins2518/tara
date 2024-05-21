@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        BinOp, Call, IfExpr, ModuleInner, Node, NodeKind, Publicity, RefTy, SizedNumberLiteral,
-        StructInit, StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
+        BinOp, BuiltinCall, Call, IfExpr, ModuleInner, Node, NodeKind, Publicity, RefTy,
+        SizedNumberLiteral, StructInit, StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
     },
     builtin::Mutability,
 };
@@ -392,6 +392,7 @@ impl TaraParser {
             [struct_init_expr(struct_init_expr)] => struct_init_expr,
             [type_expr(type_expr)] => type_expr,
             [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
+            [builtin_call(builtin_call)] => builtin_call,
         );
 
         return Ok(node);
@@ -430,6 +431,16 @@ impl TaraParser {
                 };
                 Node::new(NodeKind::IfExpr(if_expr), span)
             },
+        ))
+    }
+
+    fn builtin_call(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
+        Ok(match_nodes!(
+            input.into_children();
+            [identifier(call), call_operator(args)] => {
+                let call_expr = BuiltinCall{ call, args };
+                Node::new(NodeKind::BuiltinCall(call_expr), span)}
         ))
     }
 
