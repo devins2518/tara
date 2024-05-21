@@ -2027,6 +2027,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         Ok(())
     }
 
+    // TODO: melior doesn't generate function to set return types which is what comb
+    // expects
     pub fn gen_constant_int(
         &self,
         ctx: &'ctx Context,
@@ -2035,22 +2037,23 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         val: i64,
     ) -> Result<TaraValue> {
         let mlir_ty = self.get_mlir_tye(ctx, ty);
-        let attribute = MlirIntegerAttribute::new(mlir_ty, val);
+        let attribute_identifier = MlirIdentifier::new(ctx, "value");
+        let attribute = MlirIntegerAttribute::new(mlir_ty, val).into();
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = ConstantOperation::builder(ctx, loc)
-                    .value(attribute.into())
+                    .value(attribute)
                     .result(mlir_ty)
                     .build();
                 let op = built.as_operation();
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                let built = HwConstantOperation::builder(ctx, loc)
-                    .value(attribute)
-                    .build();
-                let op = built.as_operation();
-                self.insert_operation(op.clone())
+                let op = OperationBuilder::new("hw.constant", loc)
+                    .add_attributes(&[(attribute_identifier, attribute)])
+                    .add_results(&[mlir_ty])
+                    .build()?;
+                self.insert_operation(op)
             }
         }
     }
