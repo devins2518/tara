@@ -47,7 +47,8 @@ pub enum Type {
     Module(RRC<TModule>),
     Function(RRC<Function>),
     Comb(RRC<Comb>),
-    NoReturn,
+    // TODO: Remove type reference when UTIR is readded
+    NoReturn(RRC<Type>),
 }
 
 impl<'ctx> Type {
@@ -204,7 +205,7 @@ impl<'ctx> Type {
 
     pub fn is_noreturn(&self) -> bool {
         match self {
-            Type::NoReturn => true,
+            Type::NoReturn(_) => true,
             _ => false,
         }
     }

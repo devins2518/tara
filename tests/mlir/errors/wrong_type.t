@@ -1,28 +1,50 @@
-// RUN: @tara @file --dump-mlir --exit-early
+// RUN: TERM=dumb @tara @file --dump-mlir --exit-early
 
-// CHECK: [0m[1m[38;5;9merror[0m[1m: Illegal cast from comptime_int to type[0m
-// CHECK:   [0m[34m┌─[0m /Users/devin/Repos/tara/tests/mlir/errors/wrong_type.t:8:18
-// CHECK:   [0m[34m│[0m
-// CHECK: [0m[34m8[0m [0m[34m│[0m const A_: type = [0m[31m1[0m;
-// CHECK:   [0m[34m│[0m                  [0m[31m^[0m
+// CHECK: error: Illegal cast from comptime_int to type
+// CHECK:   │
+// CHECK: 7 │ const A_: type = 1;
+// CHECK:   │                  ^
 const A_: type = 1;
 
 const B = struct {
     a: u1,
 
-    // CHECK: [0m[1m[38;5;9merror[0m[1m: Illegal cast from bool to u1[0m
-    // CHECK:    [0m[34m┌─[0m /Users/devin/Repos/tara/tests/mlir/errors/wrong_type.t:18:23
-    // CHECK:    [0m[34m│[0m
-    // CHECK: [0m[34m18[0m [0m[34m│[0m     const C = B{ .a = [0m[31mfalse[0m };
-    // CHECK:    [0m[34m│[0m                       [0m[31m^^^^^[0m
+    // CHECK: error: Illegal cast from bool to u1
+    // CHECK:    │
+    // CHECK: 16 │     const C = B{ .a = false };
+    // CHECK:    │                       ^^^^^
     const C = B{ .a = false };
 
-    // CHECK: [0m[1m[38;5;9merror[0m[1m: Illegal cast from root.B to u8[0m
-    // CHECK:    [0m[34m┌─[0m /Users/devin/Repos/tara/tests/mlir/errors/wrong_type.t:25:20
-    // CHECK:    [0m[34m│[0m
-    // CHECK: [0m[34m25[0m [0m[34m│[0m     const D_: u8 = [0m[31mB{ .a = 0 }[0m;
-    // CHECK:    [0m[34m│[0m                    [0m[31m^^^^^^^^^^^[0m
+    // CHECK: error: Illegal cast from root.B to u8
+    // CHECK:    │
+    // CHECK: 22 │     const D_: u8 = B{ .a = 0 };
+    // CHECK:    │                    ^^^^^^^^^^^
     const D_: u8 = B{ .a = 0 };
+
+    // CHECK: error: Block has incorrect return type, wanted u1, found void
+    // CHECK:    │
+    // CHECK: 28 │     fn a() u1 {}
+    // CHECK:    │     ^^^^^^^^^^^^
+    fn a() u1 {}
+
+    // CHECK: error: Block has incorrect return type, wanted u1, found void
+    // CHECK:    │
+    // CHECK: 36 │ ╭     fn b() u1 {
+    // CHECK: 37 │ │         false;
+    // CHECK: 38 │ │     }
+    // CHECK:    │ ╰─────^
+    fn b() u1 {
+        false;
+    }
+
+
+    // CHECK: error: Illegal cast from comptime_int to void
+    // CHECK:    │
+    // CHECK: 46 │         return 1;
+    // CHECK:    │         ^^^^^^^^
+    fn c() void {
+        return 1;
+    }
 };
 
 const E = module {
@@ -30,14 +52,39 @@ const E = module {
         return x0;
     }
 
-    // CHECK: [0m[1m[38;5;9merror[0m[1m: Comb params have different types![0m
-    // CHECK:    [0m[34m┌─[0m /Users/devin/Repos/tara/tests/mlir/errors/wrong_type.t:40:5
-    // CHECK:    [0m[34m│[0m  
-    // CHECK: [0m[34m40[0m [0m[34m│[0m [0m[31m╭[0m     [0m[31mpub comb b(x0: u4) u8 {[0m
-    // CHECK: [0m[34m41[0m [0m[34m│[0m [0m[31m│[0m [0m[31m        return x0;[0m
-    // CHECK: [0m[34m42[0m [0m[34m│[0m [0m[31m│[0m [0m[31m    }[0m
-    // CHECK:    [0m[34m│[0m [0m[31m╰[0m[0m[31m─────^[0m
+    // CHECK: error: Comb params have different types!
+    // CHECK:    │
+    // CHECK: 61 │ ╭     pub comb b(x0: u4) u8 {
+    // CHECK: 62 │ │         return x0;
+    // CHECK: 63 │ │     }
+    // CHECK:    │ ╰─────^
     pub comb b(x0: u4) u8 {
         return x0;
+    }
+};
+
+const F = module {
+    // CHECK: error: Block has incorrect return type, wanted u1, found void
+    // CHECK:    │
+    // CHECK: 71 │     comb c() u1 {}
+    // CHECK:    │     ^^^^^^^^^^^^^^
+    comb c() u1 {}
+
+    // CHECK: error: Block has incorrect return type, wanted u1, found void
+    // CHECK:    │
+    // CHECK: 79 │ ╭     comb d() u1 {
+    // CHECK: 80 │ │         false;
+    // CHECK: 81 │ │     }
+    // CHECK:    │ ╰─────^
+    comb d() u1 {
+        false;
+    }
+
+    // CHECK: error: Illegal cast from comptime_int to bool
+    // CHECK:    │
+    // CHECK: 88 │         return 1;
+    // CHECK:    │         ^^^^^^^^
+    comb e() bool {
+        return 1;
     }
 };

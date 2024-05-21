@@ -122,7 +122,7 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
                         .with_message(err.reason.clone())
                         .with_labels(vec![label]);
 
-                    let writer = StandardStream::stdout(ColorChoice::Always);
+                    let writer = StandardStream::stdout(ColorChoice::Auto);
                     let config = codespan_reporting::term::Config::default();
 
                     term::emit(&mut writer.lock(), &config, file, &diagnostic)?;
@@ -448,7 +448,7 @@ where
                 self.table.define_ty_val(param_ty, ty_val);
             }
 
-            self.gen_block_terminated(&fn_decl.block)?;
+            self.gen_block_terminated(node, &fn_decl.block)?;
 
             let mlir_fn_ret_type = if return_type != TaraType::Void {
                 Some(mlir_return_type)
@@ -530,7 +530,7 @@ where
                 self.table.define_ty_val(param_ty, ty_val);
             }
 
-            self.gen_block_terminated(&comb_decl.block)?;
+            self.gen_block_terminated(node, &comb_decl.block)?;
 
             let comb_type =
                 MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
@@ -577,27 +577,30 @@ where
     fn gen_return(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::Return(_));
         let loc = node.loc(self.ctx);
-        match &node.kind {
+        let ty_val = match &node.kind {
             NodeKind::Return(Some(e)) => {
-                let return_ty_val = self.gen_expr_reachable(&e.lhs)?;
+                let mut return_ty_val = self.gen_expr_reachable(&e.lhs)?;
                 self.table.define_ty_val(node, return_ty_val.clone());
                 let ret_ty = self.builder.ret_ty();
-                let casted_value = self.cast(node, return_ty_val, &ret_ty)?;
+                let casted_value = self.cast(node, return_ty_val.clone(), &ret_ty)?;
                 let mat_value = self
                     .builder
                     .materialize(self.ctx, loc, &ret_ty, &casted_value)?;
                 self.builder.gen_return(self.ctx, loc, Some(mat_value))?;
+                return_ty_val.ty = ret_ty;
+                return_ty_val
             }
             NodeKind::Return(None) => {
                 let ty_val = TypedValue::new(TaraType::Void, TaraValue::VoidValue);
-                self.table.define_ty_val(node, ty_val);
+                self.table.define_ty_val(node, ty_val.clone());
                 self.builder.gen_return(self.ctx, loc, None)?;
+                ty_val
             }
             _ => unreachable!(),
         };
 
         assert!(self.builder.block.terminator().is_some());
-        let ty_val = TypedValue::new(TaraType::NoReturn, TaraValue::VoidValue);
+        let ty_val = TypedValue::new(TaraType::NoReturn(RRC::new(ty_val.ty)), ty_val.value);
         Ok(ty_val)
     }
 
@@ -966,20 +969,54 @@ where
         Ok(ty_val)
     }
 
-    fn gen_block(&mut self, nodes: &[Node]) -> Result<()> {
+    fn gen_block(&mut self, nodes: &[Node]) -> Result<TypedValue> {
+        let mut ret_ty_val = TypedValue::new(
+            TaraType::NoReturn(RRC::new(TaraType::Void)),
+            TaraValue::VoidValue,
+        );
         if let Some((last, rest)) = nodes.split_last() {
             for expr in rest {
                 self.gen_expr_reachable(expr)?;
             }
-            self.gen_expr(last)?;
+            let ty_val = self.gen_expr(last)?;
+            if ty_val.ty.is_noreturn() {
+                ret_ty_val = ty_val;
+            }
         }
-        Ok(())
+        Ok(ret_ty_val)
     }
 
     // Generates a block. Ensures that the last instruction is a terminator returning void if
     // necessary. Performs type checking by casting to `self.builder.ret_ty`.
-    fn gen_block_terminated(&mut self, nodes: &[Node]) -> Result<()> {
-        self.gen_block(nodes)?;
+    fn gen_block_terminated(&mut self, block_node: &Node, nodes: &[Node]) -> Result<()> {
+        let ret_ty_val = self.gen_block(nodes)?;
+        let block_ret_ty = self.builder.ret_ty();
+        match &ret_ty_val.ty {
+            TaraType::Void => {
+                if block_ret_ty != TaraType::Void {
+                    Err(Error::new(
+                        block_node.span,
+                        "Block unexpectedly returns void",
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            TaraType::NoReturn(return_ty) => return_ty.map(|return_ty| {
+                if return_ty != &block_ret_ty {
+                    Err(Error::new(
+                        block_node.span,
+                        format!(
+                            "Block has incorrect return type, wanted {}, found {}",
+                            block_ret_ty, return_ty
+                        ),
+                    ))
+                } else {
+                    Ok(())
+                }
+            }),
+            _ => unreachable!(),
+        }?;
         if let None = self.builder.block.terminator() {
             let loc = Location::unknown(self.ctx);
             self.builder.gen_return(self.ctx, loc, None)?;
