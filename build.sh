@@ -3,7 +3,7 @@
 INSTALL_PREFIX=$(realpath $PWD)/install
 
 cmake -G Ninja -B build external/circt/llvm/llvm \
-      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
       -DLLVM_ENABLE_PROJECTS=mlir \
       -DLLVM_ENABLE_ASSERTIONS=ON \
