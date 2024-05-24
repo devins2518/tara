@@ -10,7 +10,6 @@ use crate::{
         comb::{
             ICmpOperation as HwCmpOperation, MulOperation as HwMulOperation,
             OrOperation as HwOrOperation, SubOperation as HwSubOperation,
-            XorOperation as HwXorOperation,
         },
         hw::{
             HWModuleOperation as HwModuleOperation, OutputOperation as HwOutputOperation,
@@ -1535,6 +1534,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         }
     }
 
+    // TODO: melior doesn't generate function to set return types which is what comb
+    // expects
     pub fn gen_bit_xor(
         &self,
         ctx: &'ctx Context,
@@ -1542,7 +1543,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let unit = MlirAttribute::unit(ctx);
+        let lhs_type = lhs.r#type();
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = XOrIOperation::builder(ctx, loc).lhs(lhs).rhs(rhs).build();
@@ -1550,11 +1551,13 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                let built = HwXorOperation::builder(ctx, loc)
-                    .inputs(&[lhs, rhs])
-                    .two_state(unit)
-                    .build();
-                let op = built.as_operation();
+                let bin_identifier = MlirIdentifier::new(ctx, "twoState");
+                let unit = MlirAttribute::unit(ctx);
+                let op = OperationBuilder::new("comb.xor", loc)
+                    .add_operands(&[lhs, rhs])
+                    .add_results(&[lhs_type])
+                    .add_attributes(&[(bin_identifier, unit)])
+                    .build()?;
                 self.insert_operation(op.clone())
             }
         }
