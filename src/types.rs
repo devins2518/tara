@@ -3,21 +3,17 @@ use crate::{
     circt::{
         self,
         sys::{
-            MlirAttribute as CirctMlirAttribute, MlirContext as CirctMlirContext,
-            MlirIdentifier as CirctMlirIdentifier, MlirType as CirctMlirType,
+            MlirContext as CirctMlirContext, MlirIdentifier as CirctMlirIdentifier,
+            MlirType as CirctMlirType,
         },
     },
-    module::{
-        comb::Comb, decls::Decl, function::Function, namespace::Namespace, structs::Struct,
-        tmodule::TModule,
-    },
+    module::{comb::Comb, decls::Decl, function::Function, namespace::Namespace, structs::Struct},
     utils::RRC,
     values::Value as TaraValue,
 };
 use melior::{
     dialect::llvm::r#type::r#struct as llvm_struct,
     ir::{
-        attribute::{AttributeLike, StringAttribute as MlirStringAttribute},
         r#type::{IntegerType as MlirIntegerType, TypeLike},
         Identifier as MlirIdentifier, Type as MlirType,
     },
@@ -44,7 +40,7 @@ pub enum Type {
     IntUnsigned { width: u16 },
     // TODO: Struct and module layouts
     Struct(RRC<Struct>),
-    Module(RRC<TModule>),
+    Module(RRC<Struct>),
     Function(RRC<Function>),
     Comb(RRC<Comb>),
     // TODO: Remove type reference when UTIR is readded
@@ -69,52 +65,7 @@ impl<'ctx> Type {
 
     fn to_hw_mlir_type(&self, ctx: &'ctx Context) -> MlirType<'ctx> {
         match self {
-            Type::Module(mod_info_rrc) => {
-                let mod_info = mod_info_rrc.borrow();
-                let mut ports = Vec::new();
-                for in_port in &mod_info.ins {
-                    let mlir_type = in_port.2.to_mlir_type(ctx, SurroundingContext::Hw);
-                    let hw_module_port = circt::sys::HWModulePort {
-                        name: CirctMlirAttribute {
-                            ptr: MlirStringAttribute::new(ctx, in_port.0.as_str())
-                                .to_raw()
-                                .ptr,
-                        },
-                        dir: circt::sys::HWModulePortDirection_Input,
-                        type_: CirctMlirType {
-                            ptr: mlir_type.to_raw().ptr,
-                        },
-                    };
-                    ports.push(hw_module_port);
-                }
-                for out_port in &mod_info.outs {
-                    let mlir_type = out_port.1.to_mlir_type(ctx, SurroundingContext::Hw);
-                    let hw_module_port = circt::sys::HWModulePort {
-                        name: CirctMlirAttribute {
-                            ptr: MlirStringAttribute::new(ctx, out_port.0.as_str())
-                                .to_raw()
-                                .ptr,
-                        },
-                        dir: circt::sys::HWModulePortDirection_Output,
-                        type_: CirctMlirType {
-                            ptr: mlir_type.to_raw().ptr,
-                        },
-                    };
-                    ports.push(hw_module_port);
-                }
-                let module_type = unsafe {
-                    let raw_type = circt::sys::hwModuleTypeGet(
-                        CirctMlirContext {
-                            ptr: ctx.to_raw().ptr,
-                        },
-                        ports.len() as isize,
-                        ports.as_slice().as_ptr(),
-                    );
-                    MlirType::from_raw(mlir_sys::MlirType { ptr: raw_type.ptr })
-                };
-                module_type
-            }
-            Type::Struct(struct_info_rrc) => {
+            Type::Module(struct_info_rrc) | Type::Struct(struct_info_rrc) => {
                 let struct_info = struct_info_rrc.borrow();
                 let mut fields = Vec::new();
                 // TODO: handle struct offset
@@ -196,7 +147,7 @@ impl<'ctx> Type {
         }
     }
 
-    pub fn module(&self) -> RRC<TModule> {
+    pub fn module(&self) -> RRC<Struct> {
         match self {
             Type::Module(m) => m.clone(),
             _ => unreachable!(),

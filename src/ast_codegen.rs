@@ -6,18 +6,15 @@ use crate::{
     ast::{Node, NodeKind},
     ast_codegen::table::Table,
     circt::{
-        arc::{
-            CallOperation as HwProcCallOperation, DefineOperation as HwProcDefineOperation,
-            OutputOperation as HwProcReturnOperation,
-        },
+        self,
         comb::{
             ICmpOperation as HwCmpOperation, MulOperation as HwMulOperation,
             OrOperation as HwOrOperation, SubOperation as HwSubOperation,
             XorOperation as HwXorOperation,
         },
         hw::{
-            ConstantOperation as HwConstantOperation, HWModuleOperation as HwModuleOperation,
-            OutputOperation as HwOutputOperation, StructCreateOperation as HwStructCreateOperation,
+            HWModuleOperation as HwModuleOperation, OutputOperation as HwOutputOperation,
+            StructCreateOperation as HwStructCreateOperation,
         },
         CombICmpPredicate,
     },
@@ -58,7 +55,6 @@ use melior::{
         attribute::{
             ArrayAttribute as MlirArrayAttribute,
             DenseI64ArrayAttribute as MlirDenseI64ArrayAttribute,
-            FlatSymbolRefAttribute as MlirFlatSymbolRefAttribute,
             IntegerAttribute as MlirIntegerAttribute, StringAttribute as MlirStringAttribute,
             TypeAttribute as MlirTypeAttribute,
         },
@@ -196,20 +192,15 @@ where
     }
 
     fn gen_struct_decl(&mut self, node: &Node) -> Result<TypedValue> {
+        matches!(node.kind, NodeKind::StructDecl(_));
         self.push();
 
         let struct_ty = {
             let curr_decl = self.builder.parent_decl.clone();
             let namespace = self.builder.namespace();
             Decl::init_struct(curr_decl.clone(), node, namespace);
-            let struct_obj = match curr_decl.borrow().value.as_ref().unwrap() {
-                TaraValue::Type(ty) => match &ty {
-                    TaraType::Struct(s) => s.clone(),
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            };
-            TaraType::Struct(struct_obj)
+            let struct_ty = curr_decl.borrow().value.as_ref().unwrap().to_type();
+            struct_ty
         };
 
         self.setup_namespace(node)?;
@@ -225,14 +216,7 @@ where
     fn gen_module_decl(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::ModuleDecl(_));
         self.push();
-        let mod_decl = match &node.kind {
-            NodeKind::ModuleDecl(m_d) => m_d,
-            _ => unreachable!(),
-        };
-        let loc = node.loc(self.ctx);
-        let prev_context = self.builder.save(SurroundingContext::Hw);
 
-        // Set up module decl
         let module_ty = {
             let curr_decl = self.builder.parent_decl.clone();
             let namespace = self.builder.namespace();
@@ -241,86 +225,13 @@ where
             module_ty
         };
 
-        self.builder
-            .curr_decl()
-            .map_mut(|decl| decl.status = DeclStatus::InProgress);
-
         self.setup_namespace(node)?;
-
-        match &module_ty {
-            TaraType::Module(m) => self.resolve_module_type(m.clone())?,
-            _ => unreachable!(),
-        }
-
-        let mod_mlir_type = self.builder.get_mlir_tye(self.ctx, &module_ty);
-
-        let region = MlirRegion::new();
-        let body = region.append_block(MlirBlock::new(&[]));
-        self.builder.set_block(body);
-
-        for (name, node_ptr, param_type) in &module_ty.module().borrow().ins {
-            let param_node = unsafe { &**node_ptr };
-            self.table.define_name(name.into(), param_node)?;
-            let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
-            let arg = self
-                .builder
-                .add_argument(mlir_param_type, param_node.loc(self.ctx));
-            let ty_val = TypedValue::new(param_type.clone(), arg);
-            self.table.define_ty_val(param_node, ty_val);
-        }
 
         self._gen_container(node, Self::gen_comb_decl)?;
 
-        if self.errors.len() == 0 {
-            self.builder
-                .curr_decl()
-                .map_mut(|decl| decl.status = DeclStatus::CodegenFailure);
-
-            let mut outs = Vec::new();
-            for member in &mod_decl.members {
-                match &member.kind {
-                    NodeKind::SubroutineDecl(s_d) => {
-                        let ret_ty = self.gen_type(&s_d.return_type)?;
-                        if ret_ty == TaraType::Void {
-                            continue;
-                        }
-                        let val = self.table.get_value(member)?.get_runtime_value();
-                        outs.push(val);
-                    }
-                    _ => {}
-                }
-            }
-            let output_op = HwOutputOperation::builder(self.ctx, loc)
-                .outputs(&outs)
-                .build();
-            body.append_operation(output_op.into());
-
-            let operation: MlirOperation = {
-                let name = &self.builder.parent_decl.borrow().name;
-                let builder = HwModuleOperation::builder(self.ctx, loc)
-                    .body(region)
-                    .sym_name(MlirStringAttribute::new(self.ctx, name.as_str()))
-                    .module_type(MlirTypeAttribute::new(mod_mlir_type))
-                    .parameters(MlirArrayAttribute::new(self.ctx, &[]))
-                    .build();
-                builder.into()
-            };
-
-            self.module.body().append_operation(operation);
-        }
-
-        self.builder.restore(prev_context);
         self.pop();
 
         let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(module_ty));
-
-        self.builder.curr_decl().map_mut(|decl| {
-            let ty_val = ty_val.clone();
-            decl.status = DeclStatus::Complete;
-            decl.ty = Some(ty_val.ty);
-            decl.value = Some(ty_val.value);
-        });
-
         Ok(ty_val)
     }
 
@@ -410,18 +321,11 @@ where
             let curr_decl = self.builder.parent_decl.clone();
             let namespace = self.builder.namespace();
             Decl::init_fn(curr_decl.clone(), node, namespace);
-            let fn_obj = match curr_decl.borrow().value.as_ref().unwrap() {
-                TaraValue::Type(ty) => match &ty {
-                    TaraType::Function(f) => f.clone(),
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            };
-            TaraType::Function(fn_obj)
+            let fn_ty = curr_decl.borrow().value.as_ref().unwrap().to_type();
+            fn_ty
         };
 
         let return_type = self.gen_type(&fn_decl.return_type)?;
-        let mlir_return_type = self.builder.get_mlir_tye(self.ctx, &return_type);
 
         let loc = node.loc(self.ctx);
         let region = MlirRegion::new();
@@ -451,7 +355,7 @@ where
             self.gen_block_terminated(node, &fn_decl.block)?;
 
             let mlir_fn_ret_type = if return_type != TaraType::Void {
-                Some(mlir_return_type)
+                Some(self.builder.get_mlir_tye(self.ctx, &return_type))
             } else {
                 None
             };
@@ -487,41 +391,29 @@ where
             let curr_decl = self.builder.parent_decl.clone();
             let namespace = self.builder.namespace();
             Decl::init_comb(curr_decl.clone(), node, namespace);
-            let comb_obj = match curr_decl.borrow().value.as_ref().unwrap() {
-                TaraValue::Type(ty) => match &ty {
-                    TaraType::Comb(c) => c.clone(),
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            };
-            TaraType::Comb(comb_obj)
+            let comb_ty = curr_decl.borrow().value.as_ref().unwrap().to_type();
+            comb_ty
         };
 
         let return_type = self.gen_type(&comb_decl.return_type)?;
-        // Don't emit an arc that returns void as all computation can be culled
-        if return_type == TaraType::Void {
-            return Ok(TypedValue::new(TaraType::Void, TaraValue::VoidValue));
-        }
-        let mlir_return_type = self.builder.get_mlir_tye(self.ctx, &return_type);
 
         let loc = node.loc(self.ctx);
-        let body = self.module.body();
-        {
-            let region = MlirRegion::new();
-            let block = MlirBlock::new(&[]);
-            let block_ref = region.append_block(block);
-            let prev_context = self
-                .builder
-                .save_with_block(SurroundingContext::Hw, block_ref);
-            self.builder.block_ret_ty = Some(return_type.clone());
+        let region = MlirRegion::new();
+        let block = MlirBlock::new(&[]);
+        let block_ref = region.append_block(block);
+        let prev_context = self
+            .builder
+            .save_with_block(SurroundingContext::Hw, block_ref);
+        self.builder.block_ret_ty = Some(return_type.clone());
 
+        {
             let mut param_types = Vec::new();
             for param in &comb_decl.params {
                 let param_ty = param.ty.as_ref();
                 self.table.define_name_shadow_upper(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
                 let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
-                param_types.push(mlir_param_type);
+                param_types.push((param.name.as_str(), mlir_param_type));
 
                 let arg = self
                     .builder
@@ -532,43 +424,20 @@ where
 
             self.gen_block_terminated(node, &comb_decl.block)?;
 
+            let comb_name = &self.builder.parent_decl.borrow().name;
             let comb_type =
-                MlirFunctionType::new(self.ctx, &param_types, &[mlir_return_type]).into();
-            let builder = HwProcDefineOperation::builder(self.ctx, loc)
+                circt::get_module_type(self.ctx, comb_name, param_types.as_slice(), return_type);
+            let builder = HwModuleOperation::builder(self.ctx, loc)
                 .body(region)
-                .sym_name(MlirStringAttribute::new(
-                    self.ctx,
-                    &self.builder.parent_decl.borrow().name,
-                ))
-                .function_type(MlirTypeAttribute::new(comb_type));
+                .sym_name(MlirStringAttribute::new(self.ctx, comb_name))
+                .module_type(MlirTypeAttribute::new(comb_type))
+                .parameters(MlirArrayAttribute::new(self.ctx, &[]));
             let comb = builder.build();
-            let operation: MlirOperation = comb.into();
-            body.append_operation(operation);
-            self.builder.restore(prev_context);
+            self.module.body().append_operation(comb.into());
         };
 
         self.pop();
-
-        let mut ins = Vec::new();
-        for param in &comb_decl.params {
-            let param_val = self
-                .table
-                .get_named_value(param.name, param.ty.span)?
-                .get_runtime_value();
-            ins.push(param_val);
-        }
-        let comb_name = &self.builder.parent_decl.borrow().name;
-        let call_op = HwProcCallOperation::builder(self.ctx, loc)
-            .arc(MlirFlatSymbolRefAttribute::new(self.ctx, &comb_name))
-            .inputs(&ins)
-            .outputs(&[mlir_return_type])
-            .build();
-        let call_val = self
-            .builder
-            .insert_operation(call_op.as_operation().clone())?;
-
-        let rt_ty_val = TypedValue::new(return_type, call_val);
-        self.table.define_ty_val(node, rt_ty_val);
+        self.builder.restore(prev_context);
 
         let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(comb_ty));
         Ok(ty_val)
@@ -1032,7 +901,7 @@ where
                 let ty = ty_val.value.to_type();
                 match &ty {
                     TaraType::Struct(s) => self.resolve_struct_layout(s.clone())?,
-                    TaraType::Module(m) => self.resolve_module_type(m.clone())?,
+                    TaraType::Module(m) => self.resolve_struct_layout(m.clone())?,
                     _ => {}
                 }
                 ty
@@ -1127,8 +996,9 @@ where
         let mut struct_obj = struct_rrc.borrow_mut();
         let decl = struct_obj.decl.clone();
         let node = struct_obj.node();
-        let struct_node = match &node.kind {
-            NodeKind::StructDecl(inner) => inner,
+        let struct_fields = match &node.kind {
+            NodeKind::StructDecl(inner) => &inner.fields,
+            NodeKind::ModuleDecl(inner) => &inner.fields,
             _ => unreachable!(),
         };
 
@@ -1141,7 +1011,7 @@ where
         decl.map_mut(|decl| decl.status = DeclStatus::InProgress);
 
         let mut decl_error_guard = Decl::error_guard(decl.clone());
-        for field_node in &struct_node.fields {
+        for field_node in struct_fields {
             let field_type = self.gen_type(&field_node.ty)?;
             let field = Field {
                 name: field_node.name.to_string(),
@@ -2017,7 +1887,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.block.append_operation(op.clone());
             }
             SurroundingContext::Hw => {
-                let built = HwProcReturnOperation::builder(ctx, loc)
+                let built = HwOutputOperation::builder(ctx, loc)
                     .outputs(ret_val.as_slice())
                     .build();
                 let op = built.as_operation();

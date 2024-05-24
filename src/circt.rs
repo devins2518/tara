@@ -1,8 +1,21 @@
 pub mod sys;
 
-use melior::dialect::{DialectHandle, DialectRegistry};
-use melior::Context;
+use crate::{ast_codegen::SurroundingContext, types::Type as TaraType};
+use melior::{
+    dialect::{DialectHandle, DialectRegistry},
+    ir::{
+        attribute::{AttributeLike, StringAttribute as MlirStringAttribute},
+        r#type::TypeLike,
+        Type as MlirType,
+    },
+    Context,
+};
 use mlir_sys::MlirDialectHandle;
+
+use crate::circt::sys::{
+    HWModulePort, MlirAttribute as CirctMlirAttribute, MlirContext as CirctMlirContext,
+    MlirType as CirctMlirType,
+};
 
 melior_macro::dialect! {
     name: "arc",
@@ -180,6 +193,54 @@ pub enum ModulePortDirection {
     In = sys::HWModulePortDirection_Input,
     Out = sys::HWModulePortDirection_Output,
     InOut = sys::HWModulePortDirection_InOut,
+}
+
+// HACK: Ugly but necessary since circt::sys types aren't the same as melior::sys
+pub fn get_module_type<'a>(
+    ctx: &Context,
+    name: &str,
+    inputs: &[(&str, MlirType<'a>)],
+    output: TaraType,
+) -> MlirType<'static> {
+    let mut ports = Vec::new();
+    for (name, port_type) in inputs {
+        let hw_module_port = HWModulePort {
+            name: CirctMlirAttribute {
+                ptr: MlirStringAttribute::new(ctx, name).to_raw().ptr,
+            },
+            dir: sys::HWModulePortDirection_Input,
+            type_: CirctMlirType {
+                ptr: port_type.to_raw().ptr,
+            },
+        };
+        ports.push(hw_module_port);
+    }
+    if output != TaraType::Void {
+        let hw_module_port = HWModulePort {
+            name: CirctMlirAttribute {
+                ptr: MlirStringAttribute::new(ctx, name).to_raw().ptr,
+            },
+            dir: sys::HWModulePortDirection_Output,
+            type_: CirctMlirType {
+                ptr: output
+                    .to_mlir_type(ctx, SurroundingContext::Hw)
+                    .to_raw()
+                    .ptr,
+            },
+        };
+        ports.push(hw_module_port);
+    }
+    let module_type = unsafe {
+        let raw_type = sys::hwModuleTypeGet(
+            CirctMlirContext {
+                ptr: ctx.to_raw().ptr,
+            },
+            ports.len() as isize,
+            ports.as_slice().as_ptr(),
+        );
+        MlirType::from_raw(mlir_sys::MlirType { ptr: raw_type.ptr })
+    };
+    module_type
 }
 
 // Predicate for `cmp.icmp` operation.

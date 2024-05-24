@@ -48,43 +48,27 @@ const B = struct {
 };
 
 const E = module {
-    pub comb a(x0: u8) u8 {
-        return x0;
-    }
-
-    // CHECK: error: Comb params have different types!
-    // CHECK:    │
-    // CHECK: 61 │ ╭     pub comb b(x0: u4) u8 {
-    // CHECK: 62 │ │         return x0;
-    // CHECK: 63 │ │     }
-    // CHECK:    │ ╰─────^
-    pub comb b(x0: u4) u8 {
-        return x0;
-    }
-};
-
-const F = module {
     // CHECK: error: Block has incorrect return type, wanted u1, found void
     // CHECK:    │
-    // CHECK: 71 │     comb c() u1 {}
+    // CHECK: 55 │     comb a() u1 {}
     // CHECK:    │     ^^^^^^^^^^^^^^
-    comb c() u1 {}
+    comb a() u1 {}
 
     // CHECK: error: Block has incorrect return type, wanted u1, found void
     // CHECK:    │
-    // CHECK: 79 │ ╭     comb d() u1 {
-    // CHECK: 80 │ │         false;
-    // CHECK: 81 │ │     }
+    // CHECK: 63 │ ╭     comb b() u1 {
+    // CHECK: 64 │ │         false;
+    // CHECK: 65 │ │     }
     // CHECK:    │ ╰─────^
-    comb d() u1 {
+    comb b() u1 {
         false;
     }
 
     // CHECK: error: Illegal cast from comptime_int to bool
     // CHECK:    │
-    // CHECK: 88 │         return 1;
+    // CHECK: 72 │         return 1;
     // CHECK:    │         ^^^^^^^^
-    comb e() bool {
+    comb c() bool {
         return 1;
     }
 };

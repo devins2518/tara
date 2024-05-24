@@ -1,9 +1,6 @@
 use crate::{
     ast::Node,
-    module::{
-        comb::Comb, file::File, function::Function, namespace::Namespace, structs::Struct,
-        tmodule::TModule,
-    },
+    module::{comb::Comb, file::File, function::Function, namespace::Namespace, structs::Struct},
     types::Type as TaraType,
     utils::{init_field, RRC},
     utir::inst::UtirInstRef,
@@ -106,32 +103,12 @@ impl Decl {
         node: &Node,
         parent_namespace: RRC<Namespace>,
     ) -> RRC<Self> {
-        let rrc = decl.into();
+        let rrc = Self::init_struct(decl, node, parent_namespace);
 
-        {
-            rrc.map_mut(|decl| {
-                decl.ty = Some(TaraType::Type);
-                decl.status = DeclStatus::InProgress;
-            });
-
-            let mod_obj = TModule::new(rrc.clone(), node);
-            let mod_obj_rrc = RRC::new(mod_obj);
-
-            let mod_ty = TaraType::Module(mod_obj_rrc.clone());
-
-            let mod_val = TaraValue::Type(mod_ty.clone());
-            rrc.map_mut(|decl| decl.value = Some(mod_val.clone()));
-
-            let mut namespace = Namespace::new();
-            namespace.init_ty(mod_ty);
-            namespace.parent = Some(parent_namespace);
-            let namespace_rrc = RRC::new(namespace);
-            rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));
-
-            mod_obj_rrc
-                .borrow_mut()
-                .init_namespace(namespace_rrc.clone());
-        }
+        rrc.map_mut(|decl_rrc| {
+            let module = decl_rrc.value.as_ref().unwrap().to_type().to_struct();
+            decl_rrc.value = Some(TaraValue::Type(TaraType::Module(module)));
+        });
 
         rrc
     }

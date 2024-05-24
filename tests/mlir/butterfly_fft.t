@@ -20,19 +20,14 @@ pub const Struct = struct {
 pub const Top = module {
     const Butterfly = struct { y0: u8, y1: u8 };
 
-    // CHECK:   arc.define @root.Top.top(%arg0: i8, %arg1: i8) -> !hw.struct<y0: i8, y1: i8> {
-    // CHECK:     %0 = comb.add bin %arg0, %arg1 : i8
-    // CHECK:     %1 = comb.sub bin %arg0, %arg1 : i8
+    // CHECK:   hw.module @root.Top.top(in %x0 : i8, in %x1 : i8, out root.Top.top : !hw.struct<y0: i8, y1: i8>) {
+    // CHECK:     %0 = comb.add bin %x0, %x1 : i8
+    // CHECK:     %1 = comb.sub bin %x0, %x1 : i8
     // CHECK:     %2 = hw.struct_create (%0, %1) : !hw.struct<y0: i8, y1: i8>
-    // CHECK:     arc.output %2 : !hw.struct<y0: i8, y1: i8>
+    // CHECK:     hw.output %2 : !hw.struct<y0: i8, y1: i8>
     // CHECK:   }
     pub comb top(x0: u8, x1: u8) Butterfly {
         return Butterfly{ .y0 = x0 + x1, .y1 = x0 - x1 };
     }
 };
-// CHECK:   hw.module @root.Top(in %x0 : i8, in %x1 : i8, out top : !hw.struct<y0: i8, y1: i8>) {
-// CHECK:     %0 = arc.call @root.Top.top(%x0, %x1) : (i8, i8) -> !hw.struct<y0: i8, y1: i8>
-// CHECK:     hw.output %0 : !hw.struct<y0: i8, y1: i8>
-// CHECK:   }
-
 // CHECK: }

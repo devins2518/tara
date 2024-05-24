@@ -1,6 +1,6 @@
 // RUN: @tara @file --dump-mlir --exit-early 2>&1
-// CHECK: module {
 
+// CHECK: module {
 const A = struct {
     const C = bool;
     const D = C;
@@ -25,16 +25,11 @@ const B = module {
     const C = bool;
     const D = C;
 
-    // CHECK:   arc.define @root.B.F(%arg0: i1) -> i1 {
-    // CHECK:     arc.output %arg0 : i1
+    // CHECK:   hw.module @root.B.F(in %a : i1, out root.B.F : i1) {
+    // CHECK:     hw.output %a : i1
     // CHECK:   }
     pub comb F(a: C) D {
         return a;
     }
 };
-// CHECK:   hw.module @root.B(in %a : i1, out F : i1) {
-// CHECK:     %0 = arc.call @root.B.F(%a) : (i1) -> i1
-// CHECK:     hw.output %0 : i1
-// CHECK:   }
-
 // CHECK: }
