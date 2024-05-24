@@ -1,10 +1,13 @@
 use crate::{
     ast::Node,
-    module::{comb::Comb, file::File, function::Function, namespace::Namespace, structs::Struct},
+    module::{
+        comb::Comb, file::File, function::Function, namespace::Namespace, register::Register,
+        structs::Struct,
+    },
     types::Type as TaraType,
     utils::{init_field, RRC},
     utir::inst::UtirInstRef,
-    values::{TypedValue, Value as TaraValue},
+    values::{StaticMlirValue, TypedValue, Value as TaraValue},
 };
 use std::{collections::HashMap, hash::Hash, mem::MaybeUninit};
 
@@ -167,6 +170,39 @@ impl Decl {
 
             let mut namespace = Namespace::new();
             namespace.init_ty(comb_ty);
+            namespace.parent = Some(parent_namespace);
+            let namespace_rrc = RRC::new(namespace);
+            rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));
+        }
+
+        rrc
+    }
+
+    pub fn init_register<S: Into<RRC<Self>>>(
+        decl: S,
+        node: &Node,
+        parent_namespace: RRC<Namespace>,
+        ty: TaraType,
+        def_op: StaticMlirValue,
+    ) -> RRC<Self> {
+        let rrc = decl.into();
+
+        {
+            let reg_obj = Register::new(rrc.clone(), node, ty, def_op);
+            let reg_obj_rrc = RRC::new(reg_obj);
+
+            let reg_ty = TaraType::Register(reg_obj_rrc.clone());
+
+            rrc.map_mut(|decl| {
+                decl.ty = Some(reg_ty.clone());
+                decl.status = DeclStatus::InProgress;
+            });
+
+            let reg_val = TaraValue::Register(reg_obj_rrc.clone());
+            rrc.map_mut(|decl| decl.value = Some(reg_val.clone()));
+
+            let mut namespace = Namespace::new();
+            namespace.init_ty(reg_ty);
             namespace.parent = Some(parent_namespace);
             let namespace_rrc = RRC::new(namespace);
             rrc.map_mut(|decl| init_field!(decl, namespace, namespace_rrc.clone()));

@@ -1,6 +1,6 @@
 use crate::{
     builtin::Signedness,
-    module::{function::Function, namespace::Namespace},
+    module::{function::Function, namespace::Namespace, register::Register},
     types::Type as TaraType,
     utils::RRC,
 };
@@ -49,6 +49,9 @@ pub enum Value {
 
     // Compile time values
     Integer(i64),
+
+    // An instance of a register
+    Register(RRC<Register>),
 
     // Value known at run-time
     RuntimeValue(StaticMlirValue),
@@ -108,6 +111,13 @@ impl Value {
     pub fn integer(&self) -> i64 {
         match self {
             Value::Integer(int) => *int,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn register(&self) -> RRC<Register> {
+        match self {
+            Value::Register(reg) => reg.clone(),
             _ => unreachable!(),
         }
     }

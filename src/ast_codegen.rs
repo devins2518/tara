@@ -15,12 +15,14 @@ use crate::{
             HWModuleOperation as HwModuleOperation, OutputOperation as HwOutputOperation,
             StructCreateOperation as HwStructCreateOperation,
         },
+        seq::CompRegOperation as HwRegInstOperation,
         CombICmpPredicate,
     },
     module::{
         decls::{Decl, DeclStatus},
         file::File,
         namespace::Namespace,
+        register::{Register, RegisterAnalysis},
         structs::{Field, Struct, StructStatus},
         tmodule::{ModuleStatus, TModule},
     },
@@ -53,12 +55,14 @@ use melior::{
     ir::{
         attribute::{
             ArrayAttribute as MlirArrayAttribute,
+            DenseI32ArrayAttribute as MlirDenseI32ArrayAttribute,
             DenseI64ArrayAttribute as MlirDenseI64ArrayAttribute,
             IntegerAttribute as MlirIntegerAttribute, StringAttribute as MlirStringAttribute,
             TypeAttribute as MlirTypeAttribute,
         },
         operation::{
             Operation as MlirOperation, OperationBuilder, OperationRef as MlirOperationRef,
+            OperationResult,
         },
         r#type::FunctionType as MlirFunctionType,
         Attribute as MlirAttribute, Block as MlirBlock, BlockRef as MlirBlockRef,
@@ -104,8 +108,8 @@ impl<'a, 'ast, 'ctx> AstCodegen<'a, 'ast, 'ctx> {
     }
 
     // Pops a layer from all tables
-    fn pop(&mut self) {
-        self.table.pop();
+    fn pop(&mut self) -> Result<()> {
+        self.table.pop()
     }
 
     pub fn report_errors(&self, file: &File) -> Result<()> {
@@ -169,7 +173,7 @@ where
                 NodeKind::VarDecl(_) => match self.gen_var_decl(&member) {
                     Ok(_) => {}
                     Err(e) => {
-                        self.pop();
+                        _ = self.pop();
                         self.errors.push(e);
                     }
                 },
@@ -177,7 +181,7 @@ where
                     match self._gen_subroutine(&member, &subroutine_gen) {
                         Ok(_) => {}
                         Err(e) => {
-                            self.pop();
+                            _ = self.pop();
                             self.errors.push(e);
                         }
                     }
@@ -198,7 +202,7 @@ where
             let curr_decl = self.builder.parent_decl.clone();
             let namespace = self.builder.namespace();
             Decl::init_struct(curr_decl.clone(), node, namespace);
-            let struct_ty = curr_decl.borrow().value.as_ref().unwrap().to_type();
+            let struct_ty = curr_decl.map(|decl| decl.value.as_ref().unwrap().to_type());
             struct_ty
         };
 
@@ -206,7 +210,7 @@ where
 
         self._gen_container(node, Self::gen_fn_decl)?;
 
-        self.pop();
+        self.pop()?;
 
         let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(struct_ty));
         Ok(ty_val)
@@ -220,7 +224,7 @@ where
             let curr_decl = self.builder.parent_decl.clone();
             let namespace = self.builder.namespace();
             Decl::init_module(curr_decl.clone(), node, namespace);
-            let module_ty = curr_decl.borrow().value.as_ref().unwrap().to_type();
+            let module_ty = curr_decl.map(|decl| decl.value.as_ref().unwrap().to_type());
             module_ty
         };
 
@@ -228,7 +232,7 @@ where
 
         self._gen_container(node, Self::gen_comb_decl)?;
 
-        self.pop();
+        self.pop()?;
 
         let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(module_ty));
         Ok(ty_val)
@@ -369,7 +373,7 @@ where
             self.module.body().append_operation(func.into());
         };
 
-        self.pop();
+        self.pop()?;
         self.builder.restore(prev_context);
 
         let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(fn_ty));
@@ -435,7 +439,7 @@ where
             self.module.body().append_operation(comb.into());
         };
 
-        self.pop();
+        self.pop()?;
         self.builder.restore(prev_context);
 
         let ty_val = TypedValue::new(TaraType::Type, TaraValue::Type(comb_ty));
@@ -497,6 +501,7 @@ where
             NodeKind::NumberLiteral(_) => self.gen_number(node)?,
             NodeKind::VarDecl(_) => self.gen_var_decl(node)?,
             NodeKind::LocalVarDecl(_) => self.gen_local_var_decl(node)?,
+            NodeKind::BuiltinCall(_) => self.gen_builtin_call(node)?,
             _ => unimplemented!(),
         };
         Ok(ty_val)
@@ -837,6 +842,96 @@ where
         Ok(ty_val)
     }
 
+    fn gen_builtin_call(&mut self, node: &Node) -> Result<TypedValue> {
+        matches!(node.kind, NodeKind::BuiltinCall(_));
+        let builtin_call = match &node.kind {
+            NodeKind::BuiltinCall(b_c) => b_c,
+            _ => unreachable!(),
+        };
+        let args = &builtin_call.args;
+
+        let ty_val = match builtin_call.call.as_str() {
+            "reg" => {
+                if args.len() != 3 {
+                    Err(Error::new(node.span, "@reg() expects 3 arguments"))?
+                }
+
+                let clock_arg_ty_val = self.gen_expr_reachable(&args[0])?;
+                self.expect_clock_type(&args[0], &clock_arg_ty_val.ty)?;
+                let reset_arg_ty_val = self.gen_expr_reachable(&args[1])?;
+                self.expect_reset_type(&args[1], &reset_arg_ty_val.ty)?;
+                let reset_val_arg_ty_val = self.gen_expr_reachable(&args[2])?;
+                let reset_val_arg_loc = args[2].loc(&self.ctx);
+
+                let materialized_reset_val = self.builder.materialize(
+                    self.ctx,
+                    reset_val_arg_loc,
+                    &reset_val_arg_ty_val.ty,
+                    &reset_val_arg_ty_val.value,
+                )?;
+
+                let reg_inst = self.builder.gen_register_instantiation(
+                    self.ctx,
+                    node,
+                    &reset_val_arg_ty_val.ty,
+                    clock_arg_ty_val.value.get_runtime_value(),
+                    reset_arg_ty_val.value.get_runtime_value(),
+                    materialized_reset_val,
+                )?;
+
+                let decl = self.builder.new_decl(node, "todo_register_names")?;
+                Decl::init_register(
+                    decl.clone(),
+                    node,
+                    self.builder.namespace(),
+                    reset_val_arg_ty_val.ty.clone(),
+                    reg_inst.get_runtime_value(),
+                );
+
+                let reg_ty_val = decl.map(|decl| {
+                    let ty = decl.ty.as_ref().unwrap().clone();
+                    let value = decl.value.as_ref().unwrap().clone();
+                    TypedValue::new(ty, value)
+                });
+
+                Ok(reg_ty_val)
+            }
+            "regWrite" => {
+                if args.len() != 2 {
+                    Err(Error::new(node.span, "@regWrite() expects 2 arguments"))?
+                }
+
+                let reg_ty_val = self.gen_expr_reachable(&args[0])?;
+                let reg_rrc = self.expect_register_type(&args[0], &reg_ty_val.ty)?;
+
+                if reg_rrc.borrow().analysis == RegisterAnalysis::Written {
+                    Err(Error::new(
+                        node.span,
+                        "Register has already been written to!",
+                    ))?
+                }
+
+                let (reg_ty, reg_val) = reg_rrc
+                    .map(|reg| (reg.ty.clone(), TaraValue::RuntimeValue(reg.def_op.clone())));
+
+                let write_ty_val = self.gen_expr_reachable(&args[1])?;
+                let write_val = self.cast(&args[1], write_ty_val, &reg_ty.inner_type())?;
+
+                let value = self.builder.gen_register_write(
+                    reg_val.get_runtime_value(),
+                    write_val.get_runtime_value(),
+                )?;
+
+                reg_rrc.map_mut(|reg| reg.analysis = RegisterAnalysis::Written);
+
+                Ok(TypedValue::new(TaraType::Void, value))
+            }
+            _ => Err(Error::new(node.span, "Unknown builtin function call")),
+        }?;
+
+        Ok(ty_val)
+    }
+
     fn gen_block(&mut self, nodes: &[Node]) -> Result<TypedValue> {
         let mut ret_ty_val = TypedValue::new(
             TaraType::NoReturn(RRC::new(TaraType::Void)),
@@ -1158,7 +1253,7 @@ where
 impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
     fn expect_integral_type(&self, node: &Node) -> Result<()> {
         let actual_type = self.table.get_type(node)?;
-        match actual_type {
+        match actual_type.inner_type() {
             TaraType::IntSigned { .. } | TaraType::IntUnsigned { .. } => Ok(()),
             _ => Err(Error::new(
                 node.span,
@@ -1169,7 +1264,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
 
     fn expect_bool_type(&self, node: &Node) -> Result<()> {
         let actual_type = self.table.get_type(node)?;
-        match actual_type {
+        match actual_type.inner_type() {
             TaraType::Bool => Ok(()),
             _ => Err(Error::new(
                 node.span,
@@ -1179,7 +1274,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
     }
 
     fn expect_struct_type(&self, node: &Node, actual_type: &TaraType) -> Result<RRC<Struct>> {
-        match actual_type {
+        match actual_type.inner_type() {
             TaraType::Struct(s) => Ok(s.clone()),
             _ => Err(Error::new(
                 node.span,
@@ -1208,6 +1303,16 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         }
     }
 
+    fn expect_register_type(&self, node: &Node, actual_type: &TaraType) -> Result<RRC<Register>> {
+        match actual_type {
+            TaraType::Register(reg) => Ok(reg.clone()),
+            _ => Err(Error::new(
+                node.span,
+                format!("Expected register type, found {}", actual_type),
+            ))?,
+        }
+    }
+
     fn expect_type_type(&self, node: &Node, actual_type: &TaraType) -> Result<()> {
         match actual_type {
             TaraType::Type => Ok(()),
@@ -1225,7 +1330,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         ty_val: TypedValue,
         expected_type: &TaraType,
     ) -> Result<TaraValue> {
-        let actual_type = ty_val.ty;
+        let actual_type = ty_val.ty.clone();
         if actual_type == *expected_type {
             return Ok(ty_val.value);
         }
@@ -1285,6 +1390,12 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 }
             }
             (TaraType::IntSigned { .. }, TaraType::ComptimeInt) => Ok(ty_val.value),
+            (_, TaraType::Register(reg_rrc)) => {
+                let inner_ty = actual_type.inner_type();
+                let value = reg_rrc.map(|reg| reg.def_op);
+                let ty_val = TypedValue::new(inner_ty, TaraValue::RuntimeValue(value));
+                self.cast(node, ty_val, expected_type)
+            }
             _ => Err(Error::new(
                 node.span,
                 format!("Illegal cast from {} to {}", actual_type, expected_type),
@@ -1449,6 +1560,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.gen_constant_struct(ctx, loc, ty, &materialized_fields)?
                     .get_runtime_value()
             }
+            TaraValue::Register(reg_rrc) => reg_rrc.map(|reg| reg.def_op.clone()),
             TaraValue::U1Type
             | TaraValue::U8Type
             | TaraValue::I8Type
@@ -1995,6 +2107,57 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
         }
+    }
+
+    pub fn gen_register_instantiation(
+        &self,
+        ctx: &'ctx Context,
+        node: &Node,
+        ty: &TaraType,
+        clock: StaticMlirValue,
+        reset: StaticMlirValue,
+        init_val: StaticMlirValue,
+    ) -> Result<TaraValue> {
+        let loc = node.loc(ctx);
+        let mlir_ty = self.get_mlir_tye(ctx, ty);
+        let dummy_type = TaraType::IntUnsigned {
+            width: ty.get_bit_size(),
+        };
+        let dummy_val = self.gen_constant_int(ctx, loc, &dummy_type, 0)?;
+        match self.surr_context {
+            SurroundingContext::Sw => Err(Error::new(
+                node.span,
+                "Register instantiation is not supported in software contexts",
+            ))?,
+            SurroundingContext::Hw => {
+                let mut op: MlirOperation = HwRegInstOperation::builder(ctx, loc)
+                    .data(mlir_ty)
+                    .input(dummy_val.get_runtime_value())
+                    .clk(clock)
+                    .reset(reset)
+                    .reset_value(init_val)
+                    .build()
+                    .into();
+                let segment_sizes = MlirDenseI32ArrayAttribute::new(ctx, &[1, 1, 1, 1, 0]).into();
+                op.set_attribute("operandSegmentSizes", segment_sizes);
+                self.insert_operation(op)
+            }
+        }
+    }
+
+    pub fn gen_register_write(
+        &self,
+        reg_inst: StaticMlirValue,
+        write_val: StaticMlirValue,
+    ) -> Result<TaraValue> {
+        let reg_inst_op_res: OperationResult = reg_inst.try_into().unwrap();
+        let reg_inst_op = reg_inst_op_res.owner().to_raw();
+        unsafe {
+            let circt_reg_inst_op = std::mem::transmute(reg_inst_op);
+            let circt_write_val = std::mem::transmute(write_val);
+            circt::sys::mlirOperationSetOperand(circt_reg_inst_op, 0, circt_write_val);
+        }
+        Ok(TaraValue::VoidValue)
     }
 
     pub fn get_mlir_tye(&self, ctx: &'ctx Context, ty: &TaraType) -> MlirType<'ctx> {

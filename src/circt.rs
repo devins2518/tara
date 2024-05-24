@@ -108,10 +108,9 @@ melior_macro::dialect! {
     name: "sv",
     table_gen: r#"include "circt/Dialect/SV/SV.td""#
 }
-// melior_macro::dialect! {
-//     name: "seq",
-//     table_gen: r#"include "circt/Dialect/Seq/Seq.td""#
-// }
+// TODO: Inlined due to generation errors. Replace this once upstream fixes this
+#[doc = "`seq` dialect.\n\nThe `seq` dialect is intended to model digital sequential logic.\n"]
+pub mod seq;
 melior_macro::dialect! {
     name: "sim",
     table_gen: r#"include "circt/Dialect/Sim/Sim.td""#
@@ -148,7 +147,7 @@ extern "C" {
     fn mlirGetDialectHandle__pipeline__() -> MlirDialectHandle;
     fn mlirGetDialectHandle__ssp__() -> MlirDialectHandle;
     fn mlirGetDialectHandle__sv__() -> MlirDialectHandle;
-    // fn mlirGetDialectHandle__seq__() -> MlirDialectHandle;
+    fn mlirGetDialectHandle__seq__() -> MlirDialectHandle;
     fn mlirGetDialectHandle__sim__() -> MlirDialectHandle;
     fn mlirGetDialectHandle__systemc__() -> MlirDialectHandle;
     fn mlirGetDialectHandle__verif__() -> MlirDialectHandle;
@@ -180,7 +179,7 @@ pub fn register_all_dialects(ctx: &Context) {
         // DialectHandle::from_raw(mlirGetDialectHandle__pipeline__()).insert_dialect(&registry);
         // DialectHandle::from_raw(mlirGetDialectHandle__ssp__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__sv__()).insert_dialect(&registry);
-        // DialectHandle::from_raw(mlirGetDialectHandle__seq__()).insert_dialect(&registry);
+        DialectHandle::from_raw(mlirGetDialectHandle__seq__()).insert_dialect(&registry);
         // DialectHandle::from_raw(mlirGetDialectHandle__sim__()).insert_dialect(&registry);
         // DialectHandle::from_raw(mlirGetDialectHandle__systemc__()).insert_dialect(&registry);
         DialectHandle::from_raw(mlirGetDialectHandle__verif__()).insert_dialect(&registry);

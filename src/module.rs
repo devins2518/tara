@@ -4,6 +4,7 @@ pub mod file;
 pub mod function;
 pub mod namespace;
 pub mod package;
+pub mod register;
 pub mod structs;
 pub mod tmodule;
 pub mod variable;

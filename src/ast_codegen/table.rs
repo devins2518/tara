@@ -1,6 +1,7 @@
 use crate::{
     ast::{Node, NodeKind},
     ast_codegen::Error,
+    module::register::RegisterAnalysis,
     types::Type as TaraType,
     values::{TypedValue, Value as TaraValue},
 };
@@ -90,9 +91,26 @@ impl Table {
     }
 
     // Pops a layer from all tables
-    pub fn pop(&mut self) {
+    pub fn pop(&mut self) -> Result<()> {
+        let mut maybe_err = None;
+        for (_, binding) in self.bindings.iter_top() {
+            if matches!(binding.ty, TaraType::Register(_)) {
+                maybe_err = binding.value.register().map(|reg| {
+                    let node: &Node = unsafe { std::mem::transmute(reg.node_ptr) };
+                    if reg.analysis == RegisterAnalysis::Unwritten {
+                        Some(Error::new(node.span, "Register not written to!"))
+                    } else {
+                        None
+                    }
+                });
+                if let Some(_) = maybe_err {
+                    break;
+                }
+            }
+        }
         self.name_table.pop_layer();
         self.bindings.pop_layer();
+        Ok(maybe_err.map(Result::Err).unwrap_or(Ok(()))?)
     }
 
     fn get_identifier_ty_val(&self, ident: GlobalSymbol, loc: Span) -> Result<TypedValue> {

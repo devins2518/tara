@@ -7,7 +7,10 @@ use crate::{
             MlirType as CirctMlirType,
         },
     },
-    module::{comb::Comb, decls::Decl, function::Function, namespace::Namespace, structs::Struct},
+    module::{
+        comb::Comb, decls::Decl, function::Function, namespace::Namespace, register::Register,
+        structs::Struct,
+    },
     utils::RRC,
     values::Value as TaraValue,
 };
@@ -46,6 +49,7 @@ pub enum Type {
     Module(RRC<Struct>),
     Function(RRC<Function>),
     Comb(RRC<Comb>),
+    Register(RRC<Register>),
     // TODO: Remove type reference when UTIR is readded
     NoReturn(RRC<Type>),
 }
@@ -121,6 +125,33 @@ impl<'ctx> Type {
         }
     }
 
+    pub fn get_bit_size(&self) -> u16 {
+        match self {
+            Self::Bool => 1,
+            Self::Void => 0,
+            Self::IntSigned { width } | Self::IntUnsigned { width } => *width,
+            Self::Reset => 1,
+
+            Self::Undefined
+            | Self::InferredAllocMut
+            | Self::InferredAllocConst
+            | Self::Array
+            | Self::Tuple
+            | Self::Pointer
+            | Self::Null
+            | Self::Struct(_)
+            | Self::Module(_) => unimplemented!(),
+
+            Self::Type
+            | Self::ComptimeInt
+            | Self::Clock
+            | Self::Function(_)
+            | Self::Comb(_)
+            | Self::Register(_)
+            | Self::NoReturn(_) => unreachable!(),
+        }
+    }
+
     pub fn to_value(&self) -> TaraValue {
         TaraValue::Type(self.clone())
     }
@@ -168,6 +199,13 @@ impl<'ctx> Type {
             _ => false,
         }
     }
+
+    pub fn inner_type(&self) -> Type {
+        match self {
+            Type::Register(reg_rrc) => reg_rrc.map(|reg| reg.ty.clone()),
+            _ => self.clone(),
+        }
+    }
 }
 
 impl Display for Type {
@@ -192,6 +230,8 @@ impl Display for Type {
                 "{}",
                 &module_rrc.borrow().decl().borrow().name
             )),
+            Type::Register(_) => f.write_fmt(format_args!("reg({})", self.inner_type())),
+
             _ => unreachable!(),
         }
     }
