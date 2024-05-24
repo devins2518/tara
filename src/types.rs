@@ -38,6 +38,9 @@ pub enum Type {
     Pointer,
     IntSigned { width: u16 },
     IntUnsigned { width: u16 },
+    // TODO: add clock and reset info to these
+    Clock,
+    Reset,
     // TODO: Struct and module layouts
     Struct(RRC<Struct>),
     Module(RRC<Struct>),
@@ -56,6 +59,8 @@ impl<'ctx> Type {
             (_, Type::IntSigned { width } | Type::IntUnsigned { width }) => {
                 MlirIntegerType::new(ctx, (*width).into()).into()
             }
+            (SurroundingContext::Hw, Type::Clock) => self.to_hw_mlir_type(ctx),
+            (SurroundingContext::Hw, Type::Reset) => self.to_hw_mlir_type(ctx),
             (SurroundingContext::Hw, Type::Module(_)) => self.to_hw_mlir_type(ctx),
             (SurroundingContext::Hw, Type::Struct(_)) => self.to_hw_mlir_type(ctx),
             (SurroundingContext::Sw, Type::Struct(_)) => self.to_sw_mlir_type(ctx),
@@ -64,7 +69,10 @@ impl<'ctx> Type {
     }
 
     fn to_hw_mlir_type(&self, ctx: &'ctx Context) -> MlirType<'ctx> {
-        match self {
+        let raw_ctx = CirctMlirContext {
+            ptr: ctx.to_raw().ptr,
+        };
+        let raw_type = match self {
             Type::Module(struct_info_rrc) | Type::Struct(struct_info_rrc) => {
                 let struct_info = struct_info_rrc.borrow();
                 let mut fields = Vec::new();
@@ -81,20 +89,20 @@ impl<'ctx> Type {
                     };
                     fields.push(field_info)
                 }
-                let struct_type = unsafe {
-                    let raw_type = circt::sys::hwStructTypeGet(
-                        CirctMlirContext {
-                            ptr: ctx.to_raw().ptr,
-                        },
+                let raw_type = unsafe {
+                    circt::sys::hwStructTypeGet(
+                        raw_ctx,
                         fields.len() as isize,
                         fields.as_slice().as_ptr(),
-                    );
-                    MlirType::from_raw(mlir_sys::MlirType { ptr: raw_type.ptr })
+                    )
                 };
-                struct_type
+                raw_type
             }
+            Type::Clock => unsafe { circt::sys::seqClockTypeGet(raw_ctx) },
+            Type::Reset => return Type::Bool.to_mlir_type(ctx, SurroundingContext::Sw),
             _ => unimplemented!(),
-        }
+        };
+        unsafe { MlirType::from_raw(mlir_sys::MlirType { ptr: raw_type.ptr }) }
     }
 
     fn to_sw_mlir_type(&self, ctx: &'ctx Context) -> MlirType<'ctx> {

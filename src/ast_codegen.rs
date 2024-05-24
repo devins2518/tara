@@ -1189,6 +1189,26 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         }
     }
 
+    fn expect_clock_type(&self, node: &Node, actual_type: &TaraType) -> Result<()> {
+        match actual_type {
+            TaraType::Clock => Ok(()),
+            _ => Err(Error::new(
+                node.span,
+                format!("Expected clock type, found {}", actual_type),
+            ))?,
+        }
+    }
+
+    fn expect_reset_type(&self, node: &Node, actual_type: &TaraType) -> Result<()> {
+        match actual_type {
+            TaraType::Reset => Ok(()),
+            _ => Err(Error::new(
+                node.span,
+                format!("Expected reset type, found {}", actual_type),
+            ))?,
+        }
+    }
+
     fn expect_type_type(&self, node: &Node, actual_type: &TaraType) -> Result<()> {
         match actual_type {
             TaraType::Type => Ok(()),
@@ -1449,6 +1469,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
             | TaraValue::ComptimeIntType
             | TaraValue::UndefinedType
             | TaraValue::EnumLiteralType
+            | TaraValue::ClockType
+            | TaraValue::ResetType
             | TaraValue::Undef
             | TaraValue::Zero
             | TaraValue::One
@@ -1993,6 +2015,10 @@ fn get_maybe_primitive(s: &str) -> Option<TypedValue> {
         Some((TaraType::Type, TaraValue::VoidType))
     } else if s == "type" {
         Some((TaraType::Type, TaraValue::TypeType))
+    } else if s == "clock" {
+        Some((TaraType::Type, TaraValue::ClockType))
+    } else if s == "reset" {
+        Some((TaraType::Type, TaraValue::ResetType))
     } else if s == "true" {
         Some((TaraType::Bool, TaraValue::BoolTrue))
     } else if s == "false" {

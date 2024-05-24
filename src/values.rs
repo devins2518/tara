@@ -31,6 +31,8 @@ pub enum Value {
     ComptimeIntType,
     UndefinedType,
     EnumLiteralType,
+    ClockType,
+    ResetType,
     Undef,
     Zero,
     One,
@@ -93,6 +95,8 @@ impl Value {
             Value::VoidType => TaraType::Void,
             Value::TypeType => TaraType::Type,
             Value::ComptimeIntType => TaraType::ComptimeInt,
+            Value::ClockType => TaraType::Clock,
+            Value::ResetType => TaraType::Reset,
             _ => unreachable!(),
         }
     }
