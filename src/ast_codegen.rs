@@ -345,7 +345,7 @@ where
                 let param_ty = param.ty.as_ref();
                 self.table.define_name(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
-                let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
+                let mlir_param_type = self.builder.get_mlir_type(self.ctx, &param_type);
                 param_types.push(mlir_param_type);
 
                 let arg = self
@@ -358,7 +358,7 @@ where
             self.gen_block_terminated(node, &fn_decl.block)?;
 
             let mlir_fn_ret_type = if return_type != TaraType::Void {
-                Some(self.builder.get_mlir_tye(self.ctx, &return_type))
+                Some(self.builder.get_mlir_type(self.ctx, &return_type))
             } else {
                 None
             };
@@ -415,7 +415,7 @@ where
                 let param_ty = param.ty.as_ref();
                 self.table.define_name_shadow_upper(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
-                let mlir_param_type = self.builder.get_mlir_tye(self.ctx, &param_type);
+                let mlir_param_type = self.builder.get_mlir_type(self.ctx, &param_type);
                 param_types.push((param.name.as_str(), mlir_param_type));
 
                 let arg = self
@@ -1341,7 +1341,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
             ) => {
                 if exp_width > act_width {
                     let actual_mlir_value = ty_val.value.get_runtime_value();
-                    let expected_mlir_type = self.builder.get_mlir_tye(self.ctx, expected_type);
+                    let expected_mlir_type = self.builder.get_mlir_type(self.ctx, expected_type);
                     let built = ExtSIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)
@@ -1361,7 +1361,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
             ) => {
                 if exp_width > act_width {
                     let actual_mlir_value = ty_val.value.get_runtime_value();
-                    let expected_mlir_type = self.builder.get_mlir_tye(self.ctx, expected_type);
+                    let expected_mlir_type = self.builder.get_mlir_type(self.ctx, expected_type);
                     let built = ExtUIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)
@@ -1833,8 +1833,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
-        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
+        let predicate_type = self.get_mlir_type(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_type(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1862,8 +1862,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
-        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
+        let predicate_type = self.get_mlir_type(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_type(ctx, &TaraType::Bool);
         let unit = MlirAttribute::unit(ctx);
         match self.surr_context {
             SurroundingContext::Sw => {
@@ -1903,8 +1903,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
-        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
+        let predicate_type = self.get_mlir_type(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_type(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1932,8 +1932,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
-        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
+        let predicate_type = self.get_mlir_type(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_type(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1960,8 +1960,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
-        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
+        let predicate_type = self.get_mlir_type(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_type(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -1988,8 +1988,8 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         lhs: StaticMlirValue,
         rhs: StaticMlirValue,
     ) -> Result<TaraValue> {
-        let predicate_type = self.get_mlir_tye(ctx, &TaraType::IntUnsigned { width: 64 });
-        let ret_type = self.get_mlir_tye(ctx, &TaraType::Bool);
+        let predicate_type = self.get_mlir_type(ctx, &TaraType::IntUnsigned { width: 64 });
+        let ret_type = self.get_mlir_type(ctx, &TaraType::Bool);
         match self.surr_context {
             SurroundingContext::Sw => {
                 let built = CmpIOperation::builder(ctx, loc)
@@ -2043,7 +2043,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         ty: &TaraType,
         val: i64,
     ) -> Result<TaraValue> {
-        let mlir_ty = self.get_mlir_tye(ctx, ty);
+        let mlir_ty = self.get_mlir_type(ctx, ty);
         let attribute_identifier = MlirIdentifier::new(ctx, "value");
         let attribute = MlirIntegerAttribute::new(mlir_ty, val).into();
         match self.surr_context {
@@ -2072,7 +2072,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         ty: &TaraType,
         vals: &[StaticMlirValue],
     ) -> Result<TaraValue> {
-        let mlir_ty = self.get_mlir_tye(ctx, ty);
+        let mlir_ty = self.get_mlir_type(ctx, ty);
         match self.surr_context {
             SurroundingContext::Sw => {
                 // Set up initial undefined value
@@ -2119,7 +2119,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         init_val: StaticMlirValue,
     ) -> Result<TaraValue> {
         let loc = node.loc(ctx);
-        let mlir_ty = self.get_mlir_tye(ctx, ty);
+        let mlir_ty = self.get_mlir_type(ctx, ty);
         let dummy_type = TaraType::IntUnsigned {
             width: ty.get_bit_size(),
         };
@@ -2160,7 +2160,7 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
         Ok(TaraValue::VoidValue)
     }
 
-    pub fn get_mlir_tye(&self, ctx: &'ctx Context, ty: &TaraType) -> MlirType<'ctx> {
+    pub fn get_mlir_type(&self, ctx: &'ctx Context, ty: &TaraType) -> MlirType<'ctx> {
         ty.to_mlir_type(ctx, self.surr_context)
     }
 }
