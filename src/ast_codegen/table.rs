@@ -94,7 +94,7 @@ impl Table {
     pub fn pop(&mut self) -> Result<()> {
         let mut maybe_err = None;
         for (_, binding) in self.bindings.iter_top() {
-            if matches!(binding.ty, TaraType::Register(_)) {
+            if matches!(binding.value, TaraValue::Register(_)) {
                 maybe_err = binding.value.register().map(|reg| {
                     let node: &Node = unsafe { std::mem::transmute(reg.node_ptr) };
                     if reg.analysis == RegisterAnalysis::Unwritten {
@@ -114,7 +114,10 @@ impl Table {
     }
 
     fn get_identifier_ty_val(&self, ident: GlobalSymbol, loc: Span) -> Result<TypedValue> {
-        let ident_node: *const Node = *self.name_table.get(&ident).unwrap();
+        let ident_node: *const Node = *self
+            .name_table
+            .get(&ident)
+            .ok_or_else(|| Error::new(loc, "Unknown identifier".to_string()))?;
         self.bindings
             .get(&ident_node)
             .ok_or_else(|| Error::new(loc, "Unknown identifier".to_string()).into())

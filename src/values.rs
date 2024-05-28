@@ -68,10 +68,7 @@ impl Value {
     }
 
     pub fn has_runtime_value(&self) -> bool {
-        match self {
-            Value::RuntimeValue(_) => true,
-            _ => false,
-        }
+        matches!(self, Value::RuntimeValue(_) | Value::Register(_))
     }
 
     pub fn to_type(&self) -> TaraType {

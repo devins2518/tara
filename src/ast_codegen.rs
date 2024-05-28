@@ -1466,6 +1466,10 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 let ty_val = TypedValue::new(inner_ty, TaraValue::RuntimeValue(value));
                 self.cast(node, ty_val, expected_type)
             }
+            (TaraType::Register(_), _) => {
+                let inner_ty = actual_type.inner_type();
+                self.cast(node, ty_val, &inner_ty)
+            }
             _ => Err(Error::new(
                 node.span,
                 format!("Illegal cast from {} to {}", actual_type, expected_type),

@@ -68,7 +68,8 @@ impl<'ctx> Type {
             (SurroundingContext::Hw, Type::Module(_)) => self.to_hw_mlir_type(ctx),
             (SurroundingContext::Hw, Type::Struct(_)) => self.to_hw_mlir_type(ctx),
             (SurroundingContext::Sw, Type::Struct(_)) => self.to_sw_mlir_type(ctx),
-            _ => unimplemented!(),
+            (_, Type::Register(_)) => self.inner_type().to_mlir_type(ctx, surr_ctx),
+            _ => unimplemented!("ty: {}", self),
         }
     }
 
