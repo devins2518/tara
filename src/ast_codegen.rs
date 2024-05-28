@@ -415,7 +415,7 @@ where
             let mut param_types = Vec::new();
             for param in &comb_decl.params {
                 let param_ty = param.ty.as_ref();
-                self.table.define_name_shadow_upper(param.name, param_ty)?;
+                self.table.define_name(param.name, param_ty)?;
                 let param_type = self.gen_type(param_ty)?;
                 let mlir_param_type = self.builder.get_mlir_type(self.ctx, &param_type);
                 param_types.push((param.name.as_str(), mlir_param_type));

@@ -31,15 +31,6 @@ impl Table {
         Ok(())
     }
 
-    // Define a name that can shadow keys above the current layer.
-    pub fn define_name_shadow_upper(&mut self, ident: GlobalSymbol, node: &Node) -> Result<()> {
-        if self.name_table.contains_key_at_top(&ident) {
-            anyhow::bail!(Error::new(node.span, "Shadowing detected".to_string()));
-        }
-        self.name_table.define(ident, node);
-        Ok(())
-    }
-
     pub fn define_ty_val(&mut self, node: &Node, ty_val: TypedValue) {
         let ptr = node as *const _;
         self.bindings.define(ptr, ty_val);
