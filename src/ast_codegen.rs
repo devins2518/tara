@@ -9,7 +9,8 @@ use crate::{
         self,
         comb::{
             ICmpOperation as HwCmpOperation, MulOperation as HwMulOperation,
-            OrOperation as HwOrOperation, SubOperation as HwSubOperation,
+            MuxOperation as HwSelectOperation, OrOperation as HwOrOperation,
+            SubOperation as HwSubOperation,
         },
         hw::{
             HWModuleOperation as HwModuleOperation, OutputOperation as HwOutputOperation,
@@ -46,7 +47,8 @@ use melior::{
         ods::{
             arith::{
                 AddIOperation, AndIOperation, CmpIOperation, ConstantOperation, ExtSIOperation,
-                ExtUIOperation, MulIOperation, OrIOperation, SubIOperation, XOrIOperation,
+                ExtUIOperation, MulIOperation, OrIOperation, SelectOperation, SubIOperation,
+                XOrIOperation,
             },
             func::{FuncOperation, ReturnOperation},
             llvm::{InsertValueOperation, UndefOperation},
@@ -502,7 +504,19 @@ where
             NodeKind::VarDecl(_) => self.gen_var_decl(node)?,
             NodeKind::LocalVarDecl(_) => self.gen_local_var_decl(node)?,
             NodeKind::BuiltinCall(_) => self.gen_builtin_call(node)?,
-            _ => unimplemented!(),
+            NodeKind::IfExpr(_) => self.gen_if_expr(node)?,
+            NodeKind::SizedNumberLiteral(_) => {
+                unimplemented!("TODO: handle sizednumberliteral ast_codegen")
+            }
+            NodeKind::PointerTy(_) => unimplemented!("TODO: handle pointerty ast_codegen"),
+            NodeKind::ReferenceTy(_) => unimplemented!("TODO: handle referencety ast_codegen"),
+            NodeKind::Access(_) => unimplemented!("TODO: handle field access ast_codegen"),
+            NodeKind::Call(_) => unimplemented!("TODO: handle call ast_codegen"),
+            NodeKind::Negate(_) => unimplemented!("TODO: handle negate ast_codegen"),
+            NodeKind::Deref(_) => unimplemented!("TODO: handle deref ast_codegen"),
+            NodeKind::SubroutineDecl(_) => {
+                unimplemented!("TODO: handle subroutinedecl ast_codegen")
+            }
         };
         Ok(ty_val)
     }
@@ -928,6 +942,79 @@ where
             }
             _ => Err(Error::new(node.span, "Unknown builtin function call")),
         }?;
+
+        Ok(ty_val)
+    }
+
+    // TODO: The current grammar limits if/else bodies to be single expressions which must be
+    // reachable. This is not ideal, however, it works for current simple examples
+    fn gen_if_expr(&mut self, node: &Node) -> Result<TypedValue> {
+        matches!(node.kind, NodeKind::IfExpr(_));
+        let loc = node.loc(self.ctx);
+        let (cond_node, true_body_node, false_body_node) = match &node.kind {
+            NodeKind::IfExpr(if_expr) => (&if_expr.cond, &if_expr.body, &if_expr.else_body),
+            _ => unreachable!(),
+        };
+        let cond = self.gen_expr_reachable(cond_node)?;
+        self.expect_bool_type(&cond_node)?;
+
+        if !cond.value.has_runtime_value() {
+            Err(Error::new(
+                node.span,
+                "TODO: compile time known if branch".to_string(),
+            ))?;
+        }
+
+        let region = MlirRegion::new();
+        let true_ty_val = {
+            let true_body = region.append_block(MlirBlock::new(&[]));
+            let prev_ctx = self
+                .builder
+                .save_with_block(self.builder.surr_context, true_body);
+
+            let true_ty_val = self.gen_expr_reachable(true_body_node)?;
+
+            self.builder.restore(prev_ctx);
+            true_ty_val
+        };
+        let true_ty = true_ty_val.ty;
+        let false_ty_val = {
+            let false_body = region.append_block(MlirBlock::new(&[]));
+            let prev_ctx = self
+                .builder
+                .save_with_block(self.builder.surr_context, false_body);
+
+            let mut false_ty_val = self.gen_expr_reachable(false_body_node)?;
+            false_ty_val.value = self.cast(false_body_node, false_ty_val.clone(), &true_ty)?;
+
+            self.builder.restore(prev_ctx);
+            false_ty_val
+        };
+
+        let cond_val = self.builder.materialize(
+            self.ctx,
+            cond_node.loc(self.ctx),
+            &TaraType::Bool,
+            &cond.value,
+        )?;
+        let true_val = self.builder.materialize(
+            self.ctx,
+            true_body_node.loc(self.ctx),
+            &true_ty,
+            &true_ty_val.value,
+        )?;
+        let false_val = self.builder.materialize(
+            self.ctx,
+            false_body_node.loc(self.ctx),
+            &true_ty,
+            &false_ty_val.value,
+        )?;
+        let val = self
+            .builder
+            .gen_select(self.ctx, loc, cond_val, true_val, false_val)?;
+
+        let ty_val = TypedValue::new(true_ty, val.clone());
+        self.table.define_ty_val(node, ty_val.clone());
 
         Ok(ty_val)
     }
@@ -2158,6 +2245,41 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
             circt::sys::mlirOperationSetOperand(circt_reg_inst_op, 0, circt_write_val);
         }
         Ok(TaraValue::VoidValue)
+    }
+
+    pub fn gen_select(
+        &self,
+        ctx: &'ctx Context,
+        loc: Location<'ctx>,
+        cond: StaticMlirValue,
+        true_val: StaticMlirValue,
+        false_val: StaticMlirValue,
+    ) -> Result<TaraValue> {
+        let unit = MlirAttribute::unit(ctx);
+        let ret_type = true_val.r#type();
+        match self.surr_context {
+            SurroundingContext::Sw => {
+                let built = SelectOperation::builder(ctx, loc)
+                    .condition(cond)
+                    .true_value(true_val)
+                    .false_value(false_val)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+            SurroundingContext::Hw => {
+                let built = HwSelectOperation::builder(ctx, loc)
+                    .cond(cond)
+                    .true_value(true_val)
+                    .false_value(false_val)
+                    .two_state(unit)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
+            }
+        }
     }
 
     pub fn get_mlir_type(&self, ctx: &'ctx Context, ty: &TaraType) -> MlirType<'ctx> {
