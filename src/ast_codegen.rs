@@ -965,29 +965,12 @@ where
             ))?;
         }
 
-        let region = MlirRegion::new();
-        let true_ty_val = {
-            let true_body = region.append_block(MlirBlock::new(&[]));
-            let prev_ctx = self
-                .builder
-                .save_with_block(self.builder.surr_context, true_body);
-
-            let true_ty_val = self.gen_expr_reachable(true_body_node)?;
-
-            self.builder.restore(prev_ctx);
-            true_ty_val
-        };
+        let true_ty_val = self.gen_expr_reachable(true_body_node)?;
         let true_ty = true_ty_val.ty;
         let false_ty_val = {
-            let false_body = region.append_block(MlirBlock::new(&[]));
-            let prev_ctx = self
-                .builder
-                .save_with_block(self.builder.surr_context, false_body);
-
             let mut false_ty_val = self.gen_expr_reachable(false_body_node)?;
             false_ty_val.value = self.cast(false_body_node, false_ty_val.clone(), &true_ty)?;
 
-            self.builder.restore(prev_ctx);
             false_ty_val
         };
 
