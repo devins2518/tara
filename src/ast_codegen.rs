@@ -1936,7 +1936,17 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let built = HwCmpOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CombICmpPredicate::Ult as i64)
+                            .into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
             }
         }
     }
@@ -2006,7 +2016,17 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let built = HwCmpOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CombICmpPredicate::Ule as i64)
+                            .into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
             }
         }
     }
@@ -2035,7 +2055,17 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let built = HwCmpOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CombICmpPredicate::Uge as i64)
+                            .into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
             }
         }
     }
@@ -2063,7 +2093,17 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let built = HwCmpOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CombICmpPredicate::Eq as i64)
+                            .into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
             }
         }
     }
@@ -2091,7 +2131,17 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                 self.insert_operation(op.clone())
             }
             SurroundingContext::Hw => {
-                unimplemented!()
+                let built = HwCmpOperation::builder(ctx, loc)
+                    .predicate(
+                        MlirIntegerAttribute::new(predicate_type, CombICmpPredicate::Ne as i64)
+                            .into(),
+                    )
+                    .lhs(lhs)
+                    .rhs(rhs)
+                    .result(ret_type)
+                    .build();
+                let op = built.as_operation();
+                self.insert_operation(op.clone())
             }
         }
     }
