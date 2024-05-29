@@ -19,4 +19,14 @@ const Top = module {
         // CHECK:    │                ^^^^^^^^^^^^^^^^^^^^^^^^^
         return @reg(clk, rst, reset_val);
     }
+
+    pub comb test2(clk: clock, rst: reset, in: u1) u1 {
+        const reset_val: u1 = 0;
+        // CHECK: error: Register not written to!
+        // CHECK:    │
+        // CHECK: 29 │         const reg: u1 = @reg(clk, rst, reset_val);
+        // CHECK:    │                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+        const reg: u1 = @reg(clk, rst, reset_val);
+        return reg;
+    }
 };
