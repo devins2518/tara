@@ -1,7 +1,6 @@
 use crate::{
     ast::{Node, NodeKind},
     ast_codegen::Error,
-    module::register::RegisterAnalysis,
     types::Type as TaraType,
     values::{TypedValue, Value as TaraValue},
 };

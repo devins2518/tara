@@ -529,7 +529,6 @@ where
                 "Expected reachable value, control flow unexpectedly diverted".to_string(),
             ))?
         }
-        self.table.define_ty_val(node, ty_val.clone());
         Ok(ty_val)
     }
 
@@ -636,15 +635,15 @@ where
             | NodeKind::Neq(binop) => (&binop.lhs, &binop.rhs),
             _ => unreachable!(),
         };
-        let lhs = self.table.get_value(lhs_node)?;
-        let lhs_type = self.table.get_type(lhs_node)?;
+        let lhs_ty_val = self.gen_expr_reachable(lhs_node)?;
+        let lhs_type = lhs_ty_val.ty;
         // Type check lhs and rhs
-        let rhs_ty_val = self.table.get_ty_val(rhs_node)?;
+        let rhs_ty_val = self.gen_expr_reachable(rhs_node)?;
         let rhs = match &node.kind {
             NodeKind::Or(_) | NodeKind::And(_) => {
                 self.expect_bool_type(lhs_node)?;
                 self.expect_bool_type(rhs_node)?;
-                self.table.get_value(rhs_node)?
+                rhs_ty_val.value
             }
             NodeKind::Lt(_) | NodeKind::Gt(_) | NodeKind::Lte(_) | NodeKind::Gte(_) => {
                 self.expect_integral_type(lhs_node)?;
@@ -661,16 +660,19 @@ where
             _ => unreachable!(),
         };
 
-        if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
+        if !lhs_ty_val.value.has_runtime_value() && !rhs.has_runtime_value() {
             Err(Error::new(
                 node.span,
                 "TODO: compile time cmpt operation".to_string(),
             ))?;
         }
 
-        let lhs = self
-            .builder
-            .materialize(self.ctx, lhs_node.loc(self.ctx), &lhs_type, &lhs)?;
+        let lhs = self.builder.materialize(
+            self.ctx,
+            lhs_node.loc(self.ctx),
+            &lhs_type,
+            &lhs_ty_val.value,
+        )?;
         let rhs = self
             .builder
             .materialize(self.ctx, rhs_node.loc(self.ctx), &lhs_type, &rhs)?;
@@ -706,23 +708,26 @@ where
             | NodeKind::Div(binop) => (&binop.lhs, &binop.rhs),
             _ => unreachable!(),
         };
-        let lhs = self.table.get_value(lhs_node)?;
-        let lhs_type = self.table.get_type(lhs_node)?;
+        let lhs_ty_val = self.gen_expr_reachable(lhs_node)?;
+        let lhs_type = lhs_ty_val.ty;
         self.expect_integral_type(&lhs_node)?;
 
-        let rhs_ty_val = self.table.get_ty_val(rhs_node)?;
+        let rhs_ty_val = self.gen_expr_reachable(rhs_node)?;
         let rhs = self.cast(rhs_node, rhs_ty_val, &lhs_type)?;
 
-        if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
+        if !lhs_ty_val.value.has_runtime_value() && !rhs.has_runtime_value() {
             Err(Error::new(
                 node.span,
                 "TODO: compile time arithmetic operation".to_string(),
             ))?;
         }
 
-        let lhs = self
-            .builder
-            .materialize(self.ctx, lhs_node.loc(self.ctx), &lhs_type, &lhs)?;
+        let lhs = self.builder.materialize(
+            self.ctx,
+            lhs_node.loc(self.ctx),
+            &lhs_type,
+            &lhs_ty_val.value,
+        )?;
         let rhs = self
             .builder
             .materialize(self.ctx, rhs_node.loc(self.ctx), &lhs_type, &rhs)?;
@@ -753,23 +758,26 @@ where
             }
             _ => unreachable!(),
         };
-        let lhs = self.table.get_value(lhs_node)?;
-        let lhs_type = self.table.get_type(lhs_node)?;
+        let lhs_ty_val = self.gen_expr_reachable(lhs_node)?;
+        let lhs_type = lhs_ty_val.ty;
         self.expect_integral_type(&lhs_node)?;
 
         let rhs_ty_val = self.table.get_ty_val(rhs_node)?;
         let rhs = self.cast(rhs_node, rhs_ty_val, &lhs_type)?;
 
-        if !lhs.has_runtime_value() && !rhs.has_runtime_value() {
+        if !lhs_ty_val.value.has_runtime_value() && !rhs.has_runtime_value() {
             Err(Error::new(
                 node.span,
                 "TODO: compile time bitwise operation".to_string(),
             ))?;
         }
 
-        let lhs = self
-            .builder
-            .materialize(self.ctx, lhs_node.loc(self.ctx), &lhs_type, &lhs)?;
+        let lhs = self.builder.materialize(
+            self.ctx,
+            lhs_node.loc(self.ctx),
+            &lhs_type,
+            &lhs_ty_val.value,
+        )?;
         let rhs = self
             .builder
             .materialize(self.ctx, rhs_node.loc(self.ctx), &lhs_type, &rhs)?;
@@ -942,6 +950,7 @@ where
             }
             _ => Err(Error::new(node.span, "Unknown builtin function call")),
         }?;
+        self.table.define_ty_val(node, ty_val.clone());
 
         Ok(ty_val)
     }
