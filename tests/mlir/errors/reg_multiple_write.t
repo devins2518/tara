@@ -5,7 +5,7 @@ const Top = module {
         const reset_val: u1 = 0;
         const reg = @reg(clk, rst, reset_val);
         @regWrite(reg, in ^ reg);
-        // CHECK: error: Register has already been written to!
+        // CHECK: error: Linear element already consumed when used here!
         // CHECK:    │
         // CHECK: 12 │         @regWrite(reg, in & reg);
         // CHECK:    │         ^^^^^^^^^^^^^^^^^^^^^^^^

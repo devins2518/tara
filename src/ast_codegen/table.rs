@@ -12,6 +12,15 @@ use symbol_table::GlobalSymbol;
 pub struct Table {
     name_table: ScopeMap<GlobalSymbol, *const Node>,
     bindings: ScopeMap<*const Node, TypedValue>,
+    linear_bindings: ScopeMap<*const Node, LinearityStatus>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum LinearityStatus {
+    Unconsumed,
+    BorrowedRead,
+    BorrowedWrite,
+    Consumed,
 }
 
 impl Table {
@@ -19,6 +28,7 @@ impl Table {
         Self {
             name_table: ScopeMap::new(),
             bindings: ScopeMap::new(),
+            linear_bindings: ScopeMap::new(),
         }
     }
 
@@ -33,6 +43,12 @@ impl Table {
     pub fn define_ty_val(&mut self, node: &Node, ty_val: TypedValue) {
         let ptr = node as *const _;
         self.bindings.define(ptr, ty_val);
+    }
+
+    pub fn define_linearity(&mut self, node: &Node) {
+        let ptr = node as *const _;
+        self.linear_bindings
+            .define(ptr, LinearityStatus::Unconsumed);
     }
 
     pub fn get_name(&self, node: &Node) -> Option<GlobalSymbol> {
@@ -78,29 +94,42 @@ impl Table {
     pub fn push(&mut self) {
         self.name_table.push_layer();
         self.bindings.push_layer();
+        self.linear_bindings.push_layer();
     }
 
     // Pops a layer from all tables
     pub fn pop(&mut self) -> Result<()> {
         let mut maybe_err = None;
-        for (_, binding) in self.bindings.iter_top() {
-            if matches!(binding.value, TaraValue::Register(_)) {
-                maybe_err = binding.value.register().map(|reg| {
-                    let node: &Node = unsafe { std::mem::transmute(reg.node_ptr) };
-                    if reg.analysis == RegisterAnalysis::Unwritten {
-                        Some(Error::new(node.span, "Register not written to!"))
-                    } else {
-                        None
-                    }
-                });
-                if let Some(_) = maybe_err {
-                    break;
-                }
+        for (node_ptr, status) in self.linear_bindings.iter_top() {
+            if status != &LinearityStatus::Consumed {
+                let node: &Node = unsafe { std::mem::transmute(*node_ptr) };
+                maybe_err = Some(Error::new(node.span, "Linear value not consumed!"));
+                break;
             }
         }
         self.name_table.pop_layer();
         self.bindings.pop_layer();
+        self.linear_bindings.pop_layer();
         Ok(maybe_err.map(Result::Err).unwrap_or(Ok(()))?)
+    }
+
+    pub fn get_linear_bindings(&mut self) -> Vec<(*const Node, LinearityStatus)> {
+        self.linear_bindings.iter().map(|(k, v)| (*k, *v)).collect()
+    }
+
+    pub fn consume(&mut self, linear_node: &Node, consuming_node: &Node) -> Result<()> {
+        let ptr = linear_node as *const _;
+        let status = self.linear_bindings.get(&ptr).unwrap();
+        match status {
+            LinearityStatus::Unconsumed => {}
+            LinearityStatus::Consumed => Err(Error::new(
+                consuming_node.span,
+                "Linear element already consumed when used here!",
+            ))?,
+            _ => unimplemented!(),
+        }
+        self.linear_bindings.define(ptr, LinearityStatus::Consumed);
+        Ok(())
     }
 
     fn get_identifier_ty_val(&self, ident: GlobalSymbol, loc: Span) -> Result<TypedValue> {

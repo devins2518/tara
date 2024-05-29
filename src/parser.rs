@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        BinOp, BuiltinCall, Call, IfExpr, ModuleInner, Node, NodeKind, Publicity, RefTy,
+        BinOp, Block, BuiltinCall, Call, IfExpr, ModuleInner, Node, NodeKind, Publicity, RefTy,
         SizedNumberLiteral, StructInit, StructInner, SubroutineDecl, TypedName, UnOp, VarDecl,
     },
     builtin::Mutability,
@@ -199,11 +199,13 @@ impl TaraParser {
         ));
     }
 
-    fn block(input: ParseNode) -> ParseResult<Vec<Node>> {
-        return Ok(match_nodes!(
+    fn block(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
+        let node = match_nodes!(
                 input.into_children();
-                [statement(statements)..] => statements.collect()
-        ));
+                [statement(statements)..] => NodeKind::Block(Block::new(statements.collect()))
+        );
+        return Ok(Node::new(node, span));
     }
 
     fn statement(input: ParseNode) -> ParseResult<Node> {
@@ -211,6 +213,7 @@ impl TaraParser {
                 input.into_children();
                 [decl_statement(decl_statement)] => decl_statement,
                 [expr(expr)] => expr,
+                [if_statement(if_statement)] => if_statement,
         ));
     }
 
@@ -230,6 +233,20 @@ impl TaraParser {
                 Some(type_expr),
                 init_expr
             )),
+        );
+
+        return Ok(Node::new(node, span));
+    }
+
+    fn if_statement(input: ParseNode) -> ParseResult<Node> {
+        let span = input.as_span();
+        let node = match_nodes!(
+                input.into_children();
+                [expr(cond), expr(true_body)] => NodeKind::IfExpr(IfExpr::new(cond, true_body, None)),
+                [expr(cond), expr(true_body), expr(false_body)] => NodeKind::IfExpr(IfExpr::new(cond, true_body, Some(false_body))),
+                [expr(cond), statement(true_body)] => NodeKind::IfExpr(IfExpr::new(cond, true_body, None)),
+                [expr(cond), statement(true_body), expr(false_body)] => NodeKind::IfExpr(IfExpr::new(cond, true_body, Some(false_body))),
+                [expr(cond), statement(true_body), statement(false_body)] => NodeKind::IfExpr(IfExpr::new(cond, true_body, Some(false_body))),
         );
 
         return Ok(Node::new(node, span));
@@ -393,6 +410,7 @@ impl TaraParser {
             [type_expr(type_expr)] => type_expr,
             [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
             [builtin_call(builtin_call)] => builtin_call,
+            [block(block)] => block,
         );
 
         return Ok(node);
@@ -424,11 +442,7 @@ impl TaraParser {
         Ok(match_nodes!(
             input.into_children();
             [expr(cond), expr(body), expr(else_body)] => {
-                let if_expr = IfExpr{
-                    cond: Box::new(cond),
-                    body: Box::new(body),
-                    else_body: Box::new(else_body),
-                };
+                let if_expr = IfExpr::new(cond, body, Some(else_body));
                 Node::new(NodeKind::IfExpr(if_expr), span)
             },
         ))

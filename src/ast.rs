@@ -65,6 +65,7 @@ pub enum NodeKind {
     SubroutineDecl(SubroutineDecl),
     StructInit(StructInit),
     BuiltinCall(BuiltinCall),
+    Block(Block),
 }
 
 impl Display for NodeKind {
@@ -114,6 +115,7 @@ impl Display for NodeKind {
             }
             NodeKind::StructInit(expr) => f.write_fmt(format_args!("struct_init({})", expr))?,
             NodeKind::BuiltinCall(expr) => f.write_fmt(format_args!("builtin_call({})", expr))?,
+            NodeKind::Block(expr) => f.write_fmt(format_args!("{}", expr))?,
         }
         Ok(())
     }
@@ -316,6 +318,20 @@ pub struct IfExpr {
     pub else_body: Box<Node>,
 }
 
+impl IfExpr {
+    pub fn new(cond: Node, body: Node, else_body: Option<Node>) -> Self {
+        let else_body = else_body.unwrap_or_else(|| Node {
+            kind: NodeKind::Block(Block::new(Vec::new())),
+            span: cond.span,
+        });
+        Self {
+            cond: Box::new(cond),
+            body: Box::new(body),
+            else_body: Box::new(else_body),
+        }
+    }
+}
+
 impl Display for IfExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
@@ -331,7 +347,7 @@ pub struct SubroutineDecl {
     pub ident: GlobalSymbol,
     pub params: Vec<TypedName>,
     pub return_type: Box<Node>,
-    pub block: Vec<Node>,
+    pub block: Box<Node>,
 }
 
 impl SubroutineDecl {
@@ -340,14 +356,14 @@ impl SubroutineDecl {
         ident: GlobalSymbol,
         params: Vec<TypedName>,
         return_type: Node,
-        block: Vec<Node>,
+        block: Node,
     ) -> Self {
         return Self {
             publicity,
             ident,
             params,
             return_type: Box::new(return_type),
-            block,
+            block: Box::new(block),
         };
     }
 }
@@ -358,11 +374,7 @@ impl Display for SubroutineDecl {
         for param in &self.params {
             f.write_fmt(format_args!("({}, {}), ", param.name, *param.ty))?;
         }
-        f.write_fmt(format_args!(") {} (", *self.return_type))?;
-        for statement in &self.block {
-            f.write_fmt(format_args!("({}), ", statement))?;
-        }
-        f.write_str(")")?;
+        f.write_fmt(format_args!(") {} {}", *self.return_type, self.block))?;
         Ok(())
     }
 }
@@ -411,6 +423,27 @@ impl Display for BuiltinCall {
         f.write_fmt(format_args!("{}, (", self.call.as_str()))?;
         for arg in &self.args {
             f.write_fmt(format_args!("{}", arg))?;
+        }
+        f.write_str(")")?;
+        Ok(())
+    }
+}
+
+pub struct Block {
+    pub body: Vec<Node>,
+}
+
+impl Block {
+    pub fn new(body: Vec<Node>) -> Self {
+        return Self { body };
+    }
+}
+
+impl Display for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("(")?;
+        for node in &self.body {
+            f.write_fmt(format_args!("({}), ", node))?;
         }
         f.write_str(")")?;
         Ok(())

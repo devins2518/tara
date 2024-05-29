@@ -357,7 +357,7 @@ where
                 self.table.define_ty_val(param_ty, ty_val);
             }
 
-            self.gen_block_terminated(node, &fn_decl.block)?;
+            self.gen_block_terminated(&fn_decl.block)?;
 
             let mlir_fn_ret_type = if return_type != TaraType::Void {
                 Some(self.builder.get_mlir_type(self.ctx, &return_type))
@@ -427,7 +427,7 @@ where
                 self.table.define_ty_val(param_ty, ty_val);
             }
 
-            self.gen_block_terminated(node, &comb_decl.block)?;
+            self.gen_block_terminated(&comb_decl.block)?;
 
             let comb_name = &self.builder.parent_decl.borrow().name;
             let comb_type =
@@ -517,6 +517,7 @@ where
             NodeKind::SubroutineDecl(_) => {
                 unimplemented!("TODO: handle subroutinedecl ast_codegen")
             }
+            NodeKind::Block(_) => self.gen_block(node)?,
         };
         Ok(ty_val)
     }
@@ -652,9 +653,7 @@ where
             }
             NodeKind::Eq(_) | NodeKind::Neq(_) => {
                 self.expect_integral_type(lhs_node)
-                    .or(self.expect_bool_type(lhs_node))?;
-                self.expect_integral_type(rhs_node)
-                    .or(self.expect_bool_type(rhs_node))?;
+                    .or_else(|_| self.expect_bool_type(lhs_node))?;
                 self.cast(rhs_node, rhs_ty_val, &lhs_type)?
             }
             _ => unreachable!(),
@@ -915,6 +914,7 @@ where
                     let value = decl.value.as_ref().unwrap().clone();
                     TypedValue::new(ty, value)
                 });
+                self.table.define_linearity(node);
 
                 Ok(reg_ty_val)
             }
@@ -926,23 +926,24 @@ where
                 let reg_ty_val = self.gen_expr_reachable(&args[0])?;
                 let reg_rrc = self.expect_register_type(&args[0], &reg_ty_val.ty)?;
 
-                if reg_rrc.borrow().analysis == RegisterAnalysis::Written {
-                    Err(Error::new(
-                        node.span,
-                        "Register has already been written to!",
-                    ))?
-                }
+                self.table
+                    .consume(reg_rrc.map(|reg| reg.decl.map(Decl::node)), node)?;
 
                 let (reg_ty, reg_val) = reg_rrc
                     .map(|reg| (reg.ty.clone(), TaraValue::RuntimeValue(reg.def_op.clone())));
 
                 let write_ty_val = self.gen_expr_reachable(&args[1])?;
                 let write_val = self.cast(&args[1], write_ty_val, &reg_ty.inner_type())?;
-
-                let value = self.builder.gen_register_write(
-                    reg_val.get_runtime_value(),
-                    write_val.get_runtime_value(),
+                let materialized_write_val = self.builder.materialize(
+                    self.ctx,
+                    args[1].loc(self.ctx),
+                    &reg_ty,
+                    &write_val,
                 )?;
+
+                let value = self
+                    .builder
+                    .gen_register_write(reg_val.get_runtime_value(), materialized_write_val)?;
 
                 reg_rrc.map_mut(|reg| reg.analysis = RegisterAnalysis::Written);
 
@@ -955,8 +956,8 @@ where
         Ok(ty_val)
     }
 
-    // TODO: The current grammar limits if/else bodies to be single expressions which must be
-    // reachable. This is not ideal, however, it works for current simple examples
+    // TODO: This is incorrect for anything other than simple examples. Control flow/return types
+    // are not properly handled
     fn gen_if_expr(&mut self, node: &Node) -> Result<TypedValue> {
         matches!(node.kind, NodeKind::IfExpr(_));
         let loc = node.loc(self.ctx);
@@ -974,14 +975,30 @@ where
             ))?;
         }
 
-        let true_ty_val = self.gen_expr_reachable(true_body_node)?;
+        let (true_ty_val, true_linear_table) = {
+            self.push();
+            let true_ty_val = self.gen_expr_reachable(true_body_node)?;
+            let true_linear_table = self.table.get_linear_bindings();
+            self.pop()?;
+            (true_ty_val, true_linear_table)
+        };
         let true_ty = true_ty_val.ty;
-        let false_ty_val = {
+        let (false_ty_val, false_linear_table) = {
+            self.push();
             let mut false_ty_val = self.gen_expr_reachable(false_body_node)?;
+            let false_linear_table = self.table.get_linear_bindings();
+            self.pop()?;
             false_ty_val.value = self.cast(false_body_node, false_ty_val.clone(), &true_ty)?;
 
-            false_ty_val
+            (false_ty_val, false_linear_table)
         };
+
+        if true_linear_table != false_linear_table {
+            Err(Error::new(
+                node.span,
+                "Linear elements have different consumption statuses in the true and false branches!",
+            ))?;
+        }
 
         let cond_val = self.builder.materialize(
             self.ctx,
@@ -1011,12 +1028,14 @@ where
         Ok(ty_val)
     }
 
-    fn gen_block(&mut self, nodes: &[Node]) -> Result<TypedValue> {
-        let mut ret_ty_val = TypedValue::new(
-            TaraType::NoReturn(RRC::new(TaraType::Void)),
-            TaraValue::VoidValue,
-        );
-        if let Some((last, rest)) = nodes.split_last() {
+    fn gen_block(&mut self, node: &Node) -> Result<TypedValue> {
+        let body = match &node.kind {
+            NodeKind::Block(block) => &block.body,
+            _ => unreachable!(),
+        };
+
+        let mut ret_ty_val = TypedValue::new(TaraType::Void, TaraValue::VoidValue);
+        if let Some((last, rest)) = body.split_last() {
             for expr in rest {
                 self.gen_expr_reachable(expr)?;
             }
@@ -1025,21 +1044,20 @@ where
                 ret_ty_val = ty_val;
             }
         }
+        self.table.define_ty_val(node, ret_ty_val.clone());
+
         Ok(ret_ty_val)
     }
 
     // Generates a block. Ensures that the last instruction is a terminator returning void if
     // necessary. Performs type checking by casting to `self.builder.ret_ty`.
-    fn gen_block_terminated(&mut self, block_node: &Node, nodes: &[Node]) -> Result<()> {
-        let ret_ty_val = self.gen_block(nodes)?;
+    fn gen_block_terminated(&mut self, node: &Node) -> Result<()> {
+        let ret_ty_val = self.gen_block(node)?;
         let block_ret_ty = self.builder.ret_ty();
         match &ret_ty_val.ty {
             TaraType::Void => {
                 if block_ret_ty != TaraType::Void {
-                    Err(Error::new(
-                        block_node.span,
-                        "Block unexpectedly returns void",
-                    ))
+                    Err(Error::new(node.span, "Block unexpectedly returns void"))
                 } else {
                     Ok(())
                 }
@@ -1047,7 +1065,7 @@ where
             TaraType::NoReturn(return_ty) => return_ty.map(|return_ty| {
                 if return_ty != &block_ret_ty {
                     Err(Error::new(
-                        block_node.span,
+                        node.span,
                         format!(
                             "Block has incorrect return type, wanted {}, found {}",
                             block_ret_ty, return_ty
@@ -1141,6 +1159,7 @@ where
             _ => unreachable!(),
         };
         let ty_val = TypedValue::new(TaraType::ComptimeInt, TaraValue::Integer(number));
+        self.table.define_ty_val(node, ty_val.clone());
         Ok(ty_val)
     }
 
@@ -1476,7 +1495,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 self.cast(node, ty_val, expected_type)
             }
             (TaraType::Register(_), _) => {
-                let inner_ty = actual_type.inner_type();
+                let inner_ty = expected_type.inner_type();
                 self.cast(node, ty_val, &inner_ty)
             }
             _ => Err(Error::new(
@@ -1644,6 +1663,12 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
                     .get_runtime_value()
             }
             TaraValue::Register(reg_rrc) => reg_rrc.map(|reg| reg.def_op.clone()),
+            TaraValue::VoidValue => self.materialize(
+                ctx,
+                loc,
+                &TaraType::IntUnsigned { width: 0 },
+                &TaraValue::Integer(0),
+            )?,
             TaraValue::U1Type
             | TaraValue::U8Type
             | TaraValue::I8Type
@@ -1668,7 +1693,6 @@ impl<'ctx, 'blk> Builder<'ctx, 'blk> {
             | TaraValue::Undef
             | TaraValue::Zero
             | TaraValue::One
-            | TaraValue::VoidValue
             | TaraValue::Unreachable
             | TaraValue::BoolTrue
             | TaraValue::BoolFalse

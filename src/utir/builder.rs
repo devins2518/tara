@@ -179,7 +179,11 @@ impl<'ast> Builder<'ast> {
             let mut body_env = subroutine_env.make_block(InstructionScope::Block, span);
             let body_inst = body_env.block.unwrap();
 
-            for instr in &subroutine_decl.block {
+            let body_nodes = match &subroutine_decl.block.kind {
+                NodeKind::Block(block) => &block.body,
+                _ => unreachable!(),
+            };
+            for instr in body_nodes {
                 self.gen_expr(&mut body_env, instr)?;
             }
             body_env.add_instruction(UtirInst::RetImplicitVoid);
@@ -276,7 +280,7 @@ impl<'ast> Builder<'ast> {
             | NodeKind::SizedNumberLiteral(_)
             | NodeKind::IfExpr(_)
             | NodeKind::StructInit(_) => self.gen_inline_block(env, node),
-            NodeKind::BuiltinCall(_) => unimplemented!(),
+            NodeKind::BuiltinCall(_) | NodeKind::Block(_) => unimplemented!(),
             NodeKind::VarDecl(_) | NodeKind::SubroutineDecl(_) => unreachable!(),
         };
     }
@@ -461,7 +465,8 @@ impl<'ast> Builder<'ast> {
             | NodeKind::LocalVarDecl(_)
             | NodeKind::Identifier(_)
             | NodeKind::NumberLiteral(_)
-            | NodeKind::SubroutineDecl(_) => unreachable!(),
+            | NodeKind::SubroutineDecl(_)
+            | NodeKind::Block(_) => unreachable!(),
         }?;
 
         return Ok(return_value);
@@ -522,7 +527,8 @@ impl<'ast> Builder<'ast> {
             | NodeKind::IfExpr(_)
             | NodeKind::SubroutineDecl(_)
             | NodeKind::StructInit(_)
-            | NodeKind::BuiltinCall(_) => unreachable!(),
+            | NodeKind::BuiltinCall(_)
+            | NodeKind::Block(_) => unreachable!(),
         };
 
         let lhs_idx = self.gen_expr(env, &*inner.lhs)?;
