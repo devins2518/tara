@@ -25,6 +25,7 @@ impl Compilation {
             options.dump_ast,
             options.dump_utir,
             options.dump_mlir,
+            options.dump_verilog,
         )?;
 
         Ok(())
@@ -41,6 +42,7 @@ struct CompilationOptions {
     dump_ast: bool,
     dump_utir: bool,
     dump_mlir: bool,
+    dump_verilog: bool,
 }
 
 impl CompilationOptions {
@@ -51,12 +53,14 @@ impl CompilationOptions {
         let mut dump_ast = false;
         let mut dump_utir = false;
         let mut dump_mlir = false;
+        let mut dump_verilog = false;
         for arg in std::env::args().skip(1) {
             match arg.as_str() {
                 "--exit-early" => exit_early = true,
                 "--dump-ast" => dump_ast = true,
                 "--dump-utir" => dump_utir = true,
                 "--dump-mlir" => dump_mlir = true,
+                "--dump-verilog" => dump_verilog = true,
                 _ => {
                     if arg.starts_with("--") {
                         println!("[ERROR] Unknown argument {}", arg);
@@ -83,6 +87,7 @@ impl CompilationOptions {
             dump_ast,
             dump_utir,
             dump_mlir,
+            dump_verilog,
         }
     }
 }

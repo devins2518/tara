@@ -18,4 +18,5 @@
 #include <circt-c/Dialect/Seq.h>
 #include <circt-c/Dialect/Verif.h>
 #include <circt-c/ExportFIRRTL.h>
+#include <circt-c/ExportVerilog.h>
 #include <circt-c/Firtool/Firtool.h>

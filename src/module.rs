@@ -22,6 +22,7 @@ use core::fmt;
 use melior::{
     dialect::DialectRegistry,
     ir::{Location, Module as MlirModule},
+    pass::{transform, PassManager},
     utility::register_all_dialects,
     Context,
 };
@@ -65,6 +66,7 @@ impl Module {
         dump_ast: bool,
         dump_utir: bool,
         dump_mlir: bool,
+        dump_verilog: bool,
     ) -> Result<()> {
         let main_pkg = {
             let resolved_main_pkg_path = std::fs::canonicalize(main_pkg_path)?;
@@ -84,7 +86,14 @@ impl Module {
             })
         };
         let file = self.import_pkg(main_pkg)?.file;
-        self.analyze_file(file, exit_early, dump_ast, dump_utir, dump_mlir)?;
+        self.analyze_file(
+            file,
+            exit_early,
+            dump_ast,
+            dump_utir,
+            dump_mlir,
+            dump_verilog,
+        )?;
         Ok(())
     }
 
@@ -95,6 +104,7 @@ impl Module {
         dump_ast: bool,
         dump_utir: bool,
         dump_mlir: bool,
+        dump_verilog: bool,
     ) -> Result<()> {
         {
             let f = &mut file.borrow_mut();
@@ -109,11 +119,11 @@ impl Module {
             }
         }
 
-        self.codegen_file(file, dump_mlir)?;
+        self.codegen_file(file, dump_mlir, dump_verilog)?;
         Ok(())
     }
 
-    fn codegen_file(&self, file: RRC<File>, dump_mlir: bool) -> Result<()> {
+    fn codegen_file(&self, file: RRC<File>, dump_mlir: bool, dump_verilog: bool) -> Result<()> {
         if file.borrow().root_decl.is_some() {
             return Ok(());
         }
@@ -126,15 +136,24 @@ impl Module {
         register_all_dialects(&registry);
         context.append_dialect_registry(&registry);
         circt::register_all_dialects(&context);
+        circt::register_all_passes();
         context.set_allow_unregistered_dialects(true);
         context.load_all_available_dialects();
-        let module = MlirModule::new(Location::unknown(&context));
+        let mut module = MlirModule::new(Location::unknown(&context));
         let mut codegen = AstCodegen::new(&ast, &context, &module);
         codegen.gen_root()?;
         if let Err(_) = codegen.report_errors(&file) {
             return Ok(());
         }
         if dump_mlir {
+            if dump_verilog {
+                // TODO: Need to add seq_to_sv pass
+                let pass_manager = PassManager::new(&context);
+                pass_manager.add_pass(transform::create_canonicalizer());
+                pass_manager.run(&mut module)?;
+
+                circt::export_verilog(&module);
+            }
             module.as_operation().dump();
         }
         Ok(())

@@ -6,7 +6,7 @@ use melior::{
     ir::{
         attribute::{AttributeLike, StringAttribute as MlirStringAttribute},
         r#type::TypeLike,
-        Type as MlirType,
+        Module as MlirModule, Type as MlirType,
     },
     Context,
 };
@@ -187,6 +187,30 @@ pub fn register_all_dialects(ctx: &Context) {
     ctx.append_dialect_registry(&registry);
 }
 
+extern "C" {
+    fn registerCombPasses();
+    fn registerSeqPasses();
+    fn registerSVPasses();
+    fn registerFSMPasses();
+    fn registerHWArithPasses();
+    fn registerHandshakePasses();
+    fn mlirRegisterConversionPasses();
+    fn mlirRegisterTransformsPasses();
+}
+
+pub fn register_all_passes() {
+    unsafe {
+        registerCombPasses();
+        registerSeqPasses();
+        registerSVPasses();
+        registerFSMPasses();
+        registerHWArithPasses();
+        registerHandshakePasses();
+        mlirRegisterConversionPasses();
+        mlirRegisterTransformsPasses();
+    }
+}
+
 #[repr(u32)]
 pub enum ModulePortDirection {
     In = sys::HWModulePortDirection_Input,
@@ -259,4 +283,38 @@ pub enum CombICmpPredicate {
     Cne = 11,
     Weq = 12,
     Wne = 13,
+}
+
+pub(crate) unsafe extern "C" fn print_callback(
+    string: sys::MlirStringRef,
+    data: *mut std::ffi::c_void,
+) {
+    let (formatter, result) = &mut *(data as *mut (&mut std::fmt::Formatter, std::fmt::Result));
+
+    if result.is_err() {
+        return;
+    }
+
+    let mlir_sys_string = std::mem::transmute(string);
+    *result = (|| {
+        write!(
+            formatter,
+            "{}",
+            melior::StringRef::from_raw(mlir_sys_string)
+                .as_str()
+                .map_err(|_| std::fmt::Error)?
+        )
+    })();
+}
+
+pub fn export_verilog(module: &MlirModule) {
+    unsafe {
+        sys::mlirExportVerilog(
+            sys::MlirModule {
+                ptr: module.to_raw().ptr,
+            },
+            Some(print_callback),
+            std::ptr::null_mut(),
+        );
+    }
 }
