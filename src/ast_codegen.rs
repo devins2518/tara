@@ -1428,18 +1428,19 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
         ty_val: TypedValue,
         expected_type: &TaraType,
     ) -> Result<TaraValue> {
-        let actual_type = ty_val.ty.clone();
-        if actual_type == *expected_type {
+        let actual_type = ty_val.ty.clone().inner_type();
+        let expected_type = expected_type.inner_type();
+        if actual_type == expected_type {
             return Ok(ty_val.value);
         }
-        match (expected_type, &actual_type) {
+        match (expected_type.clone(), actual_type.clone()) {
             (
                 TaraType::IntSigned { width: exp_width },
                 TaraType::IntSigned { width: act_width },
             ) => {
                 if exp_width > act_width {
                     let actual_mlir_value = ty_val.value.get_runtime_value();
-                    let expected_mlir_type = self.builder.get_mlir_type(self.ctx, expected_type);
+                    let expected_mlir_type = self.builder.get_mlir_type(self.ctx, &expected_type);
                     let built = ExtSIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)
@@ -1459,7 +1460,7 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
             ) => {
                 if exp_width > act_width {
                     let actual_mlir_value = ty_val.value.get_runtime_value();
-                    let expected_mlir_type = self.builder.get_mlir_type(self.ctx, expected_type);
+                    let expected_mlir_type = self.builder.get_mlir_type(self.ctx, &expected_type);
                     let built = ExtUIOperation::builder(self.ctx, node.loc(self.ctx))
                         .r#in(actual_mlir_value)
                         .out(expected_mlir_type)
@@ -1488,16 +1489,6 @@ impl<'a, 'ast, 'ctx, 'blk> AstCodegen<'a, 'ast, 'ctx> {
                 }
             }
             (TaraType::IntSigned { .. }, TaraType::ComptimeInt) => Ok(ty_val.value),
-            (_, TaraType::Register(reg_rrc)) => {
-                let inner_ty = actual_type.inner_type();
-                let value = reg_rrc.map(|reg| reg.def_op);
-                let ty_val = TypedValue::new(inner_ty, TaraValue::RuntimeValue(value));
-                self.cast(node, ty_val, expected_type)
-            }
-            (TaraType::Register(_), _) => {
-                let inner_ty = expected_type.inner_type();
-                self.cast(node, ty_val, &inner_ty)
-            }
             _ => Err(Error::new(
                 node.span,
                 format!("Illegal cast from {} to {}", actual_type, expected_type),
