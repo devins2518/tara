@@ -50,7 +50,11 @@ impl TaraParser {
 
         let root = TaraParser::root(root_node)?;
 
-        let node = Node::new(NodeKind::StructDecl(root), Span::new(source, 0, 0).unwrap());
+        let node = Node::new(
+            NodeKind::StructDecl(root),
+            (0, 0),
+            Span::new(source, 0, 0).unwrap(),
+        );
 
         return Ok(node);
     }
@@ -60,6 +64,7 @@ impl TaraParser {
             .map_primary(|primary| TaraParser::primary_expr(ParseNode::new(primary)))
             .map_infix(|lhs, op, rhs| {
                 let lhs_box = Box::new(lhs?);
+                let loc = lhs_box.loc;
                 let rhs_box = Box::new(rhs?);
                 let bin_op = BinOp {
                     lhs: lhs_box,
@@ -85,7 +90,7 @@ impl TaraParser {
                     _ => unreachable!(),
                 };
 
-                Ok(Node::new(node, op.as_span()))
+                Ok(Node::new(node, loc, op.as_span()))
             })
             .map_prefix(|op, rhs| {
                 let rhs_box = Box::new(rhs?);
@@ -94,12 +99,14 @@ impl TaraParser {
                     Rule::neg_operator => NodeKind::Negate(un_op),
                     _ => unreachable!(),
                 };
+                let loc = op.line_col();
 
-                Ok(Node::new(node, op.as_span()))
+                Ok(Node::new(node, loc, op.as_span()))
             })
             .map_postfix(|lhs, op| {
                 let span = op.as_span();
                 let lhs_box = Box::new(lhs?);
+                let loc = lhs_box.loc;
                 let node = match op.as_rule() {
                     Rule::call_operator => {
                         let args = TaraParser::call_operator(ParseNode::new(op))?;
@@ -116,7 +123,7 @@ impl TaraParser {
                     }
                     _ => unreachable!(),
                 };
-                Ok(Node::new(node, span))
+                Ok(Node::new(node, loc, span))
             })
             .parse(pairs)
     }
@@ -156,6 +163,7 @@ impl TaraParser {
 
     fn decl(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
             input.into_children();
             [publicity(publicity), identifier(ident), expr(init_expr)] => {
@@ -170,11 +178,12 @@ impl TaraParser {
             },
         );
 
-        return Ok(Node::new(node, span));
+        return Ok(Node::new(node, loc, span));
     }
 
     fn fn_decl(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
             input.into_children();
             [publicity(publicity), identifier(ident), param_list(params), type_expr(ret_type), block(body)] => {
@@ -182,7 +191,7 @@ impl TaraParser {
             }
         );
 
-        return Ok(Node::new(node, span));
+        return Ok(Node::new(node, loc, span));
     }
 
     fn param(input: ParseNode) -> ParseResult<TypedName> {
@@ -201,11 +210,12 @@ impl TaraParser {
 
     fn block(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
                 input.into_children();
                 [statement(statements)..] => NodeKind::Block(Block::new(statements.collect()))
         );
-        return Ok(Node::new(node, span));
+        return Ok(Node::new(node, loc, span));
     }
 
     fn statement(input: ParseNode) -> ParseResult<Node> {
@@ -219,6 +229,7 @@ impl TaraParser {
 
     fn decl_statement(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
             input.into_children();
             [identifier(ident), expr(init_expr)] => NodeKind::LocalVarDecl(VarDecl::new(
@@ -235,11 +246,12 @@ impl TaraParser {
             )),
         );
 
-        return Ok(Node::new(node, span));
+        return Ok(Node::new(node, loc, span));
     }
 
     fn if_statement(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
                 input.into_children();
                 [expr(cond), expr(true_body)] => NodeKind::IfExpr(IfExpr::new(cond, true_body, None)),
@@ -249,7 +261,7 @@ impl TaraParser {
                 [expr(cond), statement(true_body), statement(false_body)] => NodeKind::IfExpr(IfExpr::new(cond, true_body, Some(false_body))),
         );
 
-        return Ok(Node::new(node, span));
+        return Ok(Node::new(node, loc, span));
     }
 
     fn publicity(input: ParseNode) -> ParseResult<Publicity> {
@@ -267,11 +279,12 @@ impl TaraParser {
 
     fn type_expr(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
             input.into_children();
             [struct_decl(struct_decl)] => struct_decl,
             [module_decl(module_decl)] => module_decl,
-            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
+            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), loc, span),
             [reference_ty(reference_ty)] => reference_ty,
             [pointer_ty(pointer_ty)] => pointer_ty,
         );
@@ -281,9 +294,10 @@ impl TaraParser {
 
     fn struct_decl(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
                 input.into_children();
-                [struct_inner(struct_inner)] => Node::new(NodeKind::StructDecl(struct_inner), span),
+                [struct_inner(struct_inner)] => Node::new(NodeKind::StructDecl(struct_inner), loc, span),
         ))
     }
 
@@ -304,9 +318,10 @@ impl TaraParser {
 
     fn module_decl(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
                 input.into_children();
-                [module_inner(module_inner)] => Node::new(NodeKind::ModuleDecl(module_inner), span),
+                [module_inner(module_inner)] => Node::new(NodeKind::ModuleDecl(module_inner), loc, span),
         ))
     }
 
@@ -344,6 +359,7 @@ impl TaraParser {
 
     fn comb_decl(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
             input.into_children();
             [publicity(publicity), identifier(ident), param_list(params), type_expr(ret_type), block(body)] => {
@@ -351,7 +367,7 @@ impl TaraParser {
             }
         );
 
-        return Ok(Node::new(node, span));
+        return Ok(Node::new(node, loc, span));
     }
 
     fn field_list(input: ParseNode) -> ParseResult<Vec<TypedName>> {
@@ -374,24 +390,26 @@ impl TaraParser {
 
     fn reference_ty(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let ref_ty = match_nodes!(
             input.into_children();
             [expr(expr)] => RefTy::new(Mutability::Immutable, expr),
             [ptr_var(_), expr(expr)] => RefTy::new(Mutability::Mutable, expr),
         );
 
-        return Ok(Node::new(NodeKind::ReferenceTy(ref_ty), span));
+        return Ok(Node::new(NodeKind::ReferenceTy(ref_ty), loc, span));
     }
 
     fn pointer_ty(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let ref_ty = match_nodes!(
             input.into_children();
             [expr(expr)] => RefTy::new(Mutability::Immutable, expr),
             [ptr_var(_), expr(expr)] => RefTy::new(Mutability::Mutable, expr),
         );
 
-        return Ok(Node::new(NodeKind::PointerTy(ref_ty), span));
+        return Ok(Node::new(NodeKind::PointerTy(ref_ty), loc, span));
     }
 
     fn expr(input: ParseNode) -> ParseResult<Node> {
@@ -400,6 +418,7 @@ impl TaraParser {
 
     fn primary_expr(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         let node = match_nodes!(
             input.into_children();
             [parened_expr(parened_expr)] => parened_expr,
@@ -408,7 +427,7 @@ impl TaraParser {
             [if_expr(if_expr)] => if_expr,
             [struct_init_expr(struct_init_expr)] => struct_init_expr,
             [type_expr(type_expr)] => type_expr,
-            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), span),
+            [identifier(identifier)] => Node::new(NodeKind::Identifier(identifier), loc, span),
             [builtin_call(builtin_call)] => builtin_call,
             [block(block)] => block,
         );
@@ -425,36 +444,39 @@ impl TaraParser {
 
     fn return_expr(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
             [expr(expr)] => {
                 let un_op = UnOp{lhs: Box::new(expr)};
-                Node::new(NodeKind::Return(Some(un_op)), span)
+                Node::new(NodeKind::Return(Some(un_op)), loc, span)
             },
             [] => {
-                Node::new(NodeKind::Return(None), span)
+                Node::new(NodeKind::Return(None), loc, span)
             }
         ))
     }
 
     fn if_expr(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
             [expr(cond), expr(body), expr(else_body)] => {
                 let if_expr = IfExpr::new(cond, body, Some(else_body));
-                Node::new(NodeKind::IfExpr(if_expr), span)
+                Node::new(NodeKind::IfExpr(if_expr), loc, span)
             },
         ))
     }
 
     fn builtin_call(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
             [identifier(call), call_operator(args)] => {
                 let call_expr = BuiltinCall{ call, args };
-                Node::new(NodeKind::BuiltinCall(call_expr), span)}
+                Node::new(NodeKind::BuiltinCall(call_expr), loc, span)}
         ))
     }
 
@@ -468,22 +490,24 @@ impl TaraParser {
 
     fn anon_struct_init_expr(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
             [field_init_list(fields)] => {
                 let struct_init = StructInit::new_anon(fields);
-                Node::new(NodeKind::StructInit(struct_init), span)
+                Node::new(NodeKind::StructInit(struct_init), loc, span)
             },
         ))
     }
 
     fn typed_struct_init_expr(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
             [type_expr(ty), field_init_list(fields)] => {
                 let struct_init = StructInit::new_with_ty(ty, fields);
-                Node::new(NodeKind::StructInit(struct_init), span)
+                Node::new(NodeKind::StructInit(struct_init), loc, span)
             },
         ))
     }
@@ -511,11 +535,12 @@ impl TaraParser {
 
     fn number(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
-            [decimal_number(decimal)] => Node::new(NodeKind::NumberLiteral(decimal), span),
-            [binary_number(binary)] => Node::new(NodeKind::NumberLiteral(binary), span),
-            [hex_number(hex)] => Node::new(NodeKind::NumberLiteral(hex), span),
+            [decimal_number(decimal)] => Node::new(NodeKind::NumberLiteral(decimal), loc, span),
+            [binary_number(binary)] => Node::new(NodeKind::NumberLiteral(binary), loc, span),
+            [hex_number(hex)] => Node::new(NodeKind::NumberLiteral(hex), loc, span),
             [bitwidth_binary_literal(binary)] => binary,
             [bitwidth_hex_literal(hex)] => hex,
         ))
@@ -539,6 +564,7 @@ impl TaraParser {
 
     fn bitwidth_binary_literal(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
             [nonzero_decimal_number(big_size), binary_number(literal)] => {
@@ -547,13 +573,14 @@ impl TaraParser {
                 let sized_number_literal = SizedNumberLiteral{size,literal};
                 let node = NodeKind::SizedNumberLiteral(sized_number_literal);
 
-                Node::new(node, span)
+                Node::new(node, loc, span)
             },
         ))
     }
 
     fn bitwidth_hex_literal(input: ParseNode) -> ParseResult<Node> {
         let span = input.as_span();
+        let loc = input.as_pair().line_col();
         Ok(match_nodes!(
             input.into_children();
             [nonzero_decimal_number(big_size), hex_number(literal)] => {
@@ -562,7 +589,7 @@ impl TaraParser {
                 let sized_number_literal = SizedNumberLiteral{size,literal};
                 let node = NodeKind::SizedNumberLiteral(sized_number_literal);
 
-                Node::new(node, span)
+                Node::new(node, loc, span)
             },
         ))
     }

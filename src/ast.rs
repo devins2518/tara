@@ -8,19 +8,21 @@ use symbol_table::GlobalSymbol;
 
 pub struct Node {
     pub span: Span,
+    pub loc: (usize, usize),
     pub kind: NodeKind,
 }
 
 impl Node {
-    pub fn new(kind: NodeKind, span: pest::Span) -> Self {
+    pub fn new(kind: NodeKind, loc: (usize, usize), span: pest::Span) -> Self {
         return Self {
             span: Span::new(span.start() as u32, span.end() as u32),
+            loc,
             kind,
         };
     }
 
     pub fn loc<'c>(&self, ctx: &'c Context) -> Location<'c> {
-        Location::new(ctx, "", self.span.start().into(), self.span.end().into())
+        Location::new(ctx, "", self.loc.0, self.loc.1)
     }
 }
 
@@ -322,6 +324,7 @@ impl IfExpr {
     pub fn new(cond: Node, body: Node, else_body: Option<Node>) -> Self {
         let else_body = else_body.unwrap_or_else(|| Node {
             kind: NodeKind::Block(Block::new(Vec::new())),
+            loc: cond.loc,
             span: cond.span,
         });
         Self {
